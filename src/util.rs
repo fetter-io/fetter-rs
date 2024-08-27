@@ -1,22 +1,47 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
+use std::process::Command;
+use std::io::Result;
 
-pub(crate) fn gcd(mut n: i64, mut m: i64) -> Result<i64, &'static str>
-{
-    if n <= 0 || m <= 0 {
-        return Err("zero or negative values not supported");
-    }
-    while m != i64::from(0) {
-        if m < n {
-            std::mem::swap(&mut m, &mut n);
-        }
-        m = m % n;
-    }
-    Ok(n)
+// pub(crate) fn gcd(mut n: i64, mut m: i64) -> Result<i64>
+// {
+//     if n <= 0 || m <= 0 {
+//         return Err("zero or negative values not supported");
+//     }
+//     while m != i64::from(0) {
+//         if m < n {
+//             std::mem::swap(&mut m, &mut n);
+//         }
+//         m = m % n;
+//     }
+//     Ok(n)
+// }
+
+/// Given a path to a Python binary, call out to Python to get all known sys paths
+fn get_py_sys_paths(path_bin: &Path) -> Result<Vec<PathBuf>> {
+    // println!("{:?}", path_bin.to_str().unwrap());
+
+    let output = Command::new(path_bin.to_str().unwrap())
+            .arg("-c")
+            .arg("import sys;print(\"\\n\".join(sys.path))")
+            .output()
+            .unwrap();
+
+    println!("{:?}", output);
+
+    let paths_lines = std::str::from_utf8(&output.stdout)
+            .expect("Failed to convert to UTF-8")
+            .trim();
+    println!("{:?}", paths_lines);
+
+    let mut paths = Vec::new();
+    paths.push(path_bin.to_path_buf());
+    return Ok(paths);
 }
 
 
-fn files_eager(path: &Path) -> std::io::Result<Vec<String>> {
+
+fn files_eager(path: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
@@ -26,7 +51,7 @@ fn files_eager(path: &Path) -> std::io::Result<Vec<String>> {
             if path.is_dir() { // recurse
                 files.extend(files_eager(&path)?);
             } else { // Collect file names
-                files.push(path.to_str().unwrap().to_string());
+                files.push(path);
                 // if let Some(file_name) = path.file_name() {
                 //     files.push(file_name.to_string_lossy().into_owned());
                 // }
@@ -45,10 +70,12 @@ mod tests {
     use tempfile::tempdir;
     use std::fs::File;
     use std::io::Write;
+    // use std::str::FromStr;
 
     #[test]
-    fn test_gcd_a() {
-        assert_eq!(gcd(14, 15).unwrap(), 1);
+    fn test_get_py_sys_paths_a() {
+        let p = Path::new("python3");
+        let post = get_py_sys_paths(p);
     }
 
     #[test]
