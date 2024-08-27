@@ -1,3 +1,11 @@
+
+
+mod util;
+
+
+
+
 fn main() {
-    println!("Hello, world!");
+    let x = util::gcd(3, 20).unwrap();
+    println!("{}", x.to_string());
 }

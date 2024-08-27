@@ -2,7 +2,21 @@
 name = "vigilnaut"
 version = "0.1.0"
 edition = "2021"
+authors = ["Christopher Ariza"]
+homepage = "https://github.com/flexatone/vigilnaut"
+repository = "https://github.com/flexatone/vigilnaut"
+readme = "README.md"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A monitor of supply chain dependencies."
+
+# keywords = ["sieve", "residual", "modulus", "set", "xenakis"]
+# categories = [
+#     "mathematics",
+#     "data-structures",
+# ]
 
 [dependencies]
+
+[dev-dependencies]
+tempfile = "3.12"
+
