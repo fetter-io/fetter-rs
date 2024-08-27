@@ -1,5 +1,5 @@
-// use std::path::Path;
-
+use std::path::Path;
+use std::fs;
 
 pub(crate) fn gcd(mut n: i64, mut m: i64) -> Result<i64, &'static str>
 {
@@ -16,6 +16,26 @@ pub(crate) fn gcd(mut n: i64, mut m: i64) -> Result<i64, &'static str>
 }
 
 
+fn files_eager(path: &Path) -> std::io::Result<Vec<String>> {
+    let mut files = Vec::new();
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() { // recurse
+                files.extend(files_eager(&path)?);
+            } else { // Collect file names
+                files.push(path.to_str().unwrap().to_string());
+                // if let Some(file_name) = path.file_name() {
+                //     files.push(file_name.to_string_lossy().into_owned());
+                // }
+            }
+        }
+    }
+    Ok(files)
+}
+
 
 
 #[cfg(test)]
@@ -23,7 +43,6 @@ mod tests {
 
     use super::*;
     use tempfile::tempdir;
-    use std::fs::create_dir;
     use std::fs::File;
     use std::io::Write;
 
@@ -41,12 +60,16 @@ mod tests {
         writeln!(file1, "test content 1").unwrap();
 
         let fpd2 = fpd1.join("dir_sub");
-        create_dir(fpd2.clone()).unwrap();
+        fs::create_dir(fpd2.clone()).unwrap();
 
         let fpf2 = fpd2.join("file2.txt");
         let mut file2 = File::create(fpf2).unwrap();
         writeln!(file2, "test content").unwrap();
 
+        let result = files_eager(fpd1).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].ends_with("file1.txt"), true);
+        assert_eq!(result[1].ends_with("file2.txt"), true);
     }
 
 
