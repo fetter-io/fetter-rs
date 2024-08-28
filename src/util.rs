@@ -1,40 +1,91 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::process::Command;
 use std::io::Result;
+use std::env;
+
+
+fn path_exclude_mac() -> HashSet<PathBuf> {
+    let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
+    let mut paths: HashSet<PathBuf> = HashSet::new();
+    paths.insert(PathBuf::from(home.clone()).join("Library"));
+    paths.insert(PathBuf::from(home.clone()).join("Photos"));
+    paths.insert(PathBuf::from(home.clone()).join("Downloads"));
+    paths.insert(PathBuf::from(home.clone()).join(".Trash"));
+    paths.insert(PathBuf::from(home.clone()).join(".cache"));
+    paths
+}
+
+fn path_exclude_linux() -> HashSet<PathBuf> {
+    let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
+    let mut paths: HashSet<PathBuf> = HashSet::new();
+    paths.insert(PathBuf::from(home.clone()).join(".cache"));
+    paths
+}
 
 
 /// Try to find all Python executables given a starting directory. This will recursively search all directories.
-fn get_executables(path: &Path) -> Result<Vec<PathBuf>> {
+fn get_executables_inner(
+        path: &Path,
+        exclude: &HashSet<PathBuf>,
+        ) -> Result<Vec<PathBuf>> {
+    if exclude.contains(path) {
+        return Ok(Vec::with_capacity(0));
+    }
     let mut paths = Vec::new();
     if path.is_dir() {
+        // need to skip paths that are always bad, like
         // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
         let path_cfg = path.to_path_buf().join("pyvenv.cfg");
         if path_cfg.exists() {
             let path_exe = path.to_path_buf().join("bin").join("python3");
-            println!("path_exe: {:?}", path_exe);
+            // println!("path_exe: {:?}", path_exe);
             if path_exe.exists() {
                 paths.push(path_exe)
             }
         }
         else {
             // println!("trying read_dir: {:?}", path);
-            // TODO: need to test read_dir, as it will fail
-            for entry in fs::read_dir(path)? {
-                let entry = entry?;
-                let path = entry.path();
-                let file_name = path.file_name().unwrap().to_str().unwrap();
+            match fs::read_dir(path) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let entry = entry?;
+                        let path = entry.path();
+                        let file_name = path.file_name().unwrap().to_str().unwrap();
 
-                if path.is_dir() { // recurse
-                    paths.extend(get_executables(&path)?);
-                } else if file_name == "python" {
-                    paths.push(path);
+                        if path.is_dir() { // recurse
+                            paths.extend(get_executables_inner(&path, exclude)?);
+                        } else if file_name == "python" {
+                            paths.push(path);
+                        }
+                    }
+                }
+                Err(e) => { // log this?
+                    eprintln!("Error reading {:?}: {}", path, e);
                 }
             }
         }
     }
     Ok(paths)
 }
+
+// Main entry point with platform dependent branching
+fn get_executables(
+    path: &Path,
+    ) -> Result<Vec<PathBuf>> {
+
+    let exclude;
+    if cfg!(target_os = "macos") {
+        exclude = path_exclude_mac();
+    } else if cfg!(target_os = "linux") {
+        exclude = path_exclude_linux();
+    } else {
+        exclude = HashSet::with_capacity(0);
+    }
+    get_executables_inner(path, &exclude)
+}
+
 
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
 fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
