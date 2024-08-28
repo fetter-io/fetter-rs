@@ -4,7 +4,7 @@ use std::fs;
 use std::process::Command;
 use std::io::Result;
 use std::env;
-
+use std::os::unix::fs::PermissionsExt;
 use rayon::prelude::*;
 
 // Provide absolute paths for directories that should be excluded from search.
@@ -71,11 +71,20 @@ fn get_exe_origins() -> Vec<(PathBuf, bool)> {
 
 
 fn is_exe(path: &Path) -> bool {
-    // TODO: check that the path is executable
     let file_name = path.file_name().unwrap().to_str().unwrap();
     if file_name.starts_with("python") {
         let suffix = &file_name[6..];
-        return suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.');
+        if suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.') {
+            match fs::metadata(path) {
+                Ok(md) => {
+                    return md.permissions().mode() & 0o111 != 0;
+                }
+                Err(_e) => {
+                    return false;
+                }
+            }
+
+        }
     }
     false
 }
@@ -95,7 +104,6 @@ fn get_executables_inner(
         exclude_paths: &HashSet<PathBuf>,
         recurse: bool,
         ) -> Vec<PathBuf> {
-    // TODO: add exclude_dir_names , node_modules
     if exclude_paths.contains(path) {
         return Vec::with_capacity(0);
     }
