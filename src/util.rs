@@ -26,6 +26,7 @@ fn path_exclude_linux() -> HashSet<PathBuf> {
 
 
 /// Try to find all Python executables given a starting directory. This will recursively search all directories.
+// TODO: boolean switch to determine if we only look for virtual envs or search for python executables
 fn get_executables_inner(
         path: &Path,
         exclude: &HashSet<PathBuf>,
@@ -57,6 +58,7 @@ fn get_executables_inner(
                         if path.is_dir() { // recurse
                             paths.extend(get_executables_inner(&path, exclude)?);
                         } else if file_name == "python" {
+                            // TODO: can we check if it is executable?
                             paths.push(path);
                         }
                     }
@@ -76,9 +78,9 @@ fn get_executables(
     ) -> Result<Vec<PathBuf>> {
 
     let exclude;
-    if cfg!(target_os = "macos") {
+    if env::consts::OS == "macos" {
         exclude = path_exclude_mac();
-    } else if cfg!(target_os = "linux") {
+    } else if env::consts::OS == "linux" {
         exclude = path_exclude_linux();
     } else {
         exclude = HashSet::with_capacity(0);
