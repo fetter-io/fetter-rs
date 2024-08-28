@@ -6,29 +6,38 @@ use std::io::Result;
 
 /// Try to find all Python executables given a starting directory. This will recursively search all directories.
 fn get_executables(path: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
+    let mut paths = Vec::new();
     if path.is_dir() {
-        // NOTE: might be able to pre-form expected Path and see if it exists to avoid iterating over all names
-        // NOTE: might be able to pre-detect a vitual env and avoid recursion
         // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let path = entry.path();
-            let file_name = path.file_name().unwrap().to_str().unwrap();
+        let path_cfg = path.to_path_buf().join("pyvenv.cfg");
+        if path_cfg.exists() {
+            let path_exe = path.to_path_buf().join("bin").join("python3");
+            println!("path_exe: {:?}", path_exe);
+            if path_exe.exists() {
+                paths.push(path_exe)
+            }
+        }
+        else {
+            // println!("trying read_dir: {:?}", path);
+            // TODO: need to test read_dir, as it will fail
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let path = entry.path();
+                let file_name = path.file_name().unwrap().to_str().unwrap();
 
-            if path.is_dir() { // recurse
-                files.extend(get_executables(&path)?);
-            } else if file_name.starts_with("python") {
-                files.push(path);
+                if path.is_dir() { // recurse
+                    paths.extend(get_executables(&path)?);
+                } else if file_name == "python" {
+                    paths.push(path);
+                }
             }
         }
     }
-    Ok(files)
+    Ok(paths)
 }
 
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
 fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
-
     let output = Command::new(executable.to_str().unwrap())
             .arg("-c")
             .arg("import site;print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())") // since Python 3.2
@@ -38,7 +47,6 @@ fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
         eprintln!("Failed to execute command: {}", e); // log this
         return Ok(Vec::new());
     }
-
 
     let out_raw = output.unwrap().stdout;
     let paths_lines = std::str::from_utf8(&out_raw)
@@ -53,7 +61,6 @@ fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
     println!("{:?}", paths);
     return Ok(paths);
 }
-
 
 
 fn files_eager(path: &Path) -> Result<Vec<PathBuf>> {
@@ -91,6 +98,22 @@ mod tests {
 
         let p2 = Path::new("/usr/bin/python3");
         let _paths = get_site_packages(p2);
+
+    }
+
+    #[test]
+    fn test_get_executables_a() {
+        // let p1 = Path::new("/usr/local");
+        let p1 = Path::new("/Users/ariza");
+        let _paths = get_executables(p1);
+        println!("{:?}", _paths);
+
+        let p1 = Path::new("/usr/bin");
+        let _paths = get_executables(p1);
+        println!("{:?}", _paths);
+
+        // let p2 = Path::new("/usr/bin/python3");
+        // let _paths = get_site_packages(p2);
 
     }
 
