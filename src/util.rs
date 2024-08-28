@@ -7,49 +7,72 @@ use std::env;
 
 use rayon::prelude::*;
 
-fn path_exclude -> HashSet<PathBuf> {
-    let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
+// Provide absolute paths for directories that should be excluded from search.
+fn get_exclude_path() -> HashSet<PathBuf> {
     let mut paths: HashSet<PathBuf> = HashSet::new();
-    // common to all
-    paths.insert(PathBuf::from(home.clone()).join(".cache"));
-    paths.insert(PathBuf::from(home.clone()).join(".npm"));
+    match env::var("HOME") {
+        Ok(home) => {
+            paths.insert(PathBuf::from(home.clone()).join(".cache"));
+            paths.insert(PathBuf::from(home.clone()).join(".npm"));
 
-    if env::consts::OS == "macos" {
-        paths.insert(PathBuf::from(home.clone()).join("Library"));
-        paths.insert(PathBuf::from(home.clone()).join("Photos"));
-        paths.insert(PathBuf::from(home.clone()).join("Downloads"));
-        paths.insert(PathBuf::from(home.clone()).join(".Trash"));
+            if env::consts::OS == "macos" {
+                paths.insert(PathBuf::from(home.clone()).join("Library"));
+                paths.insert(PathBuf::from(home.clone()).join("Photos"));
+                paths.insert(PathBuf::from(home.clone()).join("Downloads"));
+                paths.insert(PathBuf::from(home.clone()).join(".Trash"));
+            } else if env::consts::OS == "linux" {
+                paths.insert(PathBuf::from(home.clone()).join(".local/share/Trash"));
+            }
+
+        }
+        Err(e) => { // log this
+            eprintln!("Error getting HOME {}", e);
+        }
     }
-    // } else if env::consts::OS == "linux" {
-    //     exclude = path_exclude_linux();
-    // }
     paths
 }
 
+// Provide directories that should be used as origins for searching for executables.
+fn get_exe_origins() -> Vec<(PathBuf, bool)> {
+    let mut paths: Vec<(PathBuf, bool)> = Vec::new();
 
-fn exe_origins() -> Vec<PathBuf> {
-    let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
-    let mut paths: Vec<PathBuf> = Vec::new();
-    paths.push(PathBuf::from(home.clone()));
-    paths.push(PathBuf::from("/bin"));
-    paths.push(PathBuf::from("/sbin"));
-    paths.push(PathBuf::from("/usr/bin"));
-    paths.push(PathBuf::from("/usr/sbin"));
-    paths.push(PathBuf::from("/usr/local/bin"));
-    paths.push(PathBuf::from("/usr/local/sbin"));
+    match env::var("HOME") {
+        Ok(home) => {
+            paths.push((PathBuf::from(home.clone()), false));
 
-    // if env::consts::OS == "macos" {
-    //     exclude = path_exclude_mac();
-    // } else if env::consts::OS == "linux" {
-    //     exclude = path_exclude_linux();
-    // }
-
+            // collect all directories in the user's home directory
+            match fs::read_dir(PathBuf::from(home)) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let path = entry.unwrap().path();
+                        if path.is_dir() {
+                            paths.push((path, true));
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading home: {}", e);
+                }
+            }
+        }
+        Err(e) => { // log this
+            eprintln!("Error getting HOME {}", e);
+        }
+    }
+    paths.push((PathBuf::from("/bin"), false));
+    paths.push((PathBuf::from("/sbin"), false));
+    paths.push((PathBuf::from("/usr/bin"), false));
+    paths.push((PathBuf::from("/usr/sbin"), false));
+    paths.push((PathBuf::from("/usr/local/bin"), false));
+    paths.push((PathBuf::from("/usr/local/sbin"), false));
     paths
 
 }
 
 
-fn is_exe_file_name(file_name: &str) -> bool {
+fn is_exe(path: &Path) -> bool {
+    // TODO: check that the path is executable
+    let file_name = path.file_name().unwrap().to_str().unwrap();
     if file_name.starts_with("python") {
         let suffix = &file_name[6..];
         return suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.');
@@ -69,9 +92,11 @@ fn is_symlink(path: &Path) -> bool {
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
 fn get_executables_inner(
         path: &Path,
-        exclude: &HashSet<PathBuf>,
+        exclude_paths: &HashSet<PathBuf>,
+        recurse: bool,
         ) -> Vec<PathBuf> {
-    if exclude.contains(path) {
+    // TODO: add exclude_dir_names , node_modules
+    if exclude_paths.contains(path) {
         return Vec::with_capacity(0);
     }
     let mut paths = Vec::new();
@@ -81,24 +106,19 @@ fn get_executables_inner(
         let path_cfg = path.to_path_buf().join("pyvenv.cfg");
         if path_cfg.exists() {
             let path_exe = path.to_path_buf().join("bin").join("python3");
-            // println!("path_exe: {:?}", path_exe);
             if path_exe.exists() {
                 paths.push(path_exe)
             }
         }
         else {
-            // println!("trying read_dir: {:?}", path);
             match fs::read_dir(path) {
                 Ok(entries) => {
                     for entry in entries {
-                        let entry = entry.unwrap();
-                        let path = entry.path();
-                        let file_name = path.file_name().unwrap().to_str().unwrap();
-
-                        if path.is_dir() && !is_symlink(&path) { // recurse
-                            paths.extend(get_executables_inner(&path, exclude));
-                        } else if is_exe_file_name(&file_name) {
-                            // TODO: can we check if it is executable?
+                        let path = entry.unwrap().path();
+                        if recurse && path.is_dir() && !is_symlink(&path) { // recurse
+                            // println!("recursing: {:?}", path);
+                            paths.extend(get_executables_inner(&path, exclude_paths, recurse));
+                        } else if is_exe(&path) {
                             paths.push(path);
                         }
                     }
@@ -114,8 +134,10 @@ fn get_executables_inner(
 
 // Main entry point with platform dependent branching
 fn get_executables() -> Result<Vec<PathBuf>> {
-    let exclude = path_exclude();
-    let origins = exe_origins();
+    let exclude = get_exclude_path();
+    let origins = get_exe_origins();
+
+    println!("origins: {:?}", origins);
 
     // let mut paths = Vec::new();
     // for path in origins {
@@ -123,21 +145,10 @@ fn get_executables() -> Result<Vec<PathBuf>> {
     //     paths.extend(get_executables_inner(&path, &exclude));
     // }
 
-    // let paths: Result<Vec<PathBuf>, io::Error> = origins
-    //         .par_iter()
-    //         .flat_map(|path| {
-    //             // Convert the inner Vec<PathBuf> into an iterator of Result<PathBuf, io::Error>
-    //             match get_executables_inner(path, &exclude) {
-    //                 Ok(inner_paths) => inner_paths.into_iter().map(Ok).collect::<Vec<_>>(),
-    //                 Err(e) => vec![Err(e)],  // Convert the error into an iterator
-    //             }
-    //         })
-    //         .collect();  // Collect into Result<Vec<PathBuf>, io::Error>
-
     let paths: Vec<PathBuf> = origins
             .par_iter()
-            .flat_map(|path| get_executables_inner(path, &exclude))  // No need to handle Result
-            .collect();  // Collect directly into a Vec<PathBuf>
+            .flat_map(|(path, recurse)| get_executables_inner(path, &exclude, *recurse))
+            .collect();
 
     Ok(paths)
 }
