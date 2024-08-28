@@ -5,34 +5,74 @@ use std::process::Command;
 use std::io::Result;
 use std::env;
 
+use rayon::prelude::*;
 
-fn path_exclude_mac() -> HashSet<PathBuf> {
+fn path_exclude -> HashSet<PathBuf> {
     let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
     let mut paths: HashSet<PathBuf> = HashSet::new();
-    paths.insert(PathBuf::from(home.clone()).join("Library"));
-    paths.insert(PathBuf::from(home.clone()).join("Photos"));
-    paths.insert(PathBuf::from(home.clone()).join("Downloads"));
-    paths.insert(PathBuf::from(home.clone()).join(".Trash"));
+    // common to all
     paths.insert(PathBuf::from(home.clone()).join(".cache"));
+    paths.insert(PathBuf::from(home.clone()).join(".npm"));
+
+    if env::consts::OS == "macos" {
+        paths.insert(PathBuf::from(home.clone()).join("Library"));
+        paths.insert(PathBuf::from(home.clone()).join("Photos"));
+        paths.insert(PathBuf::from(home.clone()).join("Downloads"));
+        paths.insert(PathBuf::from(home.clone()).join(".Trash"));
+    }
+    // } else if env::consts::OS == "linux" {
+    //     exclude = path_exclude_linux();
+    // }
     paths
 }
 
-fn path_exclude_linux() -> HashSet<PathBuf> {
+
+fn exe_origins() -> Vec<PathBuf> {
     let home = env::var("HOME").unwrap_or_else(|_| String::from("/"));
-    let mut paths: HashSet<PathBuf> = HashSet::new();
-    paths.insert(PathBuf::from(home.clone()).join(".cache"));
+    let mut paths: Vec<PathBuf> = Vec::new();
+    paths.push(PathBuf::from(home.clone()));
+    paths.push(PathBuf::from("/bin"));
+    paths.push(PathBuf::from("/sbin"));
+    paths.push(PathBuf::from("/usr/bin"));
+    paths.push(PathBuf::from("/usr/sbin"));
+    paths.push(PathBuf::from("/usr/local/bin"));
+    paths.push(PathBuf::from("/usr/local/sbin"));
+
+    // if env::consts::OS == "macos" {
+    //     exclude = path_exclude_mac();
+    // } else if env::consts::OS == "linux" {
+    //     exclude = path_exclude_linux();
+    // }
+
     paths
+
 }
 
 
-/// Try to find all Python executables given a starting directory. This will recursively search all directories.
-// TODO: boolean switch to determine if we only look for virtual envs or search for python executables
+fn is_exe_file_name(file_name: &str) -> bool {
+    if file_name.starts_with("python") {
+        let suffix = &file_name[6..];
+        return suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.');
+    }
+    false
+}
+
+fn is_symlink(path: &Path) -> bool {
+    if let Ok(metadata) = fs::symlink_metadata(path) {
+        metadata.file_type().is_symlink()
+    } else {
+        false
+    }
+}
+
+
+/// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
 fn get_executables_inner(
         path: &Path,
         exclude: &HashSet<PathBuf>,
-        ) -> Result<Vec<PathBuf>> {
+        ) -> Vec<PathBuf> {
     if exclude.contains(path) {
-        return Ok(Vec::with_capacity(0));
+        return Vec::with_capacity(0);
     }
     let mut paths = Vec::new();
     if path.is_dir() {
@@ -51,13 +91,13 @@ fn get_executables_inner(
             match fs::read_dir(path) {
                 Ok(entries) => {
                     for entry in entries {
-                        let entry = entry?;
+                        let entry = entry.unwrap();
                         let path = entry.path();
                         let file_name = path.file_name().unwrap().to_str().unwrap();
 
-                        if path.is_dir() { // recurse
-                            paths.extend(get_executables_inner(&path, exclude)?);
-                        } else if file_name == "python" {
+                        if path.is_dir() && !is_symlink(&path) { // recurse
+                            paths.extend(get_executables_inner(&path, exclude));
+                        } else if is_exe_file_name(&file_name) {
                             // TODO: can we check if it is executable?
                             paths.push(path);
                         }
@@ -69,23 +109,37 @@ fn get_executables_inner(
             }
         }
     }
-    Ok(paths)
+    paths
 }
 
 // Main entry point with platform dependent branching
-fn get_executables(
-    path: &Path,
-    ) -> Result<Vec<PathBuf>> {
+fn get_executables() -> Result<Vec<PathBuf>> {
+    let exclude = path_exclude();
+    let origins = exe_origins();
 
-    let exclude;
-    if env::consts::OS == "macos" {
-        exclude = path_exclude_mac();
-    } else if env::consts::OS == "linux" {
-        exclude = path_exclude_linux();
-    } else {
-        exclude = HashSet::with_capacity(0);
-    }
-    get_executables_inner(path, &exclude)
+    // let mut paths = Vec::new();
+    // for path in origins {
+    //     println!("searchin dir {:?}", path);
+    //     paths.extend(get_executables_inner(&path, &exclude));
+    // }
+
+    // let paths: Result<Vec<PathBuf>, io::Error> = origins
+    //         .par_iter()
+    //         .flat_map(|path| {
+    //             // Convert the inner Vec<PathBuf> into an iterator of Result<PathBuf, io::Error>
+    //             match get_executables_inner(path, &exclude) {
+    //                 Ok(inner_paths) => inner_paths.into_iter().map(Ok).collect::<Vec<_>>(),
+    //                 Err(e) => vec![Err(e)],  // Convert the error into an iterator
+    //             }
+    //         })
+    //         .collect();  // Collect into Result<Vec<PathBuf>, io::Error>
+
+    let paths: Vec<PathBuf> = origins
+            .par_iter()
+            .flat_map(|path| get_executables_inner(path, &exclude))  // No need to handle Result
+            .collect();  // Collect directly into a Vec<PathBuf>
+
+    Ok(paths)
 }
 
 
@@ -157,13 +211,12 @@ mod tests {
     #[test]
     fn test_get_executables_a() {
         // let p1 = Path::new("/usr/local");
-        let p1 = Path::new("/Users/ariza");
-        let _paths = get_executables(p1);
+        let _paths = get_executables();
         println!("{:?}", _paths);
 
-        let p1 = Path::new("/usr/bin");
-        let _paths = get_executables(p1);
-        println!("{:?}", _paths);
+        // let p1 = Path::new("/usr/bin");
+        // let _paths = get_executables(p1);
+        // println!("{:?}", _paths);
 
         // let p2 = Path::new("/usr/bin/python3");
         // let _paths = get_site_packages(p2);
@@ -193,3 +246,7 @@ mod tests {
 
 
 }
+
+
+
+
