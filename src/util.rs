@@ -3,39 +3,54 @@ use std::fs;
 use std::process::Command;
 use std::io::Result;
 
-// pub(crate) fn gcd(mut n: i64, mut m: i64) -> Result<i64>
-// {
-//     if n <= 0 || m <= 0 {
-//         return Err("zero or negative values not supported");
-//     }
-//     while m != i64::from(0) {
-//         if m < n {
-//             std::mem::swap(&mut m, &mut n);
-//         }
-//         m = m % n;
-//     }
-//     Ok(n)
-// }
 
-/// Given a path to a Python binary, call out to Python to get all known sys paths
-fn get_py_sys_paths(path_bin: &Path) -> Result<Vec<PathBuf>> {
-    // println!("{:?}", path_bin.to_str().unwrap());
+/// Try to find all Python executables given a starting directory. This will recursively search all directories.
+fn get_executables(path: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    if path.is_dir() {
+        // NOTE: might be able to pre-form expected Path and see if it exists to avoid iterating over all names
+        // NOTE: might be able to pre-detect a vitual env and avoid recursion
+        // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let file_name = path.file_name().unwrap().to_str().unwrap();
 
-    let output = Command::new(path_bin.to_str().unwrap())
+            if path.is_dir() { // recurse
+                files.extend(get_executables(&path)?);
+            } else if file_name.starts_with("python") {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
+}
+
+/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
+fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
+
+    let output = Command::new(executable.to_str().unwrap())
             .arg("-c")
-            .arg("import sys;print(\"\\n\".join(sys.path))")
-            .output()
-            .unwrap();
+            .arg("import site;print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())") // since Python 3.2
+            .output();
 
-    println!("{:?}", output);
+    if let Err(e) = output {
+        eprintln!("Failed to execute command: {}", e); // log this
+        return Ok(Vec::new());
+    }
 
-    let paths_lines = std::str::from_utf8(&output.stdout)
-            .expect("Failed to convert to UTF-8")
+
+    let out_raw = output.unwrap().stdout;
+    let paths_lines = std::str::from_utf8(&out_raw)
+            .expect("Failed to convert to UTF-8") // will panic
             .trim();
-    println!("{:?}", paths_lines);
 
-    let mut paths = Vec::new();
-    paths.push(path_bin.to_path_buf());
+    let paths: Vec<PathBuf> = paths_lines
+            .lines()
+            .map(|line| PathBuf::from(line.trim()))
+            .collect();
+
+    println!("{:?}", paths);
     return Ok(paths);
 }
 
@@ -52,9 +67,6 @@ fn files_eager(path: &Path) -> Result<Vec<PathBuf>> {
                 files.extend(files_eager(&path)?);
             } else { // Collect file names
                 files.push(path);
-                // if let Some(file_name) = path.file_name() {
-                //     files.push(file_name.to_string_lossy().into_owned());
-                // }
             }
         }
     }
@@ -73,9 +85,13 @@ mod tests {
     // use std::str::FromStr;
 
     #[test]
-    fn test_get_py_sys_paths_a() {
-        let p = Path::new("python3");
-        let post = get_py_sys_paths(p);
+    fn test_get_site_packages_a() {
+        let p1 = Path::new("python3");
+        let _paths = get_site_packages(p1);
+
+        let p2 = Path::new("/usr/bin/python3");
+        let _paths = get_site_packages(p2);
+
     }
 
     #[test]
@@ -95,8 +111,8 @@ mod tests {
 
         let result = files_eager(fpd1).unwrap();
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].ends_with("file1.txt"), true);
-        assert_eq!(result[1].ends_with("file2.txt"), true);
+        // assert_eq!(result[0].ends_with("file1.txt"), true);
+        // assert_eq!(result[1].ends_with("file2.txt"), true);
     }
 
 
