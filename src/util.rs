@@ -39,7 +39,6 @@ fn get_exe_origins() -> Vec<(PathBuf, bool)> {
     match env::var("HOME") {
         Ok(home) => {
             paths.push((PathBuf::from(home.clone()), false));
-
             // collect all directories in the user's home directory
             match fs::read_dir(PathBuf::from(home)) {
                 Ok(entries) => {
@@ -65,38 +64,37 @@ fn get_exe_origins() -> Vec<(PathBuf, bool)> {
     paths.push((PathBuf::from("/usr/sbin"), false));
     paths.push((PathBuf::from("/usr/local/bin"), false));
     paths.push((PathBuf::from("/usr/local/sbin"), false));
-    paths
 
+    if env::consts::OS == "macos" {
+        paths.push((PathBuf::from("/opt/homebrew/bin"), false));
+    }
+    paths
 }
 
-
+// Return True if the path points to a python executable.
 fn is_exe(path: &Path) -> bool {
-    let file_name = path.file_name().unwrap().to_str().unwrap();
-    if file_name.starts_with("python") {
-        let suffix = &file_name[6..];
-        if suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.') {
-            match fs::metadata(path) {
-                Ok(md) => {
-                    return md.permissions().mode() & 0o111 != 0;
+    return match path.file_name().and_then(|f| f.to_str()) {
+        Some(file_name) if file_name.starts_with("python") => {
+            let suffix = &file_name[6..];
+            if suffix.is_empty() || suffix.chars().all(|c| c.is_digit(10) || c == '.') {
+                match fs::metadata(path) {
+                    Ok(md) => md.permissions().mode() & 0o111 != 0,
+                    Err(_) => false,
                 }
-                Err(_e) => {
-                    return false;
-                }
+            } else {
+                false
             }
-
         }
-    }
-    false
+        _ => false,
+    };
 }
 
 fn is_symlink(path: &Path) -> bool {
-    if let Ok(metadata) = fs::symlink_metadata(path) {
-        metadata.file_type().is_symlink()
-    } else {
-        false
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata.file_type().is_symlink(),
+        Err(_) => false,
     }
 }
-
 
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
 fn get_executables_inner(
@@ -109,7 +107,6 @@ fn get_executables_inner(
     }
     let mut paths = Vec::new();
     if path.is_dir() {
-        // need to skip paths that are always bad, like
         // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
         let path_cfg = path.to_path_buf().join("pyvenv.cfg");
         if path_cfg.exists() {
@@ -153,11 +150,14 @@ fn get_executables() -> Result<Vec<PathBuf>> {
     //     paths.extend(get_executables_inner(&path, &exclude));
     // }
 
+    // TODO: should this be a set?
     let paths: Vec<PathBuf> = origins
             .par_iter()
             .flat_map(|(path, recurse)| get_executables_inner(path, &exclude, *recurse))
             .collect();
 
+
+    // TODO: get path of current "python" with  sys.executable (attr)
     Ok(paths)
 }
 
