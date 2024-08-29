@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::process::Command;
-use std::io::Result;
+// use std::io::Result;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 use rayon::prelude::*;
@@ -93,8 +93,25 @@ fn is_symlink(path: &Path) -> bool {
     }
 }
 
+// Use the default Python to and get its executable path.
+fn get_exe_default() -> Option<PathBuf> {
+    return match Command::new("python3")
+            .arg("-c")
+            .arg("import sys;print(sys.executable)")
+            .output() {
+        Ok(output) => {
+            match std::str::from_utf8(&output.stdout) {
+                Ok(s) => Some(PathBuf::from(s.trim())),
+                Err(_) => None,
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
-fn get_executables_inner(
+fn scan_executables_inner(
         path: &Path,
         exclude_paths: &HashSet<PathBuf>,
         recurse: bool,
@@ -119,7 +136,7 @@ fn get_executables_inner(
                         let path = entry.unwrap().path();
                         if recurse && path.is_dir() && !is_symlink(&path) { // recurse
                             // println!("recursing: {:?}", path);
-                            paths.extend(get_executables_inner(&path, exclude_paths, recurse));
+                            paths.extend(scan_executables_inner(&path, exclude_paths, recurse));
                         } else if is_exe(&path) {
                             paths.push(path);
                         }
@@ -135,57 +152,58 @@ fn get_executables_inner(
 }
 
 // Main entry point with platform dependent branching
-pub(crate) fn get_executables() -> Result<HashSet<PathBuf>> {
+fn scan_executables() -> HashSet<PathBuf> {
     let exclude = get_exclude_path();
     let origins = get_exe_origins();
-
-    println!("origins: {:?}", origins);
+    // println!("origins: {:?}", origins);
 
     // let mut paths = Vec::new();
     // for path in origins {
     //     println!("searchin dir {:?}", path);
-    //     paths.extend(get_executables_inner(&path, &exclude));
+    //     paths.extend(scan_executables_inner(&path, &exclude));
     // }
-
-    // TODO: should this be a set?
-    let paths: HashSet<PathBuf> = origins
+    let mut paths: HashSet<PathBuf> = origins
             .par_iter()
-            .flat_map(|(path, recurse)| get_executables_inner(path, &exclude, *recurse))
+            .flat_map(|(path, recurse)| scan_executables_inner(path, &exclude, *recurse))
             .collect();
 
-
-    // TODO: get path of current "python" with  sys.executable (attr)
-    Ok(paths)
+    // get path of current "python" with  sys.executable (attr)
+    if let Some(exe_def) = get_exe_default() {
+        paths.insert(exe_def);
+    }
+    paths
 }
-
 
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
-fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
-    let output = Command::new(executable.to_str().unwrap())
+fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
+    return match Command::new(executable)
             .arg("-c")
             .arg("import site;print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())") // since Python 3.2
-            .output();
-
-    if let Err(e) = output {
-        eprintln!("Failed to execute command: {}", e); // log this
-        return Ok(Vec::with_capacity(0));
+            .output() {
+        Ok(output) => {
+            let paths_lines = std::str::from_utf8(&output.stdout)
+                    .expect("Failed to convert to UTF-8")
+                    .trim();
+            paths_lines
+                    .lines()
+                    .map(|line| PathBuf::from(line.trim()))
+                    .collect()
+        }
+        Err(e) => {
+            eprintln!("Failed to execute command: {}", e); // log this
+            Vec::with_capacity(0)
+        }
     }
-
-    let out_raw = output.unwrap().stdout;
-    let paths_lines = std::str::from_utf8(&out_raw)
-            .expect("Failed to convert to UTF-8") // will panic
-            .trim();
-
-    let paths: Vec<PathBuf> = paths_lines
-            .lines()
-            .map(|line| PathBuf::from(line.trim()))
-            .collect();
-
-    // println!("{:?}", paths);
-    return Ok(paths);
 }
 
-
+pub(crate) fn scan() {
+    // let mut paths: HashSet<PathBuf> = HashSet::new();
+    for exe in scan_executables() {
+        for sp_dir in get_site_package_dirs(&exe) {
+            println!("{:?} {:?}", exe, sp_dir);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -254,15 +272,15 @@ mod tests {
     }
 
     #[test]
-    fn test_get_site_packages_a() {
+    fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths = get_site_packages(p1).unwrap();
+        let paths = get_site_package_dirs(p1).unwrap();
         assert_eq!(paths.len() > 0, true)
     }
 
 
     #[test]
-    fn test_get_executalbe_innner_a() {
+    fn test_scan_executable_inner_a() {
         let temp_dir = tempdir().unwrap();
         let fpd1 = temp_dir.path();
         let fpf1 = fpd1.join("pyvenv.cfg");
@@ -279,7 +297,7 @@ mod tests {
 
 
         let exclude_paths = HashSet::with_capacity(0);
-        let mut result = get_executables_inner(fpd1, &exclude_paths, true);
+        let mut result = scan_executables_inner(fpd1, &exclude_paths, true);
         assert_eq!(result.len(), 1);
 
         let fp_found: PathBuf = result.pop().unwrap();
@@ -290,20 +308,6 @@ mod tests {
     }
 
 
-    // #[test]
-    // fn test_get_executables_a() {
-    //     // let p1 = Path::new("/usr/local");
-    //     let _paths = get_executables();
-    //     println!("{:?}", _paths);
-
-    //     // let p1 = Path::new("/usr/bin");
-    //     // let _paths = get_executables(p1);
-    //     // println!("{:?}", _paths);
-
-    //     // let p2 = Path::new("/usr/bin/python3");
-    //     // let _paths = get_site_packages(p2);
-
-    // }
 }
 
 
