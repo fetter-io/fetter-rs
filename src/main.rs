@@ -6,5 +6,6 @@ mod util;
 
 
 fn main() {
-    println!("{}", 3);
+    let post = util::get_executables();
+    println!("{:?}", post);
 }

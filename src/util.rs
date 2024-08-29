@@ -135,7 +135,7 @@ fn get_executables_inner(
 }
 
 // Main entry point with platform dependent branching
-fn get_executables() -> Result<Vec<PathBuf>> {
+pub(crate) fn get_executables() -> Result<HashSet<PathBuf>> {
     let exclude = get_exclude_path();
     let origins = get_exe_origins();
 
@@ -148,7 +148,7 @@ fn get_executables() -> Result<Vec<PathBuf>> {
     // }
 
     // TODO: should this be a set?
-    let paths: Vec<PathBuf> = origins
+    let paths: HashSet<PathBuf> = origins
             .par_iter()
             .flat_map(|(path, recurse)| get_executables_inner(path, &exclude, *recurse))
             .collect();
