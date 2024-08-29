@@ -7,7 +7,7 @@ use std::env;
 use std::os::unix::fs::PermissionsExt;
 use rayon::prelude::*;
 
-// Provide absolute paths for directories that should be excluded from search.
+// Provide absolute paths for directories that should be excluded from executable search.
 fn get_exclude_path() -> HashSet<PathBuf> {
     let mut paths: HashSet<PathBuf> = HashSet::new();
     match env::var("HOME") {
@@ -23,7 +23,6 @@ fn get_exclude_path() -> HashSet<PathBuf> {
             } else if env::consts::OS == "linux" {
                 paths.insert(PathBuf::from(home.clone()).join(".local/share/Trash"));
             }
-
         }
         Err(e) => { // log this
             eprintln!("Error getting HOME {}", e);
@@ -32,10 +31,9 @@ fn get_exclude_path() -> HashSet<PathBuf> {
     paths
 }
 
-// Provide directories that should be used as origins for searching for executables.
+// Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched.
 fn get_exe_origins() -> Vec<(PathBuf, bool)> {
     let mut paths: Vec<(PathBuf, bool)> = Vec::new();
-
     match env::var("HOME") {
         Ok(home) => {
             paths.push((PathBuf::from(home.clone()), false));
@@ -64,14 +62,13 @@ fn get_exe_origins() -> Vec<(PathBuf, bool)> {
     paths.push((PathBuf::from("/usr/sbin"), false));
     paths.push((PathBuf::from("/usr/local/bin"), false));
     paths.push((PathBuf::from("/usr/local/sbin"), false));
-
     if env::consts::OS == "macos" {
         paths.push((PathBuf::from("/opt/homebrew/bin"), false));
     }
     paths
 }
 
-// Return True if the path points to a python executable.
+// Return True if the path points to a python executable. We assume this has already been proven to exist.
 fn is_exe(path: &Path) -> bool {
     return match path.file_name().and_then(|f| f.to_str()) {
         Some(file_name) if file_name.starts_with("python") => {
@@ -110,8 +107,8 @@ fn get_executables_inner(
         // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
         let path_cfg = path.to_path_buf().join("pyvenv.cfg");
         if path_cfg.exists() {
-            let path_exe = path.to_path_buf().join("bin").join("python3");
-            if path_exe.exists() {
+            let path_exe = path.to_path_buf().join("bin/python3");
+            if path_exe.exists() && is_exe(&path_exe) {
                 paths.push(path_exe)
             }
         }
@@ -171,7 +168,7 @@ fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
 
     if let Err(e) = output {
         eprintln!("Failed to execute command: {}", e); // log this
-        return Ok(Vec::new());
+        return Ok(Vec::with_capacity(0));
     }
 
     let out_raw = output.unwrap().stdout;
@@ -184,26 +181,8 @@ fn get_site_packages(executable: &Path) -> Result<Vec<PathBuf>> {
             .map(|line| PathBuf::from(line.trim()))
             .collect();
 
-    println!("{:?}", paths);
+    // println!("{:?}", paths);
     return Ok(paths);
-}
-
-
-fn files_eager(path: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    if path.is_dir() {
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() { // recurse
-                files.extend(files_eager(&path)?);
-            } else { // Collect file names
-                files.push(path);
-            }
-        }
-    }
-    Ok(files)
 }
 
 
@@ -214,56 +193,117 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use std::fs::File;
-    use std::io::Write;
+    // use std::io::Write;
+    use std::os::unix::fs::symlink;
     // use std::str::FromStr;
+
+    #[test]
+    fn test_get_exclude_path_a() {
+        let post = get_exclude_path();
+        assert_eq!(post.len() > 2, true);
+    }
+
+    #[test]
+    fn test_get_exe_origins_a() {
+        let post = get_exe_origins();
+        assert_eq!(post.len() > 6, true);
+    }
+
+    #[test]
+    fn test_is_exe_a() {
+        let temp_dir = tempdir().unwrap();
+        let fp = temp_dir.path().join("test.sh");
+        let _ = File::create(fp.clone()).unwrap();
+        let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
+        perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
+        fs::set_permissions(fp.clone(), perms).unwrap();
+        assert_eq!(is_exe(&fp), false);
+    }
+
+    #[test]
+    fn test_is_exe_b() {
+        let temp_dir = tempdir().unwrap();
+        let fp = temp_dir.path().join("python");
+        let _ = File::create(fp.clone()).unwrap();
+        let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
+        perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
+        fs::set_permissions(fp.clone(), perms).unwrap();
+        assert_eq!(is_exe(&fp), true);
+    }
+
+    #[test]
+    fn test_is_exe_c() {
+        let temp_dir = tempdir().unwrap();
+        let fp = temp_dir.path().join("python10.100");
+        let _ = File::create(fp.clone()).unwrap();
+        let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
+        perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
+        fs::set_permissions(fp.clone(), perms).unwrap();
+        assert_eq!(is_exe(&fp), true);
+    }
+
+    #[test]
+    fn test_is_symlink_a() {
+        let temp_dir = tempdir().unwrap();
+        let fp1 = temp_dir.path().join("test.txt");
+        let _ = File::create(fp1.clone()).unwrap();
+        let fp2 = temp_dir.path().join("link.txt");
+        let _ = symlink(fp1.clone(), fp2.clone());
+        assert_eq!(is_symlink(&fp1), false);
+        assert_eq!(is_symlink(&fp2), true);
+    }
 
     #[test]
     fn test_get_site_packages_a() {
         let p1 = Path::new("python3");
-        let _paths = get_site_packages(p1);
-
-        let p2 = Path::new("/usr/bin/python3");
-        let _paths = get_site_packages(p2);
-
+        let paths = get_site_packages(p1).unwrap();
+        assert_eq!(paths.len() > 0, true)
     }
 
-    #[test]
-    fn test_get_executables_a() {
-        // let p1 = Path::new("/usr/local");
-        let _paths = get_executables();
-        println!("{:?}", _paths);
-
-        // let p1 = Path::new("/usr/bin");
-        // let _paths = get_executables(p1);
-        // println!("{:?}", _paths);
-
-        // let p2 = Path::new("/usr/bin/python3");
-        // let _paths = get_site_packages(p2);
-
-    }
 
     #[test]
-    fn test_search_dir_a() {
+    fn test_get_executalbe_innner_a() {
         let temp_dir = tempdir().unwrap();
         let fpd1 = temp_dir.path();
-        let fpf1 = fpd1.join("file1.txt");
-        let mut file1 = File::create(fpf1).unwrap();
-        writeln!(file1, "test content 1").unwrap();
+        let fpf1 = fpd1.join("pyvenv.cfg");
+        let _ = File::create(fpf1).unwrap();
 
-        let fpd2 = fpd1.join("dir_sub");
+        let fpd2 = fpd1.join("bin");
         fs::create_dir(fpd2.clone()).unwrap();
 
-        let fpf2 = fpd2.join("file2.txt");
-        let mut file2 = File::create(fpf2).unwrap();
-        writeln!(file2, "test content").unwrap();
+        let fpf2 = fpd2.join("python3");
+        let _ = File::create(fpf2.clone()).unwrap();
+        let mut perms = fs::metadata(fpf2.clone()).unwrap().permissions();
+        perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
+        fs::set_permissions(fpf2.clone(), perms).unwrap();
 
-        let result = files_eager(fpd1).unwrap();
-        assert_eq!(result.len(), 2);
-        // assert_eq!(result[0].ends_with("file1.txt"), true);
-        // assert_eq!(result[1].ends_with("file2.txt"), true);
+
+        let exclude_paths = HashSet::with_capacity(0);
+        let mut result = get_executables_inner(fpd1, &exclude_paths, true);
+        assert_eq!(result.len(), 1);
+
+        let fp_found: PathBuf = result.pop().unwrap();
+        let pcv = fp_found.into_iter().rev().take(2).collect::<Vec<_>>();
+        let pcp = pcv.iter().rev().collect::<PathBuf>();
+        assert_eq!(pcp, PathBuf::from("bin/python3"));
+
     }
 
 
+    // #[test]
+    // fn test_get_executables_a() {
+    //     // let p1 = Path::new("/usr/local");
+    //     let _paths = get_executables();
+    //     println!("{:?}", _paths);
+
+    //     // let p1 = Path::new("/usr/bin");
+    //     // let _paths = get_executables(p1);
+    //     // println!("{:?}", _paths);
+
+    //     // let p2 = Path::new("/usr/bin/python3");
+    //     // let _paths = get_site_packages(p2);
+
+    // }
 }
 
 
