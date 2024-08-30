@@ -40,7 +40,6 @@ impl PartialOrd for VersionSpec {
     }
 }
 
-
 //------------------------------------------------------------------------------
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
@@ -90,3 +89,36 @@ impl fmt::Debug for Package {
     }
 }
 
+
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_package_a() {
+        let p1 = Package::new("matplotlib-3.9.0.dist-info").unwrap();
+        assert_eq!(p1.name, "matplotlib");
+        assert_eq!(p1.version, "3.9.0");
+    }
+
+    #[test]
+    fn test_package_b() {
+        assert_eq!(Package::new("matplotlib-3.9.0.dist-in"), None);
+    }
+
+    #[test]
+    fn test_package_c() {
+        let p1 = Package::new("xarray-0.21.1.dist-info").unwrap();
+        let p2 = Package::new("xarray-2024.6.0.dist-info").unwrap();
+        let p3 = Package::new("xarray-2024.6.0.dist-info").unwrap();
+
+        assert_eq!(p2 > p1, true);
+        assert_eq!(p1 < p2, true);
+        assert_eq!(p1 == p3, false);
+        assert_eq!(p2== p3, true);
+    }
+
+
+}
