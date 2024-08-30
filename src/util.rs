@@ -201,7 +201,6 @@ enum VersionPart {
     Number(u32),
     Text(String),
 }
-
 impl Hash for VersionPart {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -255,7 +254,6 @@ struct Package {
     version: String,
     version_spec: VersionSpec,
 }
-
 impl Package {
     fn new(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
@@ -317,7 +315,9 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
     packages
 }
 
+//------------------------------------------------------------------------------
 pub(crate) fn scan() {
+    // Frequency: low
     let exe_to_site_packages: Vec<HashMap<PathBuf, Vec<PathBuf>>> = scan_executables()
             .into_par_iter() // Convert the iterator into a parallel iterator
             .map(|exe| {
@@ -325,42 +325,38 @@ pub(crate) fn scan() {
                 HashMap::from([(exe, dirs)])
             })
             .collect(); // Collect the results into a Vec of HashMap
-    // println!("{:?}", exe_to_site_packages);
 
+    // Frequency: high
     let site_package_to_packages = exe_to_site_packages
-        .into_par_iter()
-        .map(|hash_map| {
-            hash_map
-                .into_par_iter()
-                .flat_map(|(_, site_packages)| {
-                    site_packages.into_par_iter().map(|site_package_path| {
-                        let packages = get_packages(&site_package_path);
-                        (site_package_path, packages)
+            .into_par_iter()
+            .map(|hash_map| {
+                hash_map
+                    .into_par_iter()
+                    .flat_map(|(_, site_packages)| {
+                        site_packages.into_par_iter().map(|site_package_path| {
+                            let packages = get_packages(&site_package_path);
+                            (site_package_path, packages)
+                        })
                     })
-                })
-                .collect::<HashMap<PathBuf, Vec<Package>>>()
-        })
-        .collect::<Vec<HashMap<PathBuf, Vec<Package>>>>();
-
-    // println!("{:?}", site_package_to_packages);
+                    .collect::<HashMap<PathBuf, Vec<Package>>>()
+            })
+            .collect::<Vec<HashMap<PathBuf, Vec<Package>>>>();
 
     let package_set: HashSet<Package> = HashSet::from_iter(
-        site_package_to_packages
-            .into_iter() // Iterate over the Vec<HashMap<PathBuf, Vec<Package>>>
+            site_package_to_packages
+            .into_iter() // Vec<HashMap<PathBuf, Vec<Package>>>
             .flat_map(|site_map| {
-                site_map.into_iter() // Iterate over each HashMap<PathBuf, Vec<Package>>
-                    .flat_map(|(_, packages)| packages) // Flatten each Vec<Package> into individual Package items
-            })
-    );
+                site_map.into_iter() // HashMap<PathBuf, Vec<Package>>
+                    .flat_map(|(_, packages)| packages)
+            }));
 
-
+    // temporary display
     let mut pkgs: Vec<_> = package_set.clone().into_iter().collect();
     pkgs.sort();
     for pkg in &pkgs {
         println!("{:?}", pkg);
     }
     println!("packages: {:?}", package_set.len());
-
 }
 
 #[cfg(test)]
@@ -432,7 +428,7 @@ mod tests {
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths = get_site_package_dirs(p1).unwrap();
+        let paths = get_site_package_dirs(p1);
         assert_eq!(paths.len() > 0, true)
     }
 
