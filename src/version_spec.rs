@@ -60,10 +60,10 @@ impl VersionSpec {
 }
 impl Ord for VersionSpec {
     fn cmp(&self, other: &Self) -> Ordering {
-        println!("cmp: {:?} {:?}", self, other);
+        // println!("cmp: {:?} {:?}", self, other);
 
         for (self_part, other_part) in self.0.iter().zip(&other.0) {
-            println!("here: {:?} {:?}", self_part, other_part);
+            // println!("here: {:?} {:?}", self_part, other_part);
 
             let ordering = match (self_part, other_part) {
                 (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(b),
@@ -93,7 +93,7 @@ impl Ord for VersionSpec {
                 return ordering;
             }
         }
-        self.0.len().cmp(&other.0.len()) // version with more components is greater
+        self.0.len().cmp(&other.0.len())
     }
 }
 impl PartialOrd for VersionSpec {
@@ -103,7 +103,14 @@ impl PartialOrd for VersionSpec {
 }
 impl PartialEq for VersionSpec {
     fn eq(&self, other: &Self) -> bool {
-        for (self_part, other_part) in self.0.iter().zip(&other.0) {
+        let max_len = self.0.len().max(other.0.len());
+
+        for i in 0..max_len {
+            // extend to max with zero padding
+            let self_part = self.0.get(i).unwrap_or(&VersionPart::Number(0));
+            let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
+            // println!("cmp: {:?} {:?}", self_part, other_part);
+
             match (self_part, other_part) {
                 // If either part is a wildcard "*", consider them equal
                 (VersionPart::Text(a), VersionPart::Text(b)) if a == "*" || b == "*" => continue,
@@ -123,8 +130,6 @@ impl PartialEq for VersionSpec {
 }
 
 impl Eq for VersionSpec {}
-
-
 
 
 //------------------------------------------------------------------------------

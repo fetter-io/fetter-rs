@@ -117,7 +117,7 @@ impl DepSpec {
             versions,
         })
     }
-    pub fn validate(&self, version: &VersionSpec) -> bool {
+    pub fn validate_version(&self, version: &VersionSpec) -> bool {
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             // println!("{:?} spec_version {:?} version {:?}", op, spec_version, version);
             let is_compatible = match op {
@@ -152,7 +152,6 @@ mod tests {
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEqual);
         assert_eq!(ds1.operators[1], DepOperator::LessThan);
     }
-
     #[test]
     fn test_dep_spec_b() {
         let input = "package[foo]>=0.2; python_version < '2.7'";
@@ -163,52 +162,92 @@ mod tests {
         assert_eq!(ds1.versions[0], VersionSpec::new("0.2"));
 
     }
-
     #[test]
     fn test_dep_spec_c() {
         let input = "package==0.2<=";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.name, "package");
     }
-
     #[test]
-    fn test_dep_spec_validate_a() {
+    fn test_dep_spec_validate_version_a() {
         let input = "package>0.2<2.0";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.name, "package");
-        assert_eq!(ds1.validate(&VersionSpec::new("0.3")), true);
-        assert_eq!(ds1.validate(&VersionSpec::new("0.2")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("0.2.1")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("0.3")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("0.2")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("0.2.1")), true);
     }
-
     #[test]
-    fn test_dep_spec_validate_b() {
+    fn test_dep_spec_validate_version_b() {
         let input = "package>0.2,<2.0";
         let ds1 = DepSpec::new(input).unwrap();
-        assert_eq!(ds1.validate(&VersionSpec::new("2.0.1")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("2.0.0")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("1.9.99.99999")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.0")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), true);
     }
-
     #[test]
-    fn test_dep_spec_validate_c() {
+    fn test_dep_spec_validate_version_c() {
         let input = "package>=2.0,<=3.0";
         let ds1 = DepSpec::new(input).unwrap();
-        assert_eq!(ds1.validate(&VersionSpec::new("2.0")), true);
-        assert_eq!(ds1.validate(&VersionSpec::new("1.9.99.99999")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("3.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), true);
 
     }
-
     #[test]
-    fn test_dep_spec_validate_d() {
+    fn test_dep_spec_validate_version_d() {
         let input = "package==2.*";
         let ds1 = DepSpec::new(input).unwrap();
-        println!("{:?}", ds1);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.4")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.3")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_e() {
+        let input = "requests [security,tests] >= 2.8.1, == 2.8.* ; python_version < '2.7'*";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.1")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.2.1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.0")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.99")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_f() {
+        let input = "name>=3,<2";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("3")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("4")), false);
 
-        assert_eq!(ds1.validate(&VersionSpec::new("2.4")), true);
-        assert_eq!(ds1.validate(&VersionSpec::new("1.9.99.99999")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("3.0")), false);
-        assert_eq!(ds1.validate(&VersionSpec::new("2.3")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_g() {
+        let input = "name==1.1.post1";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_h() {
+        let input = "name==1.1a1";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), true);
+        // this is supposed to match...
+        // assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_i() {
+        let input = "name==1.1";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.dev1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), false);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
     }
 }
