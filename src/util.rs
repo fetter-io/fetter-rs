@@ -1,11 +1,16 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::cmp::Ordering;
+use std::hash::Hasher;
+use std::hash::Hash;
 use std::fs;
 use std::process::Command;
 // use std::io::Result;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
+use std::fmt;
+
 use rayon::prelude::*;
 
 // Provide absolute paths for directories that should be excluded from executable search.
@@ -156,19 +161,12 @@ fn scan_executables_inner(
 fn scan_executables() -> HashSet<PathBuf> {
     let exclude = get_exclude_path();
     let origins = get_exe_origins();
-    // println!("origins: {:?}", origins);
 
-    // let mut paths = Vec::new();
-    // for path in origins {
-    //     println!("searchin dir {:?}", path);
-    //     paths.extend(scan_executables_inner(&path, &exclude));
-    // }
     let mut paths: HashSet<PathBuf> = origins
             .par_iter()
             .flat_map(|(path, recurse)| scan_executables_inner(path, &exclude, *recurse))
             .collect();
 
-    // get path of current "python" with  sys.executable (attr)
     if let Some(exe_def) = get_exe_default() {
         paths.insert(exe_def);
     }
@@ -197,15 +195,129 @@ fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
     }
 }
 
-// TODO: need a struct that stores exe path, and vec of site pacakges
+//------------------------------------------------------------------------------
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone)]
+enum VersionPart {
+    Number(u32),
+    Text(String),
+}
+
+impl Hash for VersionPart {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            VersionPart::Number(num) => num.hash(state),
+            VersionPart::Text(text) => text.hash(state),
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct VersionSpec(Vec<VersionPart>);
+
+impl VersionSpec {
+    fn new(version_str: &str) -> Self {
+        let parts = version_str
+            .split('.')
+            .map(|part| {
+                if let Ok(number) = part.parse::<u32>() {
+                    VersionPart::Number(number)
+                } else {
+                    VersionPart::Text(part.to_string())
+                }
+            })
+            .collect();
+        VersionSpec(parts)
+    }
+}
+impl Ord for VersionSpec {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+impl PartialOrd for VersionSpec {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Hash for VersionSpec {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for part in &self.0 {
+            part.hash(state);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct Package {
+    name: String,
+    version: String,
+    version_spec: VersionSpec,
+}
+
+impl Package {
+    fn new(input: &str) -> Option<Self> {
+        if input.ends_with(".dist-info") {
+            let trimmed_input = input.trim_end_matches(".dist-info");
+            let parts: Vec<&str> = trimmed_input.split('-').collect();
+            if parts.len() >= 2 {
+                let name = parts[..parts.len() - 1].join("-");
+                let version = parts.last()?.to_string();
+                let version_spec = VersionSpec::new(&version);
+                return Some(Package { name, version, version_spec });
+            }
+        }
+        None
+    }
+}
+impl Ord for Package {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name
+            .cmp(&other.name)
+            .then_with(|| self.version_spec.cmp(&other.version_spec))
+    }
+}
+impl PartialOrd for Package {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl fmt::Display for Package {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<Package: {} version: {} version_spec: {:?}>",
+            self.name, self.version, self.version_spec
+        )
+    }
+}
+impl fmt::Debug for Package {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+//------------------------------------------------------------------------------
+// Given a package directory, collect the name of all packages.
+fn get_packages(site_packages: &Path) -> Vec<Package> {
+    let mut packages = Vec::new();
+    if let Ok(entries) = fs::read_dir(site_packages) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Some(file_name) = entry.path().file_name().and_then(
+                            |name| name.to_str()) {
+                    if let Some(package) = Package::new(file_name) {
+                        packages.push(package);
+                    }
+                }
+            }
+        }
+    }
+    packages
+}
 
 pub(crate) fn scan() {
-    // for exe in scan_executables() {
-    //     for sp_dir in get_site_package_dirs(&exe) {
-    //         println!("{:?} {:?}", format!("{:>60}", exe.display()), sp_dir);
-    //     }
-    // }
-
     let exe_to_site_packages: Vec<HashMap<PathBuf, Vec<PathBuf>>> = scan_executables()
             .into_par_iter() // Convert the iterator into a parallel iterator
             .map(|exe| {
@@ -213,10 +325,42 @@ pub(crate) fn scan() {
                 HashMap::from([(exe, dirs)])
             })
             .collect(); // Collect the results into a Vec of HashMap
+    // println!("{:?}", exe_to_site_packages);
 
-    println!("{:?}", exe_to_site_packages)
+    let site_package_to_packages = exe_to_site_packages
+        .into_par_iter()
+        .map(|hash_map| {
+            hash_map
+                .into_par_iter()
+                .flat_map(|(_, site_packages)| {
+                    site_packages.into_par_iter().map(|site_package_path| {
+                        let packages = get_packages(&site_package_path);
+                        (site_package_path, packages)
+                    })
+                })
+                .collect::<HashMap<PathBuf, Vec<Package>>>()
+        })
+        .collect::<Vec<HashMap<PathBuf, Vec<Package>>>>();
 
-    // TODO: next, for every unique site package (there are overlaps, we want to build up a mapping from site package to packages; we need a func given a dir to find all packages store therein
+    // println!("{:?}", site_package_to_packages);
+
+    let package_set: HashSet<Package> = HashSet::from_iter(
+        site_package_to_packages
+            .into_iter() // Iterate over the Vec<HashMap<PathBuf, Vec<Package>>>
+            .flat_map(|site_map| {
+                site_map.into_iter() // Iterate over each HashMap<PathBuf, Vec<Package>>
+                    .flat_map(|(_, packages)| packages) // Flatten each Vec<Package> into individual Package items
+            })
+    );
+
+
+    let mut pkgs: Vec<_> = package_set.clone().into_iter().collect();
+    pkgs.sort();
+    for pkg in &pkgs {
+        println!("{:?}", pkg);
+    }
+    println!("packages: {:?}", package_set.len());
+
 }
 
 #[cfg(test)]
