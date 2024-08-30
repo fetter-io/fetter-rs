@@ -118,23 +118,6 @@ impl DepSpec {
 }
 
 
-
-// fn test_grammar() {
-//     let input = "package>=0.2,<0.3";
-//     // let input = "package_name[extra1,extra2] == 1.0.0";
-
-//     match DepSpecParser::parse(Rule::name_req, input) {
-//         Ok(parsed) => {
-//             println!("Parsed successfully: {:?}", parsed);
-//             // Process the parsed structure as needed
-//         },
-//         Err(e) => {
-//             eprintln!("Parsing error: {}", e);
-//         },
-//     }
-// }
-
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
