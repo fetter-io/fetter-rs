@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::process::Command;
@@ -196,13 +197,26 @@ fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
     }
 }
 
+// TODO: need a struct that stores exe path, and vec of site pacakges
+
 pub(crate) fn scan() {
-    // let mut paths: HashSet<PathBuf> = HashSet::new();
-    for exe in scan_executables() {
-        for sp_dir in get_site_package_dirs(&exe) {
-            println!("{:?} {:?}", exe, sp_dir);
-        }
-    }
+    // for exe in scan_executables() {
+    //     for sp_dir in get_site_package_dirs(&exe) {
+    //         println!("{:?} {:?}", format!("{:>60}", exe.display()), sp_dir);
+    //     }
+    // }
+
+    let exe_to_site_packages: Vec<HashMap<PathBuf, Vec<PathBuf>>> = scan_executables()
+            .into_par_iter() // Convert the iterator into a parallel iterator
+            .map(|exe| {
+                let dirs = get_site_package_dirs(&exe);
+                HashMap::from([(exe, dirs)])
+            })
+            .collect(); // Collect the results into a Vec of HashMap
+
+    println!("{:?}", exe_to_site_packages)
+
+    // TODO: next, for every unique site package (there are overlaps, we want to build up a mapping from site package to packages; we need a func given a dir to find all packages store therein
 }
 
 #[cfg(test)]
