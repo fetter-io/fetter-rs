@@ -215,56 +215,63 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 pub(crate) fn scan() {
     // Frequency: low
-    let exe_to_site_packages: Vec<HashMap<PathBuf, Vec<PathBuf>>> = scan_executables()
-            .into_par_iter() // Convert the iterator into a parallel iterator
+    // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
+    let exe_to_site_packages: HashMap<PathBuf, Vec<PathBuf>> = scan_executables()
+            .into_par_iter()
             .map(|exe| {
                 let dirs = get_site_package_dirs(&exe);
-                HashMap::from([(exe, dirs)])
+                (exe, dirs)
             })
-            .collect(); // Collect the results into a Vec of HashMap
+            .collect(); // Collect the results directly into a HashMap
 
     // Frequency: high
+    // Some site packages will be repeated; we do; let them be processed more than once here, as it seems easier than filtering them out
     let site_package_to_packages = exe_to_site_packages
             .into_par_iter()
-            .map(|hash_map| {
-                hash_map
-                    .into_par_iter()
-                    .flat_map(|(_, site_packages)| {
-                        site_packages.into_par_iter().map(|site_package_path| {
-                            let packages = get_packages(&site_package_path);
-                            (site_package_path, packages)
-                        })
-                    })
-                    .collect::<HashMap<PathBuf, Vec<Package>>>()
+            .flat_map(|(_, site_packages)| {
+                site_packages.into_par_iter().map(|site_package_path| {
+                    let packages = get_packages(&site_package_path);
+                    (site_package_path, packages)
+                })
             })
-            .collect::<Vec<HashMap<PathBuf, Vec<Package>>>>();
+            .collect::<HashMap<PathBuf, Vec<Package>>>(); // Collect directly into a single HashMap
 
-    let package_set: HashSet<Package> = HashSet::from_iter(
-            site_package_to_packages
-            .into_iter() // Vec<HashMap<PathBuf, Vec<Package>>>
-            .flat_map(|site_map| {
-                site_map.into_iter() // HashMap<PathBuf, Vec<Package>>
-                    .flat_map(|(_, packages)| packages)
-            }));
+    let mut package_to_sites: HashMap<Package, Vec<PathBuf>> = HashMap::new();
+    for (site_package_path, packages) in site_package_to_packages.iter() {
+        for package in packages {
+            package_to_sites
+                .entry(package.clone()) // Clone the Package to use as a key
+                .or_insert_with(Vec::new) // Insert if the key does not exist
+                .push(site_package_path.clone()); // Add the site package path to the Vec
+        }
+    }
+
 
     // temporary display
-    let mut pkgs: Vec<_> = package_set.clone().into_iter().collect();
-    pkgs.sort();
-    for pkg in &pkgs {
-        println!("{:?}", pkg);
+    let mut packages_sorted: Vec<_> = package_to_sites.keys().cloned().collect();
+    packages_sorted.sort();
+
+    for package in packages_sorted {
+        println!("{:?}", package);
+        if let Some(site_paths) = package_to_sites.get(&package) {
+            for path in site_paths {
+                println!("    Found in: {:?}", path);
+            }
+        }
     }
-    println!("packages: {:?}", package_set.len());
+
+    println!("site packages: {:?}", site_package_to_packages.len());
+    println!("packages: {:?}", package_to_sites.len());
 }
 
+//------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use tempfile::tempdir;
     use std::fs::File;
-    // use std::io::Write;
     use std::os::unix::fs::symlink;
-    // use std::str::FromStr;
 
     #[test]
     fn test_get_exclude_path_a() {
