@@ -1,0 +1,16 @@
+WHITESPACE = _{ " " | "\t" }
+wsp = _{ WHITESPACE* }
+
+version_cmp = { "<=" | "<" | "!=" | "==" | ">=" | ">" | "~=" | "===" }
+version = { (ASCII_ALPHANUMERIC | "-" | "_" | "." | "*" | "+" | "!")+ }
+
+version_one = { version_cmp ~ version }
+version_many = { version_one ~ ("," ~ version_one)* }
+
+identifier_end = { ("-" | "_" | "." )* ~ ASCII_ALPHANUMERIC }
+identifier = { ASCII_ALPHANUMERIC ~ identifier_end* }
+
+extras_list = { identifier ~ (wsp ~ "," ~ wsp ~ identifier)* }
+extras = { "[" ~ wsp ~ extras_list? ~ wsp ~ "]" }
+
+name_req = { identifier ~ extras? ~ version_many? }

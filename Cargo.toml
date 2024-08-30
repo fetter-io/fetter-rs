@@ -17,6 +17,8 @@ description = "A monitor of supply chain dependencies."
 
 [dependencies]
 rayon = "1.10"
+pest = "2.3"
+pest_derive = "2.3"
 
 [dev-dependencies]
 tempfile = "3.12"
