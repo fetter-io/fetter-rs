@@ -16,13 +16,13 @@ struct DepSpecParser;
 #[derive(Debug, PartialEq)]
 enum DepOperator {
     LessThan,
-    LessThanOrEqual,
-    Equal,
-    NotEqual,
+    LessThanOrEq,
+    Eq,
+    NotEq,
     GreaterThan,
-    GreaterThanOrEqual,
+    GreaterThanOrEq,
     Compatible,
-    ExactMatch,
+    ArbitraryEq,
 }
 
 impl FromStr for DepOperator {
@@ -30,13 +30,13 @@ impl FromStr for DepOperator {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "<" => Ok(DepOperator::LessThan),
-            "<=" => Ok(DepOperator::LessThanOrEqual),
-            "==" => Ok(DepOperator::Equal),
-            "!=" => Ok(DepOperator::NotEqual),
+            "<=" => Ok(DepOperator::LessThanOrEq),
+            "==" => Ok(DepOperator::Eq),
+            "!=" => Ok(DepOperator::NotEq),
             ">" => Ok(DepOperator::GreaterThan),
-            ">=" => Ok(DepOperator::GreaterThanOrEqual),
+            ">=" => Ok(DepOperator::GreaterThanOrEq),
             "~=" => Ok(DepOperator::Compatible),
-            "===" => Ok(DepOperator::ExactMatch),
+            "===" => Ok(DepOperator::ArbitraryEq),
             _ => Err(format!("Unknown operator: {}", s).into()),
         }
     }
@@ -46,19 +46,19 @@ impl fmt::Display for DepOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
             DepOperator::LessThan => "<",
-            DepOperator::LessThanOrEqual => "<=",
-            DepOperator::Equal => "==",
-            DepOperator::NotEqual => "!=",
+            DepOperator::LessThanOrEq => "<=",
+            DepOperator::Eq => "==",
+            DepOperator::NotEq => "!=",
             DepOperator::GreaterThan => ">",
-            DepOperator::GreaterThanOrEqual => ">=",
+            DepOperator::GreaterThanOrEq => ">=",
             DepOperator::Compatible => "~=",
-            DepOperator::ExactMatch => "===",
+            DepOperator::ArbitraryEq => "===",
         };
         write!(f, "{}", op_str)
     }
 }
 
-
+// Dependency Specfication
 #[derive(Debug)]
 struct DepSpec {
     name: String,
@@ -122,13 +122,13 @@ impl DepSpec {
             // println!("{:?} spec_version {:?} version {:?}", op, spec_version, version);
             let is_compatible = match op {
                 DepOperator::LessThan => version < spec_version,
-                DepOperator::LessThanOrEqual => version <= spec_version,
-                DepOperator::Equal => version == spec_version,
-                DepOperator::NotEqual => version != spec_version,
+                DepOperator::LessThanOrEq => version <= spec_version,
+                DepOperator::Eq => version == spec_version,
+                DepOperator::NotEq => version != spec_version,
                 DepOperator::GreaterThan => version > spec_version,
-                DepOperator::GreaterThanOrEqual => version >= spec_version,
-                DepOperator::Compatible => version.is_major_compatible(spec_version),
-                DepOperator::ExactMatch => version == spec_version,
+                DepOperator::GreaterThanOrEq => version >= spec_version,
+                DepOperator::Compatible => version.is_compatible(spec_version),
+                DepOperator::ArbitraryEq => version.is_arbitrary_equal(spec_version),
             };
             if !is_compatible {
                 return false;
@@ -149,7 +149,7 @@ mod tests {
         let input = "package>=0.2,<0.3";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.name, "package");
-        assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEqual);
+        assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.operators[1], DepOperator::LessThan);
     }
     #[test]
@@ -158,7 +158,7 @@ mod tests {
         let ds1 = DepSpec::new(input).unwrap();
         // println!("{:?}", ds1);
         assert_eq!(ds1.name, "package");
-        assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEqual);
+        assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.versions[0], VersionSpec::new("0.2"));
 
     }
@@ -249,5 +249,11 @@ mod tests {
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_j() {
+        let input = "name===foo++";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
     }
 }

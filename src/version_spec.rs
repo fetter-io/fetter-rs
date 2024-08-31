@@ -27,43 +27,36 @@ impl VersionSpec {
             .collect();
         VersionSpec(parts)
     }
-    pub fn is_major_compatible(&self, other: &Self) -> bool {
+    fn to_string(&self) -> String {
+        self.0
+            .iter()
+            .map(|part| match part {
+                    VersionPart::Number(num) => num.to_string(),
+                    VersionPart::Text(text) => text.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+    pub fn is_compatible(&self, other: &Self) -> bool {
+        // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
         if let (Some(VersionPart::Number(self_major)), Some(VersionPart::Number(other_major))) =
             (self.0.get(0), other.0.get(0)) {
             return self_major == other_major;
         }
         false
     }
-    // pub fn is_compatible(&self, other: &Self) -> bool {
-    //     for (self_part, other_part) in self.0.iter().zip(&other.0) {
-    //         match (self_part, other_part) {
-    //             (VersionPart::Number(a), VersionPart::Number(b)) => {
-    //                 if a != b {
-    //                     return false;
-    //                 }
-    //             }
-    //             (VersionPart::Text(a), VersionPart::Text(b)) => {
-    //                 if a != "*" && b != "*" && a != b {
-    //                     return false;
-    //                 }
-    //             }
-    //             // If one part is a number and the other is text, handle "*" as a wildcard
-    //             (VersionPart::Number(_), VersionPart::Text(b)) if b == "*" => continue,
-    //             (VersionPart::Text(a), VersionPart::Number(_)) if a == "*" => continue,
-    //             // Incompatible if none of the above conditions hold
-    //             _ => return false,
-    //         }
-    //     }
-    //     true
-    // }
-
+    pub fn is_arbitrary_equal(&self, other: &Self) -> bool {
+        // https://packaging.python.org/en/latest/specifications/version-specifiers/#arbitrary-equality
+        self.to_string() == other.to_string()
+    }
 }
 impl Ord for VersionSpec {
     fn cmp(&self, other: &Self) -> Ordering {
-        // println!("cmp: {:?} {:?}", self, other);
-
-        for (self_part, other_part) in self.0.iter().zip(&other.0) {
-            // println!("here: {:?} {:?}", self_part, other_part);
+        let max_len = self.0.len().max(other.0.len());
+        for i in 0..max_len {
+            // extend to max with zero padding
+            let self_part = self.0.get(i).unwrap_or(&VersionPart::Number(0));
+            let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
 
             let ordering = match (self_part, other_part) {
                 (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(b),
@@ -104,12 +97,10 @@ impl PartialOrd for VersionSpec {
 impl PartialEq for VersionSpec {
     fn eq(&self, other: &Self) -> bool {
         let max_len = self.0.len().max(other.0.len());
-
         for i in 0..max_len {
             // extend to max with zero padding
             let self_part = self.0.get(i).unwrap_or(&VersionPart::Number(0));
             let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
-            // println!("cmp: {:?} {:?}", self_part, other_part);
 
             match (self_part, other_part) {
                 // If either part is a wildcard "*", consider them equal
@@ -155,5 +146,33 @@ mod tests {
         assert_eq!(VersionSpec::new("2.*") > VersionSpec::new("2.2.1"), false);
         assert_eq!(VersionSpec::new("2.2") > VersionSpec::new("2.*"), false);
     }
+    #[test]
+    fn test_version_spec_d() {
+        assert_eq!(VersionSpec::new("2.1") != VersionSpec::new("2.2"), true);
+        assert_eq!(VersionSpec::new("2.2") != VersionSpec::new("2.2"), false);
+        assert_eq!(VersionSpec::new("2.2.0") != VersionSpec::new("2.2"), false);
+    }
+    #[test]
+    fn test_version_spec_e() {
+        assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"), true);
+        assert_eq!(VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7"), false);
+        assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"), true);
+        // this is supposed to be true: >1.7.post2 will allow 1.7.1 and 1.7.0.post3 but not 1.7.0.
+        // assert_eq!(VersionSpec::new("1.7.0") > VersionSpec::new("1.7.post1"), false);
 
+    }
+
+    #[test]
+    fn test_version_is_major_compatible_a() {
+        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")), true);
+        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("3.2")), false);
+        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2.3.9")), true);
+    }
+    #[test]
+    fn test_version_is_major_compatible_b() {
+        assert_eq!(VersionSpec::new("2.2-2").is_arbitrary_equal(&VersionSpec::new("2.2-2")), true);
+        assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobar")), true);
+        assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")), false);
+        assert_eq!(VersionSpec::new("1.0").is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")), false);
+    }
 }
