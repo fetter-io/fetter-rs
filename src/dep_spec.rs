@@ -67,56 +67,54 @@ struct DepSpec {
 }
 
 impl DepSpec {
+
     pub fn new(input: &str) -> Result<Self, String> {
-        let parse_result = DepSpecParser::parse(Rule::name_req, input)
-            .map_err(|e| format!("Parsing error: {}", e))?;
+        let mut parsed = DepSpecParser::parse(Rule::name_req, input)
+            .map_err(|e| format!("Parsing error: {}", e))?
+            .next()
+            .ok_or("Parsing error: No results")?
+            .into_inner();
 
-        let results = parse_result.into_iter().next().unwrap();
-        let mut package_name = String::new();
-        let mut versions = Vec::new();
+        let mut package_name = None;
         let mut operators = Vec::new();
+        let mut versions = Vec::new();
 
-        for pairs in results.into_inner() {
-            match pairs.as_rule() {
-                Rule::identifier => {
-                    package_name = pairs.as_str().to_string();
+        while let Some(pair) = parsed.next() {
+            match pair.as_rule() {
+                Rule::identifier => { // grammar permits only one
+                    package_name = Some(pair.as_str().to_string());
                 }
                 Rule::version_many => {
-                    for capture in pairs.into_inner() {
-                        // print!("{:?}", capture);
-                        if capture.as_rule() == Rule::version_one {
-                            let mut op = None;
-                            let mut version = String::new();
-
-                            for v_pair in capture.into_inner() {
-                                match v_pair.as_rule() {
-                                    Rule::version_cmp => {
-                                        op = Some(v_pair.as_str().parse::<DepOperator>()
-                                            .map_err(|e| e.to_string())?);
-                                    }
-                                    Rule::version => version = v_pair.as_str().to_string(),
-                                    _ => {}
-                                }
-                            }
-                            if let Some(op) = op {
-                                operators.push(op);
-                                versions.push(VersionSpec::new(&version));
-                            }
+                    for version_pair in pair.into_inner() {
+                        let mut inner_pairs = version_pair.into_inner();
+                        // get operator
+                        let op_pair = inner_pairs.next().ok_or("Expected version_cmp")?;
+                        if op_pair.as_rule() != Rule::version_cmp {
+                            return Err("Expected version_cmp".to_string());
                         }
+                        let op = op_pair.as_str().parse::<DepOperator>().map_err(|e| e.to_string())?;
+                        // get version
+                        let version_pair = inner_pairs.next().ok_or("Expected version")?;
+                        if version_pair.as_rule() != Rule::version {
+                            return Err("Expected version".to_string());
+                        }
+                        let version = version_pair.as_str().to_string();
+
+                        operators.push(op);
+                        versions.push(VersionSpec::new(&version));
                     }
                 }
                 _ => {}
             }
         }
-        if operators.len() != versions.len() {
-            return Err("Unmatched versions and operators".to_string());
-        }
+        let package_name = package_name.ok_or("Missing package name")?;
         Ok(DepSpec {
             name: package_name,
             operators,
             versions,
         })
     }
+
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             // println!("{:?} spec_version {:?} version {:?}", op, spec_version, version);
@@ -167,6 +165,11 @@ mod tests {
         let input = "package==0.2<=";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.name, "package");
+    }
+    #[test]
+    fn test_dep_spec_d() {
+        let input = "==0.2<=";
+        assert!(DepSpec::new(input).is_err());
     }
     #[test]
     fn test_dep_spec_validate_version_a() {

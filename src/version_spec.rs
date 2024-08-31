@@ -50,6 +50,8 @@ impl VersionSpec {
         self.to_string() == other.to_string()
     }
 }
+// This ordering implemenation is handling wild cards and zero-padding, but may not yet be handling "post" release correctly
+// https://packaging.python.org/en/latest/specifications/version-specifiers/#post-releases
 impl Ord for VersionSpec {
     fn cmp(&self, other: &Self) -> Ordering {
         let max_len = self.0.len().max(other.0.len());
@@ -83,10 +85,11 @@ impl Ord for VersionSpec {
                 }
             };
             if ordering != Ordering::Equal {
-                return ordering;
+                return ordering; // else, continue iteration
             }
         }
-        self.0.len().cmp(&other.0.len())
+        // self.0.len().cmp(&other.0.len())
+        Ordering::Equal
     }
 }
 impl PartialOrd for VersionSpec {
@@ -155,13 +158,12 @@ mod tests {
     #[test]
     fn test_version_spec_e() {
         assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"), true);
+        assert_eq!(VersionSpec::new("1.7.1") < VersionSpec::new("1.8"), true);
         assert_eq!(VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7"), false);
         assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"), true);
         // this is supposed to be true: >1.7.post2 will allow 1.7.1 and 1.7.0.post3 but not 1.7.0.
         // assert_eq!(VersionSpec::new("1.7.0") > VersionSpec::new("1.7.post1"), false);
-
     }
-
     #[test]
     fn test_version_is_major_compatible_a() {
         assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")), true);
