@@ -202,7 +202,7 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
             if let Ok(entry) = entry {
                 if let Some(file_name) = entry.path().file_name().and_then(
                             |name| name.to_str()) {
-                    if let Some(package) = Package::new(file_name) {
+                    if let Some(package) = Package::from_dist_info(file_name) {
                         packages.push(package);
                     }
                 }

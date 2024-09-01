@@ -5,6 +5,7 @@ use std::collections::HashMap;
 // use tempfile::tempdir;
 
 use crate::dep_spec::DepSpec;
+use crate::package::Package;
 
 
 #[derive(Debug)]
@@ -82,6 +83,14 @@ impl DepManifest {
     //     // TempDir will be cleaned up when it goes out of scope
     //     Ok(manifest)
     // }
+
+    pub fn validate(&self, package: &Package) -> bool {
+        if let Some(dep_spec) = self.packages.get(&package.name) {
+            dep_spec.validate_version(&package.version_spec)
+        } else {
+            false
+        }
+    }
 }
 
 
@@ -92,11 +101,19 @@ mod tests {
 
     #[test]
     fn test_dep_spec_a() {
-        let pm = DepManifest::from_vec(
-                vec!["pk1>=0.2,<0.3".to_string(), "pk2>=1,<3".to_string()]);
+        let dm = DepManifest::from_vec(vec![
+            "pk1>=0.2,<0.3".to_string(),
+            "pk2>=1,<3".to_string(),
+            ]).unwrap();
 
-        println!("{:?}", pm);
-        // assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
-        // assert_eq!(ds1.operators[1], DepOperator::LessThan);
+        let p1 = Package::from_dist_info("pk2-2.0.dist-info").unwrap();
+        assert_eq!(dm.validate(&p1), true);
+
+        let p2 = Package::from_dist_info("foo-2.0.dist-info").unwrap();
+        assert_eq!(dm.validate(&p2), false);
+
+        let p3 = Package::from_dist_info("pk1-0.2.5.dist-info").unwrap();
+        assert_eq!(dm.validate(&p3), true);
+
     }
 }

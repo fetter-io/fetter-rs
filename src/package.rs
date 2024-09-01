@@ -7,12 +7,12 @@ use crate::version_spec::VersionSpec;
 //------------------------------------------------------------------------------
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
-    name: String,
-    version: String,
-    version_spec: VersionSpec,
+    pub(crate) name: String,
+    version: String, // may not need to continue to store this
+    pub(crate) version_spec: VersionSpec,
 }
 impl Package {
-    pub(crate) fn new(input: &str) -> Option<Self> {
+    pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
             let trimmed_input = input.trim_end_matches(".dist-info");
             let parts: Vec<&str> = trimmed_input.split('-').collect();
@@ -62,21 +62,21 @@ mod tests {
 
     #[test]
     fn test_package_a() {
-        let p1 = Package::new("matplotlib-3.9.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
         assert_eq!(p1.name, "matplotlib");
         assert_eq!(p1.version, "3.9.0");
     }
 
     #[test]
     fn test_package_b() {
-        assert_eq!(Package::new("matplotlib-3.9.0.dist-in"), None);
+        assert_eq!(Package::from_dist_info("matplotlib-3.9.0.dist-in"), None);
     }
 
     #[test]
     fn test_package_c() {
-        let p1 = Package::new("xarray-0.21.1.dist-info").unwrap();
-        let p2 = Package::new("xarray-2024.6.0.dist-info").unwrap();
-        let p3 = Package::new("xarray-2024.6.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("xarray-0.21.1.dist-info").unwrap();
+        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info").unwrap();
+        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info").unwrap();
 
         assert_eq!(p2 > p1, true);
         assert_eq!(p1 < p2, true);
