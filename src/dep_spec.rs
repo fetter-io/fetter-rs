@@ -60,8 +60,8 @@ impl fmt::Display for DepOperator {
 
 // Dependency Specfication
 #[derive(Debug)]
-struct DepSpec {
-    name: String,
+pub(crate) struct DepSpec {
+    pub(crate) name: String,
     operators: Vec<DepOperator>,
     versions: Vec<VersionSpec>,
 }
@@ -139,7 +139,6 @@ impl DepSpec {
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
