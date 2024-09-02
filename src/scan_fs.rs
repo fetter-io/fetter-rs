@@ -255,7 +255,7 @@ pub(crate) fn scan() {
         println!("{:?}", package);
         if let Some(site_paths) = package_to_sites.get(&package) {
             for path in site_paths {
-                println!("    Found in: {:?}", path);
+                println!("    {:?}", path);
             }
         }
     }
