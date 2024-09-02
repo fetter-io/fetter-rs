@@ -6,9 +6,9 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::version_spec::VersionSpec;
-// use crate::version_spec::VersionPart;
+use crate::package::Package;
 
-// This is a redimentary grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
+// This is a rudimentary grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
 #[derive(Parser)]
 #[grammar = "dep_spec.pest"]
 struct DepSpecParser;
@@ -58,28 +58,34 @@ impl fmt::Display for DepOperator {
     }
 }
 
-// Dependency Specfication
+// Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
 #[derive(Debug)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
     operators: Vec<DepOperator>,
     versions: Vec<VersionSpec>,
 }
-
 impl DepSpec {
 
     pub fn new(input: &str) -> Result<Self, String> {
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
-            .map_err(|e| format!("Parsing error: {}", e))?
-            .next()
-            .ok_or("Parsing error: No results")?
-            .into_inner();
+            .map_err(|e| format!("Parsing error: {}", e))?;
 
+        let parse_result = parsed.next().ok_or("Parsing error: No results")?;
+        // check for unconsumed input
+        // if parse_result.as_str() != input {
+        //     return Err(format!(
+        //         "Unrecognized input: '{}'",
+        //         &input[parse_result.as_str().len()..]
+        //     ));
+        // }
         let mut package_name = None;
         let mut operators = Vec::new();
         let mut versions = Vec::new();
 
-        while let Some(pair) = parsed.next() {
+        let inner_pairs: Vec<_> = parse_result.into_inner().collect();
+        for pair in inner_pairs {
+
             match pair.as_rule() {
                 Rule::identifier => { // grammar permits only one
                     package_name = Some(pair.as_str().to_string());
@@ -92,7 +98,8 @@ impl DepSpec {
                         if op_pair.as_rule() != Rule::version_cmp {
                             return Err("Expected version_cmp".to_string());
                         }
-                        let op = op_pair.as_str().parse::<DepOperator>().map_err(|e| e.to_string())?;
+                        let op = op_pair.as_str().parse::<DepOperator>().map_err(
+                                |e| format!("Invalid operator: {}", e.to_string()))?;
                         // get version
                         let version_pair = inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
@@ -115,9 +122,9 @@ impl DepSpec {
         })
     }
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
+        // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
-            // println!("{:?} spec_version {:?} version {:?}", op, spec_version, version);
-            let is_compatible = match op {
+            let valid = match op {
                 DepOperator::LessThan => version < spec_version,
                 DepOperator::LessThanOrEq => version <= spec_version,
                 DepOperator::Eq => version == spec_version,
@@ -127,11 +134,14 @@ impl DepSpec {
                 DepOperator::Compatible => version.is_compatible(spec_version),
                 DepOperator::ArbitraryEq => version.is_arbitrary_equal(spec_version),
             };
-            if !is_compatible {
+            if !valid {
                 return false;
             }
         }
         true
+    }
+    pub fn validate_package(&self, package: &Package) -> bool {
+        self.name == package.name && self.validate_version(&package.version)
     }
     pub(crate) fn to_string(&self) -> String {
         let mut parts = Vec::new();
@@ -176,6 +186,14 @@ mod tests {
         let input = "==0.2<=";
         assert!(DepSpec::new(input).is_err());
     }
+    #[test]
+    fn test_dep_spec_e() {
+        // assert!(DepSpec::new("foo+==3").is_err());
+        // NOTE: for now, we do not check un parsed input, and thus this results only in foo
+        let ds1 = DepSpec::new("foo+==3").unwrap();
+        assert_eq!(ds1.to_string(), "foo");
+    }
+    //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_version_a() {
         let input = "package>0.2<2.0";
@@ -264,6 +282,39 @@ mod tests {
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
     }
+    #[test]
+    fn test_dep_spec_validate_version_k() {
+        let input = "name";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
+    }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_validate_package_a() {
+        let p1 = Package::from_name_and_version("package", "1.0").unwrap();
+        let ds1 = DepSpec::new("package>0.5,<1.5").unwrap();
+        assert_eq!(ds1.validate_package(&p1), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_package_b() {
+        let p1 = Package::from_name_and_version("package", "1.5").unwrap();
+        let ds1 = DepSpec::new("package>0.5,<1.5").unwrap();
+        assert_eq!(ds1.validate_package(&p1), false);
+    }
+    #[test]
+    fn test_dep_spec_validate_package_c() {
+        let p1 = Package::from_name_and_version("package", "1.0").unwrap();
+        let ds1 = DepSpec::new("package>0.5,<1.5,!=1.0").unwrap();
+        assert_eq!(ds1.validate_package(&p1), false);
+    }
+    #[test]
+    fn test_dep_spec_validate_package_d() {
+        let p1 = Package::from_name_and_version("package", "1.0.0.0.1").unwrap();
+        let ds1 = DepSpec::new("package>0.5,<1.5,!=1.0").unwrap();
+        assert_eq!(ds1.validate_package(&p1), true);
+    }
+
+    //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_to_string_a() {
         let ds1 =DepSpec::new("package  >=0.2,  <0.3   ").unwrap();

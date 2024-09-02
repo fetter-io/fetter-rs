@@ -85,7 +85,7 @@ impl DepManifest {
 
     pub fn validate(&self, package: &Package) -> bool {
         if let Some(dep_spec) = self.packages.get(&package.name) {
-            dep_spec.validate_version(&package.version_spec)
+            dep_spec.validate_version(&package.version)
         } else {
             false
         }

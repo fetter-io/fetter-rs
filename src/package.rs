@@ -3,16 +3,16 @@ use std::cmp::Ordering;
 
 use crate::version_spec::VersionSpec;
 
-
 //------------------------------------------------------------------------------
+// A Package is package release artifact, representing one specific version installed.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
     pub(crate) name: String,
-    pub(crate) version_spec: VersionSpec,
+    pub(crate) version: VersionSpec,
 }
 impl Package {
     pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
-        return Some(Package { name: name.to_string(), version_spec: VersionSpec::new(version) });
+        return Some(Package { name: name.to_string(), version: VersionSpec::new(version) });
     }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
@@ -27,14 +27,14 @@ impl Package {
         None
     }
     pub(crate) fn to_string(&self) -> String {
-        format!("{}-{}", self.name, self.version_spec.to_string())
+        format!("{}-{}", self.name, self.version.to_string())
     }
 }
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
         self.name
             .cmp(&other.name)
-            .then_with(|| self.version_spec.cmp(&other.version_spec))
+            .then_with(|| self.version.cmp(&other.version))
     }
 }
 impl PartialOrd for Package {
@@ -64,7 +64,7 @@ mod tests {
     fn test_package_a() {
         let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
         assert_eq!(p1.name, "matplotlib");
-        assert_eq!(p1.version_spec.to_string(), "3.9.0");
+        assert_eq!(p1.version.to_string(), "3.9.0");
     }
 
     #[test]
