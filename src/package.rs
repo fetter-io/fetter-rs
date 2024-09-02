@@ -8,22 +8,26 @@ use crate::version_spec::VersionSpec;
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
     pub(crate) name: String,
-    version: String, // may not need to continue to store this
     pub(crate) version_spec: VersionSpec,
 }
 impl Package {
+    pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
+        return Some(Package { name: name.to_string(), version_spec: VersionSpec::new(version) });
+    }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
             let trimmed_input = input.trim_end_matches(".dist-info");
             let parts: Vec<&str> = trimmed_input.split('-').collect();
             if parts.len() >= 2 {
                 let name = parts[..parts.len() - 1].join("-");
-                let version = parts.last()?.to_string();
-                let version_spec = VersionSpec::new(&version);
-                return Some(Package { name, version, version_spec });
+                let version = parts.last()?;
+                return Self::from_name_and_version(&name, version);
             }
         }
         None
+    }
+    pub(crate) fn to_string(&self) -> String {
+        format!("{}-{}", self.name, self.version_spec.to_string())
     }
 }
 impl Ord for Package {
@@ -40,11 +44,7 @@ impl PartialOrd for Package {
 }
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "<Package: {} version: {} version_spec: {:?}>",
-            self.name, self.version, self.version_spec
-        )
+        write!(f, "<Package: {}>", self.to_string())
     }
 }
 impl fmt::Debug for Package {
@@ -64,7 +64,7 @@ mod tests {
     fn test_package_a() {
         let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
         assert_eq!(p1.name, "matplotlib");
-        assert_eq!(p1.version, "3.9.0");
+        assert_eq!(p1.version_spec.to_string(), "3.9.0");
     }
 
     #[test]
@@ -82,6 +82,22 @@ mod tests {
         assert_eq!(p1 < p2, true);
         assert_eq!(p1 == p3, false);
         assert_eq!(p2== p3, true);
+    }
+    #[test]
+    fn test_package_to_string_a() {
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
+        assert_eq!(p1.to_string(), "matplotlib-3.9.0");
+    }
+    #[test]
+    fn test_package_to_string_b() {
+        let p1 = Package::from_name_and_version("matplotlib", "3.9.0").unwrap();
+        assert_eq!(p1.to_string(), "matplotlib-3.9.0");
+    }
+    #[test]
+    fn test_package_to_string_c() {
+        let p1 = Package::from_name_and_version("numpy", "2.1.2").unwrap();
+        assert_eq!(p1.to_string(), "numpy-2.1.2");
+        assert_eq!(format!("{}", p1), "<Package: numpy-2.1.2>");
     }
 
 

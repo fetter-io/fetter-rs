@@ -115,5 +115,7 @@ mod tests {
         let p3 = Package::from_dist_info("pk1-0.2.5.dist-info").unwrap();
         assert_eq!(dm.validate(&p3), true);
 
+        let p3 = Package::from_dist_info("pk1-0.3.0.dist-info").unwrap();
+        assert_eq!(dm.validate(&p3), false);
     }
 }

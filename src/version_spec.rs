@@ -27,7 +27,7 @@ impl VersionSpec {
             .collect();
         VersionSpec(parts)
     }
-    fn to_string(&self) -> String {
+    pub(crate) fn to_string(&self) -> String {
         self.0
             .iter()
             .map(|part| match part {
