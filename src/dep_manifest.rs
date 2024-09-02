@@ -10,17 +10,24 @@ use crate::package::Package;
 
 #[derive(Debug)]
 struct DepManifest {
-    packages: HashMap<String, DepSpec>,
+    dep_specs: HashMap<String, DepSpec>,
 }
 
 impl DepManifest {
-    pub fn from_vec(package_specs: Vec<String>) -> Result<Self, String> {
-        let mut packages = HashMap::new();
-        for spec in package_specs {
-            let dep_spec = DepSpec::new(&spec)?;
-            packages.insert(dep_spec.name.clone(), dep_spec);
+    pub fn from_iter<I, S>(ds_iter: I) -> Result<Self, String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut dep_specs = HashMap::new();
+        for spec in ds_iter {
+            let dep_spec = DepSpec::new(spec.as_ref())?;
+            if dep_specs.contains_key(&dep_spec.name) {
+                return Err(format!("Duplicate package name found: {}", dep_spec.name));
+            }
+            dep_specs.insert(dep_spec.name.clone(), dep_spec);
         }
-        Ok(DepManifest { packages })
+        Ok(DepManifest { dep_specs })
     }
 
     // pub fn from_requirements_file<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
@@ -84,7 +91,7 @@ impl DepManifest {
     // }
 
     pub fn validate(&self, package: &Package) -> bool {
-        if let Some(dep_spec) = self.packages.get(&package.name) {
+        if let Some(dep_spec) = self.dep_specs.get(&package.name) {
             dep_spec.validate_version(&package.version)
         } else {
             false
@@ -100,10 +107,10 @@ mod tests {
 
     #[test]
     fn test_dep_spec_a() {
-        let dm = DepManifest::from_vec(vec![
-            "pk1>=0.2,<0.3".to_string(),
-            "pk2>=1,<3".to_string(),
-            ]).unwrap();
+        let dm = DepManifest::from_iter(vec![
+            "pk1>=0.2,<0.3",
+            "pk2>=1,<3",
+            ].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info").unwrap();
         assert_eq!(dm.validate(&p1), true);
