@@ -13,7 +13,6 @@ struct DepManifest {
     packages: HashMap<String, DepSpec>,
 }
 
-
 impl DepManifest {
     pub fn from_vec(package_specs: Vec<String>) -> Result<Self, String> {
         let mut packages = HashMap::new();

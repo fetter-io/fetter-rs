@@ -114,7 +114,6 @@ impl DepSpec {
             versions,
         })
     }
-
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             // println!("{:?} spec_version {:?} version {:?}", op, spec_version, version);
@@ -133,6 +132,13 @@ impl DepSpec {
             }
         }
         true
+    }
+    pub(crate) fn to_string(&self) -> String {
+        let mut parts = Vec::new();
+        for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
+            parts.push(format!("{}{}", op.to_string(), ver.to_string()));
+        }
+        format!("{} {}", self.name, parts.join(", "))
     }
 }
 
@@ -258,4 +264,9 @@ mod tests {
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
     }
+    #[test]
+    fn test_dep_spec_to_string_a() {
+        let ds1 =DepSpec::new("package  >=0.2,  <0.3   ").unwrap();
+        assert_eq!(ds1.to_string(), "");
+
 }
