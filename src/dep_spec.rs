@@ -138,7 +138,7 @@ impl DepSpec {
         for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
             parts.push(format!("{}{}", op.to_string(), ver.to_string()));
         }
-        format!("{} {}", self.name, parts.join(", "))
+        format!("{}{}", self.name, parts.join(","))
     }
 }
 
@@ -267,6 +267,11 @@ mod tests {
     #[test]
     fn test_dep_spec_to_string_a() {
         let ds1 =DepSpec::new("package  >=0.2,  <0.3   ").unwrap();
-        assert_eq!(ds1.to_string(), "");
-
+        assert_eq!(ds1.to_string(), "package>=0.2,<0.3");
+    }
+    #[test]
+    fn test_dep_spec_to_string_b() {
+        let ds1 =DepSpec::new("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
+        assert_eq!(ds1.to_string(), "requests>=2.8.1,==2.8.*");
+    }
 }
