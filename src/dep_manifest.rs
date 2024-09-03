@@ -33,8 +33,14 @@ impl DepManifest {
         let lines = io::BufReader::new(file).lines();
         let filtered_lines = lines.filter_map(|line| {
             match line {
-                Ok(s) if !s.is_empty() && !s.starts_with('#') => Some(s),  // Return String directly
-                Ok(_) => None,  // Skip empty or commented lines
+                Ok(s) => {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                        Some(s) // yield untrimmed string for
+                    } else {
+                        None
+                    }
+                }
                 Err(_) => None, // Ignore lines that failed to read
             }
         });
@@ -150,6 +156,93 @@ mod tests {
 
         let p4 = Package::from_name_and_version("pk99", "0.2.2.999").unwrap();
         assert_eq!(dep_manifest.validate(&p4), false);
-
     }
+
+    #[test]
+    fn test_from_requirements_b() {
+        let content = r#"
+termcolor==2.2.0
+    # via
+    #   invsys (pyproject.toml)
+    #   apache-airflow
+terminado==0.18.1
+    # via notebook
+testpath==0.6.0
+    # via nbconvert
+text-unidecode==1.3
+    # via python-slugify
+threadpoolctl==3.4.0
+    # via scikit-learn
+toml==0.10.2
+    # via
+    #   coverage
+    #   pre-commit
+tomlkit==0.12.4
+    # via pylint
+"#;
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("requirements.txt");
+        let mut file = File::create(&file_path).unwrap();
+        write!(file, "{}", content).unwrap();
+
+        let dm1 = DepManifest::from_requirements(&file_path).unwrap();
+        assert_eq!(dm1.len(), 7);
+        let p1 = Package::from_name_and_version("termcolor", "2.2.0").unwrap();
+        assert_eq!(dm1.validate(&p1), true);
+        let p2 = Package::from_name_and_version("termcolor", "2.2.1").unwrap();
+        assert_eq!(dm1.validate(&p2), false);
+        let p3 = Package::from_name_and_version("text-unicide", "1.3").unwrap();
+        assert_eq!(dm1.validate(&p3), false);
+        let p3 = Package::from_name_and_version("text-unidecode", "1.3").unwrap();
+        assert_eq!(dm1.validate(&p3), true);
+    }
+
+    #[test]
+    fn test_from_requirements_c() {
+        let content = r#"
+opentelemetry-api==1.24.0
+    # via
+    #   apache-airflow
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+opentelemetry-exporter-otlp==1.24.0
+    # via apache-airflow
+opentelemetry-exporter-otlp-proto-common==1.24.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.24.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http==1.24.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-proto==1.24.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.24.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.45b0
+    # via opentelemetry-sdk
+"#;
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("requirements.txt");
+        let mut file = File::create(&file_path).unwrap();
+        write!(file, "{}", content).unwrap();
+
+        let dm1 = DepManifest::from_requirements(&file_path).unwrap();
+        assert_eq!(dm1.len(), 8);
+        let p1 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.0").unwrap();
+        assert_eq!(dm1.validate(&p1), true);
+        let p2 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.1").unwrap();
+        assert_eq!(dm1.validate(&p2), false);
+        let p3 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-gpc", "1.24.0").unwrap();
+        assert_eq!(dm1.validate(&p3), false);
+    }
+
 }
+
+
