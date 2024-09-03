@@ -246,3 +246,25 @@ opentelemetry-semantic-conventions==0.45b0
 }
 
 
+
+
+// python-slugify==8.0.4
+//     # via
+//     #   apache-airflow
+//     #   python-nvd3
+// pytz==2023.3
+// pytzdata==2020.1
+//     # via pendulum
+// pyyaml==6.0
+// pyzmq==26.0.0
+// readme-renderer==43.0
+//     # via twine
+// redshift-connector==2.1.1
+//     # via apache-airflow-providers-amazon
+// referencing==0.34.0
+//     # via
+//     #   jsonschema
+//     #   jsonschema-specifications
+// regex==2024.4.16
+//     # via nltk
+
