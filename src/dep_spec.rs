@@ -193,6 +193,12 @@ mod tests {
         let ds1 = DepSpec::new("foo+==3").unwrap();
         assert_eq!(ds1.to_string(), "foo");
     }
+    #[test]
+    fn test_dep_spec_f() {
+        let ds1 = DepSpec::new("   foo==3").unwrap();
+        assert_eq!(ds1.to_string(), "foo==3");
+    }
+
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_version_a() {
