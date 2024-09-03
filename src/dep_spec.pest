@@ -1,16 +1,33 @@
 WHITESPACE = _{ " " | "\t" }
 wsp = _{ WHITESPACE* }
 
-version_cmp = { "<=" | "<" | "!=" | "==" | ">=" | ">" | "~=" | "===" }
+version_cmp = { ("===" | "<=" | "!=" | "==" | ">=" | "~=" | ">" | "<") }
 version = { (ASCII_ALPHANUMERIC | "-" | "_" | "." | "*" | "+" | "!")+ }
 
-version_one = { version_cmp ~ version }
-version_many = { version_one ~ ("," ~ version_one)* ~ wsp }
+version_one = { wsp? ~ version_cmp ~ wsp? ~ version ~ wsp? }
+version_many = { version_one ~ (wsp? ~ "," ~ wsp? ~ version_one)* }
 
 identifier_end = { ("-" | "_" | "." )* ~ ASCII_ALPHANUMERIC }
 identifier = { ASCII_ALPHANUMERIC ~ identifier_end* }
 
-extras_list = { identifier ~ (wsp ~ "," ~ wsp ~ identifier)* }
-extras = { "[" ~ wsp ~ extras_list? ~ wsp ~ "]" }
+extras_list = { identifier ~ (wsp? ~ "," ~ wsp? ~ identifier)* }
+extras = { "[" ~ wsp? ~ extras_list? ~ wsp? ~ "]" }
 
-name_req = { wsp ~ identifier ~ extras? ~ version_many? }
+
+marker_op = { version_cmp | "in" | "not" ~ wsp ~ "in" }
+python_str = { "\"" ~ (!"\"" ~ ANY)* ~ "\"" | "'" ~ (!"'" ~ ANY)* ~ "'" }
+env_var = { "python_version" | "python_full_version" | "os_name" | "sys_platform" | "platform_release" |
+            "platform_system" | "platform_version" | "platform_machine" | "platform_python_implementation" |
+            "implementation_name" | "implementation_version" | "extra" }
+
+marker_var = { env_var | python_str }
+marker_expr = { marker_var ~ wsp? ~ marker_op ~ wsp? ~ marker_var }
+marker_and = { marker_expr ~ ("and" ~ wsp? ~ marker_expr)* }
+marker_or = { marker_and ~ ("or" ~ wsp? ~ marker_and)* }
+
+marker = { marker_or | marker_expr }
+
+quoted_marker = { ";" ~ wsp? ~ marker }
+
+name_req = { wsp? ~ identifier ~ wsp? ~ extras? ~ wsp? ~ version_many? ~ wsp? ~ quoted_marker? ~ wsp? }
+

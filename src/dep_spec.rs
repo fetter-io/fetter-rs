@@ -71,14 +71,13 @@ impl DepSpec {
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
             .map_err(|e| format!("Parsing error: {}", e))?;
 
-        let parse_result = parsed.next().ok_or("Parsing error: No results")?;
         // check for unconsumed input
-        // if parse_result.as_str() != input {
-        //     return Err(format!(
-        //         "Unrecognized input: '{}'",
-        //         &input[parse_result.as_str().len()..]
-        //     ));
-        // }
+        let parse_result = parsed.next().ok_or("Parsing error: No results")?;
+
+        if parse_result.as_str() != input {
+            return Err(format!("Unrecognized input: {:?}", input[parse_result.as_str().len()..].to_string()));
+        }
+
         let mut package_name = None;
         let mut operators = Vec::new();
         let mut versions = Vec::new();
@@ -93,19 +92,19 @@ impl DepSpec {
                 Rule::version_many => {
                     for version_pair in pair.into_inner() {
                         let mut inner_pairs = version_pair.into_inner();
-                        // get operator
+                        // operator
                         let op_pair = inner_pairs.next().ok_or("Expected version_cmp")?;
                         if op_pair.as_rule() != Rule::version_cmp {
                             return Err("Expected version_cmp".to_string());
                         }
-                        let op = op_pair.as_str().parse::<DepOperator>().map_err(
+                        let op = op_pair.as_str().trim().parse::<DepOperator>().map_err(
                                 |e| format!("Invalid operator: {}", e.to_string()))?;
-                        // get version
+                        // version
                         let version_pair = inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
                             return Err("Expected version".to_string());
                         }
-                        let version = version_pair.as_str().to_string();
+                        let version = version_pair.as_str().trim().to_string();
 
                         operators.push(op);
                         versions.push(VersionSpec::new(&version));
@@ -178,8 +177,7 @@ mod tests {
     #[test]
     fn test_dep_spec_c() {
         let input = "package==0.2<=";
-        let ds1 = DepSpec::new(input).unwrap();
-        assert_eq!(ds1.name, "package");
+        assert!(DepSpec::new(input).is_err());
     }
     #[test]
     fn test_dep_spec_d() {
@@ -188,26 +186,32 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_e() {
-        // assert!(DepSpec::new("foo+==3").is_err());
-        // NOTE: for now, we do not check un parsed input, and thus this results only in foo
-        let ds1 = DepSpec::new("foo+==3").unwrap();
-        assert_eq!(ds1.to_string(), "foo");
+        assert!(DepSpec::new("foo+==3").is_err());
     }
     #[test]
     fn test_dep_spec_f() {
-        let ds1 = DepSpec::new("   foo==3").unwrap();
+        let ds1 = DepSpec::new("   foo==3    ").unwrap();
+        assert_eq!(ds1.versions[0], VersionSpec::new("3"));
         assert_eq!(ds1.to_string(), "foo==3");
+    }
+
+    #[test]
+    fn test_dep_spec_g() {
+        let ds1 = DepSpec::new("   foo==3 ,  <  4  ,  != 3.5   ").unwrap();
+        // assert_eq!(ds1.versions[0], VersionSpec::new("3    "));
+        assert_eq!(ds1.to_string(), "foo==3,<4,!=3.5");
     }
 
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_version_a() {
-        let input = "package>0.2<2.0";
+        let input = "package>0.2,<2.0";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.validate_version(&VersionSpec::new("0.3")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("0.2")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("0.2.1")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.2")), false);
     }
     #[test]
     fn test_dep_spec_validate_version_b() {
@@ -237,7 +241,7 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_validate_version_e() {
-        let input = "requests [security,tests] >= 2.8.1, == 2.8.* ; python_version < '2.7'*";
+        let input = "requests [security,tests] >= 2.8.1, == 2.8.*, < 3; python_version < '2.7'";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.1")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.2.1")), false);
@@ -283,16 +287,38 @@ mod tests {
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
     }
     #[test]
-    fn test_dep_spec_validate_version_j() {
-        let input = "name===foo++";
+    fn test_dep_spec_validate_version_j1() {
+        let input = "name===12";
         let ds1 = DepSpec::new(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("12")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_j2() {
+        let input = "name===12++";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("12++")), true);
     }
     #[test]
     fn test_dep_spec_validate_version_k() {
         let input = "name";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_l1() {
+        let input = "name==1.*,<1.10";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
+    }
+    #[test]
+    fn test_dep_spec_validate_version_l2() {
+        let input = "name<1.10,==1.*";
+        let ds1 = DepSpec::new(input).unwrap();
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
+        assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
     }
     //--------------------------------------------------------------------------
     #[test]
