@@ -243,28 +243,47 @@ opentelemetry-semantic-conventions==0.45b0
         assert_eq!(dm1.validate(&p3), false);
     }
 
+    #[test]
+    fn test_from_requirements_d() {
+        let content = r#"
+python-slugify==8.0.4
+    # via
+    #   apache-airflow
+    #   python-nvd3
+pytz==2023.3
+pytzdata==2020.1
+    # via pendulum
+pyyaml==6.0
+pyzmq==26.0.0
+readme-renderer==43.0
+    # via twine
+redshift-connector==2.1.1
+    # via apache-airflow-providers-amazon
+referencing==0.34.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+regex==2024.4.16
+"#;
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("requirements.txt");
+        let mut file = File::create(&file_path).unwrap();
+        write!(file, "{}", content).unwrap();
+
+        let dm1 = DepManifest::from_requirements(&file_path).unwrap();
+        assert_eq!(dm1.len(), 9);
+        let p1 = Package::from_name_and_version("regex", "2024.4.16").unwrap();
+        assert_eq!(dm1.validate(&p1), true);
+        let p2 = Package::from_name_and_version("regex", "2024.04.16").unwrap();
+        assert_eq!(dm1.validate(&p2), true);
+        let p2 = Package::from_name_and_version("regex", "2024.04.17").unwrap();
+        assert_eq!(dm1.validate(&p2), false);
+    }
+
 }
 
 
 
 
-// python-slugify==8.0.4
-//     # via
-//     #   apache-airflow
-//     #   python-nvd3
-// pytz==2023.3
-// pytzdata==2020.1
-//     # via pendulum
-// pyyaml==6.0
-// pyzmq==26.0.0
-// readme-renderer==43.0
-//     # via twine
-// redshift-connector==2.1.1
-//     # via apache-airflow-providers-amazon
-// referencing==0.34.0
-//     # via
-//     #   jsonschema
-//     #   jsonschema-specifications
-// regex==2024.4.16
-//     # via nltk
+
 

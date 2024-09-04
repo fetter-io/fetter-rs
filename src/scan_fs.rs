@@ -213,56 +213,75 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 }
 
 //------------------------------------------------------------------------------
-pub(crate) fn scan() {
-    // Frequency: low
-    // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
-    let exe_to_site_packages: HashMap<PathBuf, Vec<PathBuf>> = scan_executables()
-            .into_par_iter()
-            .map(|exe| {
-                let dirs = get_site_package_dirs(&exe);
-                (exe, dirs)
-            })
-            .collect(); // Collect the results directly into a HashMap
+// #[derive(Debug)]
+pub(crate) struct ScanFS {
+    exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    site_to_packages: HashMap<PathBuf, Vec<Package>>,
+    package_to_sites: HashMap<Package, Vec<PathBuf>>,
+}
 
-    // Frequency: high
-    // Some site packages will be repeated; we do; let them be processed more than once here, as it seems easier than filtering them out
-    let site_package_to_packages = exe_to_site_packages
-            .into_par_iter()
-            .flat_map(|(_, site_packages)| {
-                site_packages.into_par_iter().map(|site_package_path| {
-                    let packages = get_packages(&site_package_path);
-                    (site_package_path, packages)
+// The results of a file-system scan.
+impl ScanFS {
+    pub(crate) fn from_exe_to_sites(
+            exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+            ) -> Result<Self, String> {
+        // Some site packages will be repeated; we do; let them be processed more than once here, as it seems easier than filtering them out
+        let site_to_packages = exe_to_sites.clone()
+                .into_par_iter()
+                .flat_map(|(_, site_packages)| {
+                    site_packages.into_par_iter().map(|site_package_path| {
+                        let packages = get_packages(&site_package_path);
+                        (site_package_path, packages)
+                    })
                 })
-            })
-            .collect::<HashMap<PathBuf, Vec<Package>>>(); // Collect directly into a single HashMap
+                .collect::<HashMap<PathBuf, Vec<Package>>>();
 
-    let mut package_to_sites: HashMap<Package, Vec<PathBuf>> = HashMap::new();
-    for (site_package_path, packages) in site_package_to_packages.iter() {
-        for package in packages {
-            package_to_sites
-                .entry(package.clone()) // Clone the Package to use as a key
-                .or_insert_with(Vec::new) // Insert if the key does not exist
-                .push(site_package_path.clone()); // Add the site package path to the Vec
-        }
-    }
-
-
-    // temporary display
-    let mut packages_sorted: Vec<_> = package_to_sites.keys().cloned().collect();
-    packages_sorted.sort();
-
-    for package in packages_sorted {
-        println!("{:?}", package);
-        if let Some(site_paths) = package_to_sites.get(&package) {
-            for path in site_paths {
-                println!("    {:?}", path);
+        let mut package_to_sites: HashMap<Package, Vec<PathBuf>> = HashMap::new();
+        for (site_package_path, packages) in site_to_packages.iter() {
+            for package in packages {
+                package_to_sites
+                    .entry(package.clone())
+                    .or_insert_with(Vec::new)
+                    .push(site_package_path.clone());
             }
         }
+        Ok(ScanFS {
+            exe_to_sites,
+            site_to_packages,
+            package_to_sites,
+        })
     }
-
-    println!("site packages: {:?}", site_package_to_packages.len());
-    println!("packages: {:?}", package_to_sites.len());
+    pub(crate) fn from_defaults() -> Result<Self, String> {
+        // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
+        let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = scan_executables()
+                .into_par_iter()
+                .map(|exe| {
+                    let dirs = get_site_package_dirs(&exe);
+                    (exe, dirs)
+                })
+                .collect();
+        Self::from_exe_to_sites(exe_to_sites)
+    }
+    //--------------------------------------------------------------------------
+    // draft implementations
+    pub(crate) fn report(&self) {
+        let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
+        packages.sort();
+        for package in packages {
+            println!("{:?}", package);
+            if let Some(site_paths) = self.package_to_sites.get(&package) {
+                for path in site_paths {
+                    println!("    {:?}", path);
+                }
+            }
+        }
+        println!("exes: {:?}", self.exe_to_sites.len());
+        println!("site packages: {:?}", self.site_to_packages.len());
+        println!("packages: {:?}", self.package_to_sites.len());
+    }
 }
+
+
 
 //------------------------------------------------------------------------------
 #[cfg(test)]
