@@ -215,7 +215,6 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 // #[derive(Debug)]
 pub(crate) struct ScanFS {
     exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
-    site_to_packages: HashMap<PathBuf, Vec<Package>>,
     package_to_sites: HashMap<Package, Vec<PathBuf>>,
 }
 
@@ -224,7 +223,7 @@ impl ScanFS {
     pub(crate) fn from_exe_to_sites(
             exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
             ) -> Result<Self, String> {
-        // Some site packages will be repeated; we do; let them be processed more than once here, as it seems easier than filtering them out
+        // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
                 .par_iter()
                 .flat_map(|(_, site_packages)| {
@@ -246,7 +245,6 @@ impl ScanFS {
         }
         Ok(ScanFS {
             exe_to_sites,
-            site_to_packages,
             package_to_sites,
         })
     }
@@ -262,6 +260,10 @@ impl ScanFS {
         Self::from_exe_to_sites(exe_to_sites)
     }
     //--------------------------------------------------------------------------
+    /// The length of the scan is then number of unique packages.
+    pub fn len(&self) -> usize {
+        self.package_to_sites.len()
+    }
     pub(crate) fn validate(&self, dm: DepManifest) {
         for p in self.package_to_sites.keys() {
             dm.validate(p);
@@ -272,16 +274,20 @@ impl ScanFS {
     pub(crate) fn report(&self) {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
+
+        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
+
         for package in packages {
             println!("{:?}", package);
             if let Some(site_paths) = self.package_to_sites.get(&package) {
                 for path in site_paths {
+                    site_packages.insert(path);
                     println!("    {:?}", path);
                 }
             }
         }
         println!("exes: {:?}", self.exe_to_sites.len());
-        println!("site packages: {:?}", self.site_to_packages.len());
+        println!("site packages: {:?}", site_packages.len());
         println!("packages: {:?}", self.package_to_sites.len());
     }
 }
@@ -405,7 +411,8 @@ mod tests {
         let mut exe_to_sites = HashMap::<PathBuf, Vec<PathBuf>>::new();
         exe_to_sites.insert(fp_exe.clone(), vec![fp_sp]);
         let sfs = ScanFS::from_exe_to_sites(exe_to_sites).unwrap();
-        sfs.report();
+        assert_eq!(sfs.len(), 2)
+        // sfs.report();
     }
 
 }
