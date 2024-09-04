@@ -155,7 +155,7 @@ fn scan_executables_inner(
     paths
 }
 
-// Main entry point with platform dependent branching
+// After collecting origins, find all executables
 fn scan_executables() -> HashSet<PathBuf> {
     let exclude = get_exclude_path();
     let origins = get_exe_origins();
@@ -164,7 +164,6 @@ fn scan_executables() -> HashSet<PathBuf> {
             .par_iter()
             .flat_map(|(path, recurse)| scan_executables_inner(path, &exclude, *recurse))
             .collect();
-
     if let Some(exe_def) = get_exe_default() {
         paths.insert(exe_def);
     }
@@ -361,7 +360,6 @@ mod tests {
         assert_eq!(paths.len() > 0, true)
     }
 
-
     #[test]
     fn test_scan_executable_inner_a() {
         let temp_dir = tempdir().unwrap();
@@ -387,9 +385,28 @@ mod tests {
         let pcv = fp_found.into_iter().rev().take(2).collect::<Vec<_>>();
         let pcp = pcv.iter().rev().collect::<PathBuf>();
         assert_eq!(pcp, PathBuf::from("bin/python3"));
-
     }
 
+    #[test]
+    fn test_from_exe_to_sites_a() {
+        let temp_dir = tempdir().unwrap();
+        let fp_dir = temp_dir.path();
+        let fp_exe = fp_dir.join("python");
+        let _ = File::create(fp_exe.clone()).unwrap();
+
+        let fp_sp = fp_dir.join("site-packages");
+        fs::create_dir(fp_sp.clone()).unwrap();
+
+        let fp_p1 = fp_sp.join("numpy-1.19.1.dist-info");
+        let _ = File::create(fp_p1.clone()).unwrap();
+        let fp_p2 = fp_sp.join("foo-3.0.dist-info");
+        let _ = File::create(fp_p2.clone()).unwrap();
+
+        let mut exe_to_sites = HashMap::<PathBuf, Vec<PathBuf>>::new();
+        exe_to_sites.insert(fp_exe.clone(), vec![fp_sp]);
+        let sfs = ScanFS::from_exe_to_sites(exe_to_sites).unwrap();
+        sfs.report();
+    }
 
 }
 
