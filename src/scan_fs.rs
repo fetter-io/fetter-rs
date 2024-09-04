@@ -225,12 +225,12 @@ impl ScanFS {
             exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
             ) -> Result<Self, String> {
         // Some site packages will be repeated; we do; let them be processed more than once here, as it seems easier than filtering them out
-        let site_to_packages = exe_to_sites.clone()
-                .into_par_iter()
+        let site_to_packages = exe_to_sites
+                .par_iter()
                 .flat_map(|(_, site_packages)| {
-                    site_packages.into_par_iter().map(|site_package_path| {
+                    site_packages.par_iter().map(|site_package_path| {
                         let packages = get_packages(&site_package_path);
-                        (site_package_path, packages)
+                        (site_package_path.clone(), packages)
                     })
                 })
                 .collect::<HashMap<PathBuf, Vec<Package>>>();
