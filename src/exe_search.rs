@@ -35,18 +35,20 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
 }
 
 // Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched.
-fn get_search_origins() -> Vec<(PathBuf, bool)> {
-    let mut paths: Vec<(PathBuf, bool)> = Vec::new();
+fn get_search_origins() -> HashSet<(PathBuf, bool)> {
+
+    let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
+
     match env::var("HOME") {
         Ok(home) => {
-            paths.push((PathBuf::from(home.clone()), false));
+            paths.insert((PathBuf::from(home.clone()), false));
             // collect all directories in the user's home directory
             match fs::read_dir(PathBuf::from(home)) {
                 Ok(entries) => {
                     for entry in entries {
                         let path = entry.unwrap().path();
                         if path.is_dir() {
-                            paths.push((path, true));
+                            paths.insert((path, true));
                         }
                     }
                 }
@@ -59,14 +61,14 @@ fn get_search_origins() -> Vec<(PathBuf, bool)> {
             eprintln!("Error getting HOME {}", e);
         }
     }
-    paths.push((PathBuf::from("/bin"), false));
-    paths.push((PathBuf::from("/sbin"), false));
-    paths.push((PathBuf::from("/usr/bin"), false));
-    paths.push((PathBuf::from("/usr/sbin"), false));
-    paths.push((PathBuf::from("/usr/local/bin"), false));
-    paths.push((PathBuf::from("/usr/local/sbin"), false));
+    paths.insert((PathBuf::from("/bin"), false));
+    paths.insert((PathBuf::from("/sbin"), false));
+    paths.insert((PathBuf::from("/usr/bin"), false));
+    paths.insert((PathBuf::from("/usr/sbin"), false));
+    paths.insert((PathBuf::from("/usr/local/bin"), false));
+    paths.insert((PathBuf::from("/usr/local/sbin"), false));
     if env::consts::OS == "macos" {
-        paths.push((PathBuf::from("/opt/homebrew/bin"), false));
+        paths.insert((PathBuf::from("/opt/homebrew/bin"), false));
     }
     paths
 }
@@ -120,7 +122,9 @@ fn find_exe_inner(
     if exclude_paths.contains(path) {
         return Vec::with_capacity(0);
     }
+    // NOTE: not sensible for this to be a HashSet as, due to recursion, this is only a partial search
     let mut paths = Vec::new();
+
     if path.is_dir() {
         // if we find "fpdir/pyvenv.cfg", we can always get fpdir/bin/python3
         let path_cfg = path.to_path_buf().join("pyvenv.cfg");
