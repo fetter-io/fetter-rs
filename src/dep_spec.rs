@@ -152,6 +152,10 @@ impl DepSpec {
 }
 
 //------------------------------------------------------------------------------
+
+// TODO: need to support specifications like
+// teamalloc @ git+https://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:x-oauth-basic@github.com/ResearchAffiliates/ra-tech.git@700732b9ad4df0ea1a95f0b1665e5752dc1d340d
+
 #[cfg(test)]
 mod tests {
     use super::*;

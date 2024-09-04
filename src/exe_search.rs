@@ -39,6 +39,13 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
 
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
 
+    // get all paths on PATH
+    if let Ok(path_var) = env::var("PATH") {
+        for path in path_var.split(':') {
+            paths.insert((PathBuf::from(path), false));
+        }
+    }
+
     match env::var("HOME") {
         Ok(home) => {
             paths.insert((PathBuf::from(home.clone()), false));
@@ -70,6 +77,7 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
     if env::consts::OS == "macos" {
         paths.insert((PathBuf::from("/opt/homebrew/bin"), false));
     }
+    println!("{:?}", paths);
     paths
 }
 
