@@ -10,7 +10,9 @@ use std::os::unix::fs::PermissionsExt;
 use rayon::prelude::*;
 
 use crate::package::Package;
+use crate::dep_manifest::DepManifest;
 
+//------------------------------------------------------------------------------
 // Provide absolute paths for directories that should be excluded from executable search.
 fn get_exclude_path() -> HashSet<PathBuf> {
     let mut paths: HashSet<PathBuf> = HashSet::new();
@@ -112,8 +114,6 @@ fn get_exe_default() -> Option<PathBuf> {
         Err(_) => None,
     }
 }
-
-
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
 fn scan_executables_inner(
         path: &Path,
@@ -261,6 +261,12 @@ impl ScanFS {
                 })
                 .collect();
         Self::from_exe_to_sites(exe_to_sites)
+    }
+    //--------------------------------------------------------------------------
+    pub(crate) fn validate(&self, dm: DepManifest) {
+        for p in self.package_to_sites.keys() {
+            dm.validate(p);
+        }
     }
     //--------------------------------------------------------------------------
     // draft implementations

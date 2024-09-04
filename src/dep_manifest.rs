@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
-#[derive(Debug)]
-struct DepManifest {
+// #[derive(Debug)]
+pub(crate) struct DepManifest {
     dep_specs: HashMap<String, DepSpec>,
 }
 
