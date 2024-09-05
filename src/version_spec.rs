@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
@@ -9,7 +11,7 @@ enum VersionPart {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct VersionSpec(Vec<VersionPart>);
 
 impl VersionSpec {
@@ -39,7 +41,7 @@ impl VersionSpec {
     pub fn is_compatible(&self, other: &Self) -> bool {
         // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
         if let (Some(VersionPart::Number(self_major)), Some(VersionPart::Number(other_major))) =
-            (self.0.get(0), other.0.get(0))
+            (self.0.first(), other.0.first())
         {
             return self_major == other_major;
         }
@@ -50,6 +52,16 @@ impl VersionSpec {
         self.to_string() == other.to_string()
     }
 }
+
+// This hash implementation does not treate wildcards "*" special, which may be an issue as PartialEq does
+impl Hash for VersionSpec {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for part in &self.0 {
+            part.hash(state);
+        }
+    }
+}
+
 // This ordering implemenation is handling wild cards and zero-padding, but may not yet be handling "post" release correctly
 // https://packaging.python.org/en/latest/specifications/version-specifiers/#post-releases
 impl Ord for VersionSpec {
@@ -106,14 +118,14 @@ impl PartialEq for VersionSpec {
             let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
 
             match (self_part, other_part) {
-                // If either part is a wildcard "*", consider them equal
+                // if wildcard "*" both equal
                 (VersionPart::Text(a), VersionPart::Text(b)) if a == "*" || b == "*" => continue,
                 (VersionPart::Text(a), VersionPart::Number(_)) if a == "*" => continue,
                 (VersionPart::Number(_), VersionPart::Text(b)) if b == "*" => continue,
-                // Otherwise, parts must match exactly
+                // parts must match exactly
                 (VersionPart::Number(a), VersionPart::Number(b)) if a != b => return false,
                 (VersionPart::Text(a), VersionPart::Text(b)) if a != b => return false,
-                // If types differ and no wildcard is involved, they are not equal
+                // not equal
                 (VersionPart::Number(_), VersionPart::Text(_)) => return false,
                 (VersionPart::Text(_), VersionPart::Number(_)) => return false,
                 _ => {} // continue
