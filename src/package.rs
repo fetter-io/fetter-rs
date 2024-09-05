@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
-// A Package is package release artifact, representing one specific version installed.
+// A Package is package release artifact, representing one specific version installed. This differs from a DepSpec, which might refer to a range of acceptable versions.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
     pub(crate) name: String,

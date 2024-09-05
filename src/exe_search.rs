@@ -77,7 +77,6 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
     if env::consts::OS == "macos" {
         paths.insert((PathBuf::from("/opt/homebrew/bin"), false));
     }
-    println!("{:?}", paths);
     paths
 }
 
