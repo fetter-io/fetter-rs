@@ -1,5 +1,5 @@
-use std::fmt;
 use std::cmp::Ordering;
+use std::fmt;
 
 use crate::version_spec::VersionSpec;
 
@@ -12,7 +12,10 @@ pub(crate) struct Package {
 }
 impl Package {
     pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
-        return Some(Package { name: name.to_string(), version: VersionSpec::new(version) });
+        return Some(Package {
+            name: name.to_string(),
+            version: VersionSpec::new(version),
+        });
     }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
@@ -53,8 +56,6 @@ impl fmt::Debug for Package {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
 
@@ -81,7 +82,7 @@ mod tests {
         assert_eq!(p2 > p1, true);
         assert_eq!(p1 < p2, true);
         assert_eq!(p1 == p3, false);
-        assert_eq!(p2== p3, true);
+        assert_eq!(p2 == p3, true);
     }
     #[test]
     fn test_package_to_string_a() {
@@ -99,6 +100,4 @@ mod tests {
         assert_eq!(p1.to_string(), "numpy-2.1.2");
         assert_eq!(format!("{}", p1), "<Package: numpy-2.1.2>");
     }
-
-
 }

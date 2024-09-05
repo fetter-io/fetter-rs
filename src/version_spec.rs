@@ -1,6 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use serde::{Serialize, Deserialize};
-
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
@@ -31,8 +30,8 @@ impl VersionSpec {
         self.0
             .iter()
             .map(|part| match part {
-                    VersionPart::Number(num) => num.to_string(),
-                    VersionPart::Text(text) => text.clone(),
+                VersionPart::Number(num) => num.to_string(),
+                VersionPart::Text(text) => text.clone(),
             })
             .collect::<Vec<_>>()
             .join(".")
@@ -40,7 +39,8 @@ impl VersionSpec {
     pub fn is_compatible(&self, other: &Self) -> bool {
         // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
         if let (Some(VersionPart::Number(self_major)), Some(VersionPart::Number(other_major))) =
-            (self.0.get(0), other.0.get(0)) {
+            (self.0.get(0), other.0.get(0))
+        {
             return self_major == other_major;
         }
         false
@@ -125,7 +125,6 @@ impl PartialEq for VersionSpec {
 
 impl Eq for VersionSpec {}
 
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -160,23 +159,50 @@ mod tests {
     fn test_version_spec_e() {
         assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"), true);
         assert_eq!(VersionSpec::new("1.7.1") < VersionSpec::new("1.8"), true);
-        assert_eq!(VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7"), false);
-        assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"), true);
+        assert_eq!(
+            VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7"),
+            false
+        );
+        assert_eq!(
+            VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"),
+            true
+        );
         // this is supposed to be true: >1.7.post2 will allow 1.7.1 and 1.7.0.post3 but not 1.7.0.
         // assert_eq!(VersionSpec::new("1.7.0") > VersionSpec::new("1.7.post1"), false);
     }
     #[test]
     fn test_version_is_major_compatible_a() {
-        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")), true);
-        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("3.2")), false);
-        assert_eq!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2.3.9")), true);
+        assert_eq!(
+            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")),
+            true
+        );
+        assert_eq!(
+            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("3.2")),
+            false
+        );
+        assert_eq!(
+            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2.3.9")),
+            true
+        );
     }
     #[test]
     fn test_version_is_major_compatible_b() {
-        assert_eq!(VersionSpec::new("2.2-2").is_arbitrary_equal(&VersionSpec::new("2.2-2")), true);
-        assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobar")), true);
-        assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")), false);
-        assert_eq!(VersionSpec::new("1.0").is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")), false);
+        assert_eq!(
+            VersionSpec::new("2.2-2").is_arbitrary_equal(&VersionSpec::new("2.2-2")),
+            true
+        );
+        assert_eq!(
+            VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobar")),
+            true
+        );
+        assert_eq!(
+            VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")),
+            false
+        );
+        assert_eq!(
+            VersionSpec::new("1.0").is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")),
+            false
+        );
     }
     //--------------------------------------------------------------------------
     #[test]

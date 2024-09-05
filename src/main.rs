@@ -1,11 +1,9 @@
-
-
-mod scan_fs;
-mod package;
-mod dep_spec;
 mod dep_manifest;
-mod version_spec;
+mod dep_spec;
 mod exe_search;
+mod package;
+mod scan_fs;
+mod version_spec;
 use crate::scan_fs::ScanFS;
 
 fn main() {

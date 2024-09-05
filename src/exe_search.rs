@@ -1,13 +1,12 @@
 use std::collections::HashSet;
+use std::env;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::fs;
 use std::process::Command;
-use std::env;
-use std::os::unix::fs::PermissionsExt;
 
 use rayon::prelude::*;
-
 
 //------------------------------------------------------------------------------
 // Provide absolute paths for directories that should be excluded from executable search.
@@ -27,7 +26,8 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
                 paths.insert(PathBuf::from(home.clone()).join(".local/share/Trash"));
             }
         }
-        Err(e) => { // log this
+        Err(e) => {
+            // log this
             eprintln!("Error getting HOME {}", e);
         }
     }
@@ -36,7 +36,6 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
 
 // Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched.
 fn get_search_origins() -> HashSet<(PathBuf, bool)> {
-
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
 
     // get all paths on PATH
@@ -64,7 +63,8 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
                 }
             }
         }
-        Err(e) => { // log this
+        Err(e) => {
+            // log this
             eprintln!("Error getting HOME {}", e);
         }
     }
@@ -108,24 +108,19 @@ fn is_symlink(path: &Path) -> bool {
 // Use the default Python to and get its executable path.
 fn get_exe_default() -> Option<PathBuf> {
     return match Command::new("python3")
-            .arg("-c")
-            .arg("import sys;print(sys.executable)")
-            .output() {
-        Ok(output) => {
-            match std::str::from_utf8(&output.stdout) {
-                Ok(s) => Some(PathBuf::from(s.trim())),
-                Err(_) => None,
-            }
-        }
+        .arg("-c")
+        .arg("import sys;print(sys.executable)")
+        .output()
+    {
+        Ok(output) => match std::str::from_utf8(&output.stdout) {
+            Ok(s) => Some(PathBuf::from(s.trim())),
+            Err(_) => None,
+        },
         Err(_) => None,
-    }
+    };
 }
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
-fn find_exe_inner(
-        path: &Path,
-        exclude_paths: &HashSet<PathBuf>,
-        recurse: bool,
-        ) -> Vec<PathBuf> {
+fn find_exe_inner(path: &Path, exclude_paths: &HashSet<PathBuf>, recurse: bool) -> Vec<PathBuf> {
     if exclude_paths.contains(path) {
         return Vec::with_capacity(0);
     }
@@ -140,13 +135,13 @@ fn find_exe_inner(
             if path_exe.exists() && is_exe(&path_exe) {
                 paths.push(path_exe)
             }
-        }
-        else {
+        } else {
             match fs::read_dir(path) {
                 Ok(entries) => {
                     for entry in entries {
                         let path = entry.unwrap().path();
-                        if recurse && path.is_dir() && !is_symlink(&path) { // recurse
+                        if recurse && path.is_dir() && !is_symlink(&path) {
+                            // recurse
                             // println!("recursing: {:?}", path);
                             paths.extend(find_exe_inner(&path, exclude_paths, recurse));
                         } else if is_exe(&path) {
@@ -154,7 +149,8 @@ fn find_exe_inner(
                         }
                     }
                 }
-                Err(e) => { // log this?
+                Err(e) => {
+                    // log this?
                     eprintln!("Error reading {:?}: {}", path, e);
                 }
             }
@@ -169,25 +165,23 @@ pub(crate) fn find_exe() -> HashSet<PathBuf> {
     let origins = get_search_origins();
 
     let mut paths: HashSet<PathBuf> = origins
-            .par_iter()
-            .flat_map(|(path, recurse)| find_exe_inner(path, &exclude, *recurse))
-            .collect();
+        .par_iter()
+        .flat_map(|(path, recurse)| find_exe_inner(path, &exclude, *recurse))
+        .collect();
     if let Some(exe_def) = get_exe_default() {
         paths.insert(exe_def);
     }
     paths
 }
 
-
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use tempfile::tempdir;
     use std::fs::File;
     use std::os::unix::fs::symlink;
+    use tempfile::tempdir;
 
     #[test]
     fn test_get_search_exclude_paths_a() {

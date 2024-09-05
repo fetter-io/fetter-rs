@@ -102,20 +102,16 @@ impl DepManifest {
     }
 }
 
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn test_dep_spec_a() {
-        let dm = DepManifest::from_iter(vec![
-            "pk1>=0.2,<0.3",
-            "pk2>=1,<3",
-            ].iter()).unwrap();
+        let dm = DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info").unwrap();
         assert_eq!(dm.validate(&p1), true);
@@ -235,11 +231,14 @@ opentelemetry-semantic-conventions==0.45b0
 
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 8);
-        let p1 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.0").unwrap();
+        let p1 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.0")
+            .unwrap();
         assert_eq!(dm1.validate(&p1), true);
-        let p2 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.1").unwrap();
+        let p2 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.1")
+            .unwrap();
         assert_eq!(dm1.validate(&p2), false);
-        let p3 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-gpc", "1.24.0").unwrap();
+        let p3 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-gpc", "1.24.0")
+            .unwrap();
         assert_eq!(dm1.validate(&p3), false);
     }
 
@@ -279,11 +278,4 @@ regex==2024.4.16
         let p2 = Package::from_name_and_version("regex", "2024.04.17").unwrap();
         assert_eq!(dm1.validate(&p2), false);
     }
-
 }
-
-
-
-
-
-

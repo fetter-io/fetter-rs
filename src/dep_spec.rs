@@ -1,12 +1,12 @@
-use std::str::FromStr;
-use std::fmt;
 use std::error::Error;
+use std::fmt;
+use std::str::FromStr;
 
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::version_spec::VersionSpec;
 use crate::package::Package;
+use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
 #[derive(Parser)]
@@ -66,7 +66,6 @@ pub(crate) struct DepSpec {
     versions: Vec<VersionSpec>,
 }
 impl DepSpec {
-
     pub fn new(input: &str) -> Result<Self, String> {
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
             .map_err(|e| format!("Parsing error: {}", e))?;
@@ -75,7 +74,10 @@ impl DepSpec {
         let parse_result = parsed.next().ok_or("Parsing error: No results")?;
 
         if parse_result.as_str() != input {
-            return Err(format!("Unrecognized input: {:?}", input[parse_result.as_str().len()..].to_string()));
+            return Err(format!(
+                "Unrecognized input: {:?}",
+                input[parse_result.as_str().len()..].to_string()
+            ));
         }
 
         let mut package_name = None;
@@ -84,9 +86,9 @@ impl DepSpec {
 
         let inner_pairs: Vec<_> = parse_result.into_inner().collect();
         for pair in inner_pairs {
-
             match pair.as_rule() {
-                Rule::identifier => { // grammar permits only one
+                Rule::identifier => {
+                    // grammar permits only one
                     package_name = Some(pair.as_str().to_string());
                 }
                 Rule::version_many => {
@@ -97,8 +99,11 @@ impl DepSpec {
                         if op_pair.as_rule() != Rule::version_cmp {
                             return Err("Expected version_cmp".to_string());
                         }
-                        let op = op_pair.as_str().trim().parse::<DepOperator>().map_err(
-                                |e| format!("Invalid operator: {}", e.to_string()))?;
+                        let op = op_pair
+                            .as_str()
+                            .trim()
+                            .parse::<DepOperator>()
+                            .map_err(|e| format!("Invalid operator: {}", e.to_string()))?;
                         // version
                         let version_pair = inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
@@ -173,7 +178,6 @@ mod tests {
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.versions[0], VersionSpec::new("0.2"));
-
     }
     #[test]
     fn test_dep_spec_c() {
@@ -205,7 +209,8 @@ mod tests {
 
     #[test]
     fn test_dep_spec_h1() {
-        let ds1 = DepSpec::new("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx").unwrap();
+        let ds1 = DepSpec::new("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx")
+            .unwrap();
         assert_eq!(ds1.to_string(), "foo");
     }
     #[test]
@@ -246,23 +251,31 @@ mod tests {
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.0")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), true);
+        assert_eq!(
+            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
+            true
+        );
     }
     #[test]
     fn test_dep_spec_validate_version_c() {
         let input = "package>=2.0,<=3.0";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), false);
+        assert_eq!(
+            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
+            false
+        );
         assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), true);
-
     }
     #[test]
     fn test_dep_spec_validate_version_d() {
         let input = "package==2.*";
         let ds1 = DepSpec::new(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.4")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")), false);
+        assert_eq!(
+            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
+            false
+        );
         assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.3")), true);
     }
@@ -282,7 +295,6 @@ mod tests {
         assert_eq!(ds1.validate_version(&VersionSpec::new("2")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("3")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("4")), false);
-
     }
     #[test]
     fn test_dep_spec_validate_version_g() {
@@ -376,12 +388,12 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_to_string_a() {
-        let ds1 =DepSpec::new("package  >=0.2,  <0.3   ").unwrap();
+        let ds1 = DepSpec::new("package  >=0.2,  <0.3   ").unwrap();
         assert_eq!(ds1.to_string(), "package>=0.2,<0.3");
     }
     #[test]
     fn test_dep_spec_to_string_b() {
-        let ds1 =DepSpec::new("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
+        let ds1 = DepSpec::new("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
         assert_eq!(ds1.to_string(), "requests>=2.8.1,==2.8.*");
     }
 }

@@ -1,16 +1,15 @@
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::fs;
 use std::process::Command;
 
 use rayon::prelude::*;
 
-use crate::package::Package;
 use crate::dep_manifest::DepManifest;
 use crate::exe_search::find_exe;
-
+use crate::package::Package;
 
 //------------------------------------------------------------------------------
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
@@ -32,7 +31,7 @@ fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
             eprintln!("Failed to execute command: {}", e); // log this
             Vec::with_capacity(0)
         }
-    }
+    };
 }
 
 // Given a package directory, collect the name of all packages.
@@ -41,8 +40,7 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
     if let Ok(entries) = fs::read_dir(site_packages) {
         for entry in entries {
             if let Ok(entry) = entry {
-                if let Some(file_name) = entry.path().file_name().and_then(
-                            |name| name.to_str()) {
+                if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
                     if let Some(package) = Package::from_dist_info(file_name) {
                         packages.push(package);
                     }
@@ -63,18 +61,18 @@ pub(crate) struct ScanFS {
 // The results of a file-system scan.
 impl ScanFS {
     pub(crate) fn from_exe_to_sites(
-            exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
-            ) -> Result<Self, String> {
+        exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    ) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
-                .par_iter()
-                .flat_map(|(_, site_packages)| {
-                    site_packages.par_iter().map(|site_package_path| {
-                        let packages = get_packages(&site_package_path);
-                        (site_package_path.clone(), packages)
-                    })
+            .par_iter()
+            .flat_map(|(_, site_packages)| {
+                site_packages.par_iter().map(|site_package_path| {
+                    let packages = get_packages(&site_package_path);
+                    (site_package_path.clone(), packages)
                 })
-                .collect::<HashMap<PathBuf, Vec<Package>>>();
+            })
+            .collect::<HashMap<PathBuf, Vec<Package>>>();
 
         let mut package_to_sites: HashMap<Package, Vec<PathBuf>> = HashMap::new();
         for (site_package_path, packages) in site_to_packages.iter() {
@@ -93,12 +91,12 @@ impl ScanFS {
     pub(crate) fn from_defaults() -> Result<Self, String> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = find_exe()
-                .into_par_iter()
-                .map(|exe| {
-                    let dirs = get_site_package_dirs(&exe);
-                    (exe, dirs)
-                })
-                .collect();
+            .into_par_iter()
+            .map(|exe| {
+                let dirs = get_site_package_dirs(&exe);
+                (exe, dirs)
+            })
+            .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
     //--------------------------------------------------------------------------
@@ -138,15 +136,13 @@ impl ScanFS {
     }
 }
 
-
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     // use crate::dep_spec::DepSpec;
     use super::*;
-    use tempfile::tempdir;
     use std::fs::File;
+    use tempfile::tempdir;
 
     #[test]
     fn test_get_site_package_dirs_a() {
@@ -185,9 +181,4 @@ mod tests {
 
         // sfs.report();
     }
-
 }
-
-
-
-
