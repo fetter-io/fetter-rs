@@ -19,7 +19,9 @@ description = "A monitor of supply chain dependencies."
 rayon = "1.10"
 pest = "2.3"
 pest_derive = "2.3"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.12"
+serde_json = "1.0"
 

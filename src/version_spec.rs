@@ -1,16 +1,16 @@
 use std::cmp::Ordering;
-
+use serde::{Serialize, Deserialize};
 
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
 enum VersionPart {
     Number(u32),
     Text(String),
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub(crate) struct VersionSpec(Vec<VersionPart>);
 
 impl VersionSpec {
@@ -131,6 +131,7 @@ impl Eq for VersionSpec {}
 mod tests {
 
     use super::*;
+    use serde_json;
 
     #[test]
     fn test_version_spec_a() {
@@ -176,5 +177,14 @@ mod tests {
         assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobar")), true);
         assert_eq!(VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")), false);
         assert_eq!(VersionSpec::new("1.0").is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")), false);
+    }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_version_spec_json_a() {
+        let vs1 = VersionSpec::new("2.2.3rc2");
+        let json = serde_json::to_string(&vs1).unwrap();
+        assert_eq!(json, "[{\"Number\":2},{\"Number\":2},{\"Text\":\"3rc2\"}]");
+        let vs2: VersionSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(vs2, VersionSpec::new("2.2.3rc2"));
     }
 }
