@@ -8,7 +8,7 @@ use pest_derive::Parser;
 use crate::version_spec::VersionSpec;
 use crate::package::Package;
 
-// This is a rudimentary grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
+// This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
 #[derive(Parser)]
 #[grammar = "dep_spec.pest"]
 struct DepSpecParser;
@@ -153,9 +153,6 @@ impl DepSpec {
 
 //------------------------------------------------------------------------------
 
-// TODO: need to support specifications like
-// foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +201,32 @@ mod tests {
         let ds1 = DepSpec::new("   foo==3 ,  <  4  ,  != 3.5   ").unwrap();
         // assert_eq!(ds1.versions[0], VersionSpec::new("3    "));
         assert_eq!(ds1.to_string(), "foo==3,<4,!=3.5");
+    }
+
+    #[test]
+    fn test_dep_spec_h1() {
+        let ds1 = DepSpec::new("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx").unwrap();
+        assert_eq!(ds1.to_string(), "foo");
+    }
+    #[test]
+    fn test_dep_spec_h2() {
+        let ds1 = DepSpec::new("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
+        assert_eq!(ds1.to_string(), "package-two");
+    }
+    #[test]
+    fn test_dep_spec_h3() {
+        let ds1 = DepSpec::new("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
+        assert_eq!(ds1.to_string(), "package-four");
+    }
+    #[test]
+    fn test_dep_spec_h4() {
+        let ds1 = DepSpec::new("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
+        assert_eq!(ds1.to_string(), "pip");
+    }
+    #[test]
+    fn test_dep_spec_h5() {
+        let ds1 = DepSpec::new("pip @ https://github.com/pypa/pip/archive/1.3.1.zip#sha1=da9234ee9982d4bbb3c72346a6de940a148ea686").unwrap();
+        assert_eq!(ds1.to_string(), "pip");
     }
 
     //--------------------------------------------------------------------------

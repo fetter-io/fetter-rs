@@ -29,5 +29,12 @@ marker = { marker_or | marker_expr }
 
 quoted_marker = { ";" ~ wsp? ~ marker }
 
-name_req = { wsp? ~ identifier ~ wsp? ~ extras? ~ wsp? ~ version_many? ~ wsp? ~ quoted_marker? ~ wsp? }
+url_scheme = { "git+" ~ ("https" | "ssh") | "file" | "https" }
+url_host = { (!"@" ~ ANY)+ }
+commit_hash = { ("@" ~ (!"#" ~ ANY)+)? }
+url_fragment = { "#" ~ (!" " ~ ANY)* }
+
+url_reference = { wsp? ~ "@" ~ wsp? ~ url_scheme ~ "://" ~ url_host ~ commit_hash ~ url_fragment? ~ wsp? }
+
+name_req = { wsp? ~ identifier ~ wsp? ~ extras? ~ wsp? ~ version_many? ~ url_reference? ~ wsp? ~ quoted_marker? ~ wsp? }
 
