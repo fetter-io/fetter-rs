@@ -106,10 +106,14 @@ impl ScanFS {
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
-    pub(crate) fn validate(&self, dm: DepManifest) {
+    pub(crate) fn validate(&self, dm: DepManifest) -> Vec<Package> {
+        let mut invalid: Vec<Package> = Vec::new();
         for p in self.package_to_sites.keys() {
-            dm.validate(p);
+            if !dm.validate(p) {
+                invalid.push(p.clone());
+            }
         }
+        invalid
     }
     //--------------------------------------------------------------------------
     // draft implementations
@@ -139,7 +143,7 @@ impl ScanFS {
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-
+    // use crate::dep_spec::DepSpec;
     use super::*;
     use tempfile::tempdir;
     use std::fs::File;
@@ -150,8 +154,6 @@ mod tests {
         let paths = get_site_package_dirs(p1);
         assert_eq!(paths.len() > 0, true)
     }
-
-
     #[test]
     fn test_from_exe_to_sites_a() {
         let temp_dir = tempdir().unwrap();
@@ -170,7 +172,17 @@ mod tests {
         let mut exe_to_sites = HashMap::<PathBuf, Vec<PathBuf>>::new();
         exe_to_sites.insert(fp_exe.clone(), vec![fp_sp]);
         let sfs = ScanFS::from_exe_to_sites(exe_to_sites).unwrap();
-        assert_eq!(sfs.len(), 2)
+        assert_eq!(sfs.len(), 2);
+
+        let dm1 = DepManifest::from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
+        assert_eq!(dm1.len(), 2);
+        let invalid1 = sfs.validate(dm1);
+        assert_eq!(invalid1.len(), 0);
+
+        let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
+        let invalid2 = sfs.validate(dm2);
+        assert_eq!(invalid2.len(), 1);
+
         // sfs.report();
     }
 
