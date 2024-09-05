@@ -68,7 +68,7 @@ impl ScanFS {
             .par_iter()
             .flat_map(|(_, site_packages)| {
                 site_packages.par_iter().map(|site_package_path| {
-                    let packages = get_packages(&site_package_path);
+                    let packages = get_packages(site_package_path);
                     (site_package_path.clone(), packages)
                 })
             })
@@ -79,7 +79,7 @@ impl ScanFS {
             for package in packages {
                 package_to_sites
                     .entry(package.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(site_package_path.clone());
             }
         }

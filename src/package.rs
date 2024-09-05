@@ -30,7 +30,7 @@ impl Package {
         None
     }
     pub(crate) fn to_string(&self) -> String {
-        format!("{}-{}", self.name, self.version.to_string())
+        format!("{}-{}", self.name, self.version)
     }
 }
 impl Ord for Package {
