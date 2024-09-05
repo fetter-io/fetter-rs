@@ -103,7 +103,7 @@ impl DepSpec {
                             .as_str()
                             .trim()
                             .parse::<DepOperator>()
-                            .map_err(|e| format!("Invalid operator: {}", e.to_string()))?;
+                            .map_err(|e| format!("Invalid operator: {}", e))?;
                         // version
                         let version_pair = inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
@@ -150,7 +150,7 @@ impl DepSpec {
     pub(crate) fn to_string(&self) -> String {
         let mut parts = Vec::new();
         for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
-            parts.push(format!("{}{}", op.to_string(), ver.to_string()));
+            parts.push(format!("{}{}", op, ver.to_string()));
         }
         format!("{}{}", self.name, parts.join(","))
     }

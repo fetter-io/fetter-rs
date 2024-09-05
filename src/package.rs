@@ -12,10 +12,10 @@ pub(crate) struct Package {
 }
 impl Package {
     pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
-        return Some(Package {
+        Some(Package {
             name: name.to_string(),
             version: VersionSpec::new(version),
-        });
+        })
     }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
