@@ -147,12 +147,15 @@ impl DepSpec {
     pub fn validate_package(&self, package: &Package) -> bool {
         self.name == package.name && self.validate_version(&package.version)
     }
-    pub(crate) fn to_string(&self) -> String {
+}
+
+impl fmt::Display for DepSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut parts = Vec::new();
         for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
-            parts.push(format!("{}{}", op, ver.to_string()));
+            parts.push(format!("{}{}", op, ver));
         }
-        format!("{}{}", self.name, parts.join(","))
+        write!(f, "{}{}", self.name, parts.join(","))
     }
 }
 

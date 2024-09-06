@@ -38,12 +38,10 @@ fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
 fn get_packages(site_packages: &Path) -> Vec<Package> {
     let mut packages = Vec::new();
     if let Ok(entries) = fs::read_dir(site_packages) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
-                    if let Some(package) = Package::from_dist_info(file_name) {
-                        packages.push(package);
-                    }
+        for entry in entries.flatten() {
+            if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
+                if let Some(package) = Package::from_dist_info(file_name) {
+                    packages.push(package);
                 }
             }
         }
@@ -104,11 +102,11 @@ impl ScanFS {
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
-    pub(crate) fn validate(&self, dm: DepManifest) -> Vec<Package> {
-        let mut invalid: Vec<Package> = Vec::new();
+    pub(crate) fn validate(&self, dm: DepManifest) -> HashSet<Package> {
+        let mut invalid: HashSet<Package> = HashSet::new();
         for p in self.package_to_sites.keys() {
             if !dm.validate(p) {
-                invalid.push(p.clone());
+                invalid.insert(p.clone());
             }
         }
         invalid
