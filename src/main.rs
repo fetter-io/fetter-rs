@@ -7,8 +7,10 @@ mod version_spec;
 use crate::scan_fs::ScanFS;
 
 // NEXT:
-// ScanFS, given an fp, writes out a requirements-bound file (not a lock file)
-// Implement command line entry point that takes a requirements bound file and validates
+// Need to implment to_file() on DepManifest
+// Implement command line entry points
+    // write a requurements bound file based on ScanFSs
+    // takes a requirements bound file and validates
 // Implement a colorful display
 // Implement a monitoring mode
 
