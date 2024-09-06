@@ -29,9 +29,9 @@ impl Package {
         }
         None
     }
-    pub(crate) fn to_string(&self) -> String {
-        format!("{}-{}", self.name, self.version)
-    }
+    // pub(crate) fn to_string(&self) -> String {
+    //     format!("{}-{}", self.name, self.version)
+    // }
 }
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -47,12 +47,12 @@ impl PartialOrd for Package {
 }
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<Package: {}>", self.to_string())
+        write!(f, "{}-{}", self.name, self.version)
     }
 }
 impl fmt::Debug for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+        write!(f, "<Package: {}-{}>", self.name, self.version)
     }
 }
 
@@ -98,6 +98,6 @@ mod tests {
     fn test_package_to_string_c() {
         let p1 = Package::from_name_and_version("numpy", "2.1.2").unwrap();
         assert_eq!(p1.to_string(), "numpy-2.1.2");
-        assert_eq!(format!("{}", p1), "<Package: numpy-2.1.2>");
+        assert_eq!(format!("{:?}", p1), "<Package: numpy-2.1.2>");
     }
 }
