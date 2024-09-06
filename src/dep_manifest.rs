@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
+// A DepManifest is essential a requirements file, implemented as HashMap for quick lookup by package name.
 // #[derive(Debug)]
 pub(crate) struct DepManifest {
     dep_specs: HashMap<String, DepSpec>,
@@ -46,7 +47,16 @@ impl DepManifest {
         });
         DepManifest::from_iter(filtered_lines)
     }
-
+    pub fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
+        let mut ds: HashMap<String, DepSpec> = HashMap::new();
+        for dep_spec in dep_specs {
+            if ds.contains_key(&dep_spec.name) {
+                return Err(format!("Duplicate DepSpec name found: {}", dep_spec.name));
+            }
+            ds.insert(dep_spec.name.clone(), dep_spec.clone());
+        }
+        Ok(DepManifest { dep_specs: ds })
+    }
     // pub fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
     //     let contents = fs::read_to_string(file_path)
     //         .map_err(|e| format!("Failed to read pyproject.toml file: {}", e))?;
@@ -90,6 +100,8 @@ impl DepManifest {
     //     // TempDir will be cleaned up when it goes out of scope
     //     Ok(manifest)
     // }
+
+    //--------------------------------------------------------------------------
     pub fn len(&self) -> usize {
         self.dep_specs.len()
     }
@@ -126,6 +138,16 @@ mod tests {
         assert_eq!(dm.validate(&p3), false);
     }
 
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_from_dep_specs_a() {
+        let ds = vec![
+                DepSpec::from_string("numpy==1.19.1").unwrap(),
+                DepSpec::from_string("requests>=1.4").unwrap(),
+                ];
+        let dm = DepManifest::from_dep_specs(&ds).unwrap();
+        assert_eq!(dm.len(), 2);
+    }
     #[test]
     fn test_from_requirements_a() {
         // Create a temporary directory and file

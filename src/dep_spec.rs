@@ -13,7 +13,7 @@ use crate::version_spec::VersionSpec;
 #[grammar = "dep_spec.pest"]
 struct DepSpecParser;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum DepOperator {
     LessThan,
     LessThanOrEq,
@@ -59,7 +59,7 @@ impl fmt::Display for DepOperator {
 }
 
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
     operators: Vec<DepOperator>,

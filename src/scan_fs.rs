@@ -8,6 +8,7 @@ use std::process::Command;
 use rayon::prelude::*;
 
 use crate::dep_manifest::DepManifest;
+use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
 
@@ -97,6 +98,28 @@ impl ScanFS {
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
+    // Alternative constructor from in-memory objects, mostly for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
+    fn from_exe_site_packages(
+            exe: PathBuf,
+            site: PathBuf,
+            packages: Vec<Package>,
+        ) -> Result<Self, String> {
+        let mut exe_to_sites = HashMap::new();
+        exe_to_sites.insert(exe.clone(), vec![site.clone()]);
+
+        let mut package_to_sites = HashMap::new();
+        for package in packages {
+            package_to_sites
+                .entry(package)
+                .or_insert_with(Vec::new)
+                .push(site.clone());
+        }
+        Ok(ScanFS {
+            exe_to_sites,
+            package_to_sites,
+        })
+    }
+
     //--------------------------------------------------------------------------
     /// The length of the scan is then number of unique packages.
     pub fn len(&self) -> usize {
@@ -111,6 +134,33 @@ impl ScanFS {
         }
         invalid
     }
+    //--------------------------------------------------------------------------
+    fn get_minimum_depspecs(&self) -> Vec<DepSpec> {
+        let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
+
+        for package in self.package_to_sites.keys() {
+            package_name_to_package
+            .entry(package.name.clone())
+            .or_insert_with(Vec::new)
+            .push(package.clone());
+        }
+        let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();        names.sort();
+
+        let mut min_depspecs: Vec<DepSpec> = Vec::new();
+
+        for name in names {
+            if let Some(packages) = package_name_to_package.get_mut(&name) {
+                packages.sort();
+                if let Some(package_min) = packages.first() {
+                    if let Ok(ds) = DepSpec::from_package(package_min) {
+                        min_depspecs.push(ds);
+                    }
+                }
+            }
+        }
+        min_depspecs
+    }
+
     //--------------------------------------------------------------------------
     // draft implementations
     pub(crate) fn report(&self) {
@@ -178,5 +228,27 @@ mod tests {
         assert_eq!(invalid2.len(), 1);
 
         // sfs.report();
+    }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn from_exe_site_packages_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3.8/site-packages");
+        let packages = vec![
+                Package::from_name_and_version("numpy", "1.19.3").unwrap(),
+                Package::from_name_and_version("numpy", "1.20.1").unwrap(),
+                Package::from_name_and_version("numpy", "2.1.1").unwrap(),
+                Package::from_name_and_version("requests", "0.7.6").unwrap(),
+                Package::from_name_and_version("requests", "2.32.3").unwrap(),
+                Package::from_name_and_version("flask", "3.0.3").unwrap(),
+                Package::from_name_and_version("flask", "1.1.3").unwrap(),
+                ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        assert_eq!(sfs.len(), 7);
+        // sfs.report();
+        let min_depspecs = sfs.get_minimum_depspecs();
+        println!("{:?}", min_depspecs);
+        let dm = DepManifest::from_dep_specs(&min_depspecs).unwrap();
+        assert_eq!(dm.len(), 3);
     }
 }
