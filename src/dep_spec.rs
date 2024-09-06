@@ -66,7 +66,7 @@ pub(crate) struct DepSpec {
     versions: Vec<VersionSpec>,
 }
 impl DepSpec {
-    pub fn new(input: &str) -> Result<Self, String> {
+    pub fn from_string(input: &str) -> Result<Self, String> {
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
             .map_err(|e| format!("Parsing error: {}", e))?;
 
@@ -125,6 +125,18 @@ impl DepSpec {
             versions,
         })
     }
+    pub fn from_package(package: &Package) -> Result<Self, String> {
+        let mut operators = Vec::new();
+        let mut versions = Vec::new();
+        operators.push(DepOperator::Eq);
+        versions.push(package.version.clone());
+        Ok(DepSpec {
+            name: package.name.clone(),
+            operators,
+            versions,
+        })
+    }
+
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
@@ -168,7 +180,7 @@ mod tests {
     #[test]
     fn test_dep_spec_a() {
         let input = "package>=0.2,<0.3";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.operators[1], DepOperator::LessThan);
@@ -176,7 +188,7 @@ mod tests {
     #[test]
     fn test_dep_spec_b() {
         let input = "package[foo]>=0.2; python_version < '2.7'";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         // println!("{:?}", ds1);
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
@@ -185,55 +197,55 @@ mod tests {
     #[test]
     fn test_dep_spec_c() {
         let input = "package==0.2<=";
-        assert!(DepSpec::new(input).is_err());
+        assert!(DepSpec::from_string(input).is_err());
     }
     #[test]
     fn test_dep_spec_d() {
         let input = "==0.2<=";
-        assert!(DepSpec::new(input).is_err());
+        assert!(DepSpec::from_string(input).is_err());
     }
     #[test]
     fn test_dep_spec_e() {
-        assert!(DepSpec::new("foo+==3").is_err());
+        assert!(DepSpec::from_string("foo+==3").is_err());
     }
     #[test]
     fn test_dep_spec_f() {
-        let ds1 = DepSpec::new("   foo==3    ").unwrap();
+        let ds1 = DepSpec::from_string("   foo==3    ").unwrap();
         assert_eq!(ds1.versions[0], VersionSpec::new("3"));
         assert_eq!(ds1.to_string(), "foo==3");
     }
 
     #[test]
     fn test_dep_spec_g() {
-        let ds1 = DepSpec::new("   foo==3 ,  <  4  ,  != 3.5   ").unwrap();
+        let ds1 = DepSpec::from_string("   foo==3 ,  <  4  ,  != 3.5   ").unwrap();
         // assert_eq!(ds1.versions[0], VersionSpec::new("3    "));
         assert_eq!(ds1.to_string(), "foo==3,<4,!=3.5");
     }
 
     #[test]
     fn test_dep_spec_h1() {
-        let ds1 = DepSpec::new("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx")
+        let ds1 = DepSpec::from_string("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx")
             .unwrap();
         assert_eq!(ds1.to_string(), "foo");
     }
     #[test]
     fn test_dep_spec_h2() {
-        let ds1 = DepSpec::new("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
+        let ds1 = DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
         assert_eq!(ds1.to_string(), "package-two");
     }
     #[test]
     fn test_dep_spec_h3() {
-        let ds1 = DepSpec::new("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
+        let ds1 = DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
         assert_eq!(ds1.to_string(), "package-four");
     }
     #[test]
     fn test_dep_spec_h4() {
-        let ds1 = DepSpec::new("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
+        let ds1 = DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
         assert_eq!(ds1.to_string(), "pip");
     }
     #[test]
     fn test_dep_spec_h5() {
-        let ds1 = DepSpec::new("pip @ https://github.com/pypa/pip/archive/1.3.1.zip#sha1=da9234ee9982d4bbb3c72346a6de940a148ea686").unwrap();
+        let ds1 = DepSpec::from_string("pip @ https://github.com/pypa/pip/archive/1.3.1.zip#sha1=da9234ee9982d4bbb3c72346a6de940a148ea686").unwrap();
         assert_eq!(ds1.to_string(), "pip");
     }
 
@@ -241,7 +253,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_a() {
         let input = "package>0.2,<2.0";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.validate_version(&VersionSpec::new("0.3")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("0.2")), false);
@@ -251,7 +263,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_b() {
         let input = "package>0.2,<2.0";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.0")), false);
         assert_eq!(
@@ -262,7 +274,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_c() {
         let input = "package>=2.0,<=3.0";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.0")), true);
         assert_eq!(
             ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
@@ -273,7 +285,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_d() {
         let input = "package==2.*";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.4")), true);
         assert_eq!(
             ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
@@ -285,7 +297,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_e() {
         let input = "requests [security,tests] >= 2.8.1, == 2.8.*, < 3; python_version < '2.7'";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.1")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.2.1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.0")), false);
@@ -294,7 +306,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_f() {
         let input = "name>=3,<2";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("3")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("4")), false);
@@ -302,7 +314,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_g() {
         let input = "name==1.1.post1";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
@@ -310,7 +322,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_h() {
         let input = "name==1.1a1";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), true);
         // this is supposed to match...
@@ -319,7 +331,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_i() {
         let input = "name==1.1";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0.0")), true);
@@ -331,25 +343,25 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_j1() {
         let input = "name===12";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("12")), true);
     }
     #[test]
     fn test_dep_spec_validate_version_j2() {
         let input = "name===12++";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("12++")), true);
     }
     #[test]
     fn test_dep_spec_validate_version_k() {
         let input = "name";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
     }
     #[test]
     fn test_dep_spec_validate_version_l1() {
         let input = "name==1.*,<1.10";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
@@ -357,7 +369,7 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_version_l2() {
         let input = "name<1.10,==1.*";
-        let ds1 = DepSpec::new(input).unwrap();
+        let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
@@ -366,37 +378,45 @@ mod tests {
     #[test]
     fn test_dep_spec_validate_package_a() {
         let p1 = Package::from_name_and_version("package", "1.0").unwrap();
-        let ds1 = DepSpec::new("package>0.5,<1.5").unwrap();
+        let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
         assert_eq!(ds1.validate_package(&p1), true);
     }
     #[test]
     fn test_dep_spec_validate_package_b() {
         let p1 = Package::from_name_and_version("package", "1.5").unwrap();
-        let ds1 = DepSpec::new("package>0.5,<1.5").unwrap();
+        let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
         assert_eq!(ds1.validate_package(&p1), false);
     }
     #[test]
     fn test_dep_spec_validate_package_c() {
         let p1 = Package::from_name_and_version("package", "1.0").unwrap();
-        let ds1 = DepSpec::new("package>0.5,<1.5,!=1.0").unwrap();
+        let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
         assert_eq!(ds1.validate_package(&p1), false);
     }
     #[test]
     fn test_dep_spec_validate_package_d() {
         let p1 = Package::from_name_and_version("package", "1.0.0.0.1").unwrap();
-        let ds1 = DepSpec::new("package>0.5,<1.5,!=1.0").unwrap();
+        let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
         assert_eq!(ds1.validate_package(&p1), true);
     }
 
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_to_string_a() {
-        let ds1 = DepSpec::new("package  >=0.2,  <0.3   ").unwrap();
+        let ds1 = DepSpec::from_string("package  >=0.2,  <0.3   ").unwrap();
         assert_eq!(ds1.to_string(), "package>=0.2,<0.3");
     }
     #[test]
     fn test_dep_spec_to_string_b() {
-        let ds1 = DepSpec::new("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
+        let ds1 = DepSpec::from_string("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
         assert_eq!(ds1.to_string(), "requests>=2.8.1,==2.8.*");
     }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_from_package_a() {
+        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let ds = DepSpec::from_package(&p).unwrap();
+        assert_eq!(ds.to_string(), "foo==1.2.3.4");
+    }
+
 }

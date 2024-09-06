@@ -20,7 +20,7 @@ impl DepManifest {
     {
         let mut dep_specs = HashMap::new();
         for spec in ds_iter {
-            let dep_spec = DepSpec::new(spec.as_ref())?;
+            let dep_spec = DepSpec::from_string(spec.as_ref())?;
             if dep_specs.contains_key(&dep_spec.name) {
                 return Err(format!("Duplicate package name found: {}", dep_spec.name));
             }
@@ -57,7 +57,7 @@ impl DepManifest {
     //     if let Some(dependencies) = parsed_toml.get("tool").and_then(|t| t.get("poetry")).and_then(|p| p.get("dependencies")) {
     //         for (name, version) in dependencies.as_table().ok_or("Dependencies is not a table")? {
     //             let spec = format!("{} {}", name, version.as_str().unwrap_or(""));
-    //             let dep_spec = DepSpec::new(&spec)?;
+    //             let dep_spec = DepSpec::from_string(&spec)?;
     //             packages.insert(dep_spec.name.clone(), dep_spec);
     //         }
     //     } else {
