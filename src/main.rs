@@ -6,7 +6,13 @@ mod scan_fs;
 mod version_spec;
 use crate::scan_fs::ScanFS;
 
-// TODO: command line that takes a requirements file and validated all packages against it using colored output
+// NEXT:
+// DepSpec has a from_package
+// ScanFS, given an fp, writes out a requirements-bound file (not a lock file)
+// Implement command line entry point that takes a requirements bound file and validates
+// Implement a colorful display
+// Implement a monitoring mode
+
 
 fn main() {
     let sfs = ScanFS::from_defaults().unwrap();
