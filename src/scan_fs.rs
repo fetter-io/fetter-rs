@@ -100,10 +100,10 @@ impl ScanFS {
     }
     // Alternative constructor from in-memory objects, mostly for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
     fn from_exe_site_packages(
-            exe: PathBuf,
-            site: PathBuf,
-            packages: Vec<Package>,
-        ) -> Result<Self, String> {
+        exe: PathBuf,
+        site: PathBuf,
+        packages: Vec<Package>,
+    ) -> Result<Self, String> {
         let mut exe_to_sites = HashMap::new();
         exe_to_sites.insert(exe.clone(), vec![site.clone()]);
 
@@ -140,11 +140,12 @@ impl ScanFS {
 
         for package in self.package_to_sites.keys() {
             package_name_to_package
-            .entry(package.name.clone())
-            .or_insert_with(Vec::new)
-            .push(package.clone());
+                .entry(package.name.clone())
+                .or_insert_with(Vec::new)
+                .push(package.clone());
         }
-        let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();        names.sort();
+        let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();
+        names.sort();
 
         let mut min_depspecs: Vec<DepSpec> = Vec::new();
 
@@ -235,14 +236,14 @@ mod tests {
         let exe = PathBuf::from("/usr/bin/python3");
         let site = PathBuf::from("/usr/lib/python3.8/site-packages");
         let packages = vec![
-                Package::from_name_and_version("numpy", "1.19.3").unwrap(),
-                Package::from_name_and_version("numpy", "1.20.1").unwrap(),
-                Package::from_name_and_version("numpy", "2.1.1").unwrap(),
-                Package::from_name_and_version("requests", "0.7.6").unwrap(),
-                Package::from_name_and_version("requests", "2.32.3").unwrap(),
-                Package::from_name_and_version("flask", "3.0.3").unwrap(),
-                Package::from_name_and_version("flask", "1.1.3").unwrap(),
-                ];
+            Package::from_name_and_version("numpy", "1.19.3").unwrap(),
+            Package::from_name_and_version("numpy", "1.20.1").unwrap(),
+            Package::from_name_and_version("numpy", "2.1.1").unwrap(),
+            Package::from_name_and_version("requests", "0.7.6").unwrap(),
+            Package::from_name_and_version("requests", "2.32.3").unwrap(),
+            Package::from_name_and_version("flask", "3.0.3").unwrap(),
+            Package::from_name_and_version("flask", "1.1.3").unwrap(),
+        ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         assert_eq!(sfs.len(), 7);
         // sfs.report();

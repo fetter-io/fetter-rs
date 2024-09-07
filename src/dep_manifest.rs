@@ -142,9 +142,9 @@ mod tests {
     #[test]
     fn test_from_dep_specs_a() {
         let ds = vec![
-                DepSpec::from_string("numpy==1.19.1").unwrap(),
-                DepSpec::from_string("requests>=1.4").unwrap(),
-                ];
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+        ];
         let dm = DepManifest::from_dep_specs(&ds).unwrap();
         assert_eq!(dm.len(), 2);
     }

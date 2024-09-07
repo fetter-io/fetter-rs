@@ -224,23 +224,28 @@ mod tests {
 
     #[test]
     fn test_dep_spec_h1() {
-        let ds1 = DepSpec::from_string("foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx")
-            .unwrap();
+        let ds1 = DepSpec::from_string(
+            "foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx",
+        )
+        .unwrap();
         assert_eq!(ds1.to_string(), "foo");
     }
     #[test]
     fn test_dep_spec_h2() {
-        let ds1 = DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
+        let ds1 =
+            DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
         assert_eq!(ds1.to_string(), "package-two");
     }
     #[test]
     fn test_dep_spec_h3() {
-        let ds1 = DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
+        let ds1 =
+            DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
         assert_eq!(ds1.to_string(), "package-four");
     }
     #[test]
     fn test_dep_spec_h4() {
-        let ds1 = DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
+        let ds1 =
+            DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
         assert_eq!(ds1.to_string(), "pip");
     }
     #[test]
@@ -418,5 +423,4 @@ mod tests {
         let ds = DepSpec::from_package(&p).unwrap();
         assert_eq!(ds.to_string(), "foo==1.2.3.4");
     }
-
 }
