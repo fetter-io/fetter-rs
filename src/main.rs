@@ -17,7 +17,6 @@ use std::path::PathBuf;
 // Implement a colorful display
 // Implement a monitoring mode
 
-
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -45,8 +44,6 @@ enum Commands {
         list: bool,
     },
 }
-
-
 
 //------------------------------------------------------------------------------
 
@@ -78,13 +75,4 @@ fn main() {
         }
         None => {}
     }
-
-
-
 }
-
-
-
-
-
-
