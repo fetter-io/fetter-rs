@@ -20,6 +20,7 @@ rayon = "1.10"
 pest = "2.3"
 pest_derive = "2.3"
 serde = { version = "1.0", features = ["derive"] }
+clap = { version = "4.5.17", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.12"
