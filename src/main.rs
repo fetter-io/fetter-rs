@@ -20,30 +20,35 @@ use std::path::PathBuf;
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// Optional name to operate on
-    name: Option<String>,
-
-    /// Sets a custom config file
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<PathBuf>,
-
-    /// Turn debugging information on
-    // #[arg(short, long, action = clap::ArgAction::Count)]
-    // debug: u8,
-
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// does testing things
+    #[command(about = "Validate packages in an environment.")]
     Validate {
-        /// lists test values
-        #[arg(short, long)]
-        list: bool,
+        #[arg(short, long, value_name = "FILE")]
+        bound: Option<PathBuf>,
+
+        #[command(subcommand)]
+        validate_command: ValidateCommand,
+
     },
 }
+
+#[derive(Subcommand)]
+enum ValidateCommand {
+    Display,
+    Write {
+        #[arg(short, long)]
+        output: String,
+    },
+
+}
+
+
+
 
 //------------------------------------------------------------------------------
 
@@ -55,22 +60,19 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    if let Some(name) = cli.name.as_deref() {
-        println!("Value for name: {name}");
-    }
+    // if let Some(name) = cli.name.as_deref() {
+    //     println!("Value for name: {name}");
+    // }
 
-    if let Some(config_path) = cli.config.as_deref() {
-        println!("Value for config: {}", config_path.display());
-    }
 
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::Validate { list }) => {
-            if *list {
-                println!("Printing testing lists...");
+        Some(Commands::Validate { bound, ..}) => {
+            if bound.is_some() {
+                println!("bounds...");
             } else {
-                println!("Not printing testing lists...");
+                println!("No bounds...");
             }
         }
         None => {}
