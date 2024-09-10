@@ -26,53 +26,80 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "Validate packages in an environment.")]
+    /// Validate packages in an environment
     Validate {
+        /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
 
         #[command(subcommand)]
-        validate_command: ValidateCommand,
-
+        validate_subcommand: ValidateSubcommand,
+    },
+    /// Analyze environment to report on installed packages.
+    Analyze {
+        #[command(subcommand)]
+        analyze_subcommand: AnalyzeSubcommand,
     },
 }
 
 #[derive(Subcommand)]
-enum ValidateCommand {
+enum ValidateSubcommand {
+    /// Display validation to the terminal.
     Display,
+    /// Write a validation report to a file.
     Write {
-        #[arg(short, long)]
-        output: String,
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
     },
+}
 
+#[derive(Subcommand)]
+enum AnalyzeSubcommand {
+    /// Display analysis to the terminal.
+    Display,
+    /// Write a analysis report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+    },
 }
 
 
 
-
 //------------------------------------------------------------------------------
-
-// fn main() {
-//     let sfs = ScanFS::from_defaults().unwrap();
-//     sfs.report();
-// }
+// Analyze: report information on system
+// Validate: test system against bound file
+// Derive: produce a requirements file from system condtions
+// Purge: remove unvalid packages
 
 fn main() {
     let cli = Cli::parse();
 
-    // if let Some(name) = cli.name.as_deref() {
-    //     println!("Value for name: {name}");
-    // }
-
-
-    // You can check for the existence of subcommands, and if found use their
-    // matches just as you would the top level cmd
     match &cli.command {
-        Some(Commands::Validate { bound, ..}) => {
+        Some(Commands::Validate { bound, validate_subcommand}) => {
             if bound.is_some() {
-                println!("bounds...");
-            } else {
-                println!("No bounds...");
+                println!("got bound");
+            }
+            match validate_subcommand {
+                ValidateSubcommand::Display => {
+                    println!("got display");
+                }
+                ValidateSubcommand::Write { output } => {
+                    println!("got write");
+                },
+            }
+        }
+        Some(Commands::Analyze { analyze_subcommand }) => {
+            match analyze_subcommand {
+                AnalyzeSubcommand::Display => {
+                    let sfs = ScanFS::from_defaults().unwrap();
+                    sfs.report_scan();
+                }
+                AnalyzeSubcommand::Write { output } => {
+                    let sfs = ScanFS::from_defaults().unwrap();
+                    let dm = sfs.to_dep_manifest();
+                    println!("{:?}", dm);
+                },
             }
         }
         None => {}

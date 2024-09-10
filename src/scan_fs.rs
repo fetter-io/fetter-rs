@@ -135,7 +135,8 @@ impl ScanFS {
         invalid
     }
     //--------------------------------------------------------------------------
-    fn get_minimum_depspecs(&self) -> Vec<DepSpec> {
+    // TODO: add booleans for lower bound, upper bound
+    pub(crate) fn to_dep_manifest(&self) -> Result<DepManifest, String>  {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {
@@ -159,12 +160,12 @@ impl ScanFS {
                 }
             }
         }
-        min_depspecs
+        DepManifest::from_dep_specs(&min_depspecs)
     }
 
     //--------------------------------------------------------------------------
     // draft implementations
-    pub(crate) fn report(&self) {
+    pub(crate) fn report_scan(&self) {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
 
@@ -247,9 +248,8 @@ mod tests {
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         assert_eq!(sfs.len(), 7);
         // sfs.report();
-        let min_depspecs = sfs.get_minimum_depspecs();
-        println!("{:?}", min_depspecs);
-        let dm = DepManifest::from_dep_specs(&min_depspecs).unwrap();
+        let dm = sfs.to_dep_manifest().unwrap();
+        println!("{:?}", dm);
         assert_eq!(dm.len(), 3);
     }
 }
