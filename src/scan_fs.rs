@@ -165,7 +165,7 @@ impl ScanFS {
 
     //--------------------------------------------------------------------------
     // draft implementations
-    pub(crate) fn report_scan(&self) {
+    pub(crate) fn display(&self) {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
 

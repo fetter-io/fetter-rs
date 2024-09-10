@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::path::PathBuf;
+use std::io::Write;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -103,6 +104,21 @@ impl DepManifest {
     //     Ok(manifest)
     // }
 
+    //--------------------------------------------------------------------------
+    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()>{
+        let mut file = File::create(file_path)?;
+        writeln!(file, "# created by parcelbind")?;
+        for ds in self.dep_specs.values() {
+            writeln!(file, "{}", ds)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn display(&self) {
+        for ds in self.dep_specs.values() {
+            println!("{}", ds);
+        }
+    }
     //--------------------------------------------------------------------------
     pub fn len(&self) -> usize {
         self.dep_specs.len()
@@ -301,5 +317,22 @@ regex==2024.4.16
         assert_eq!(dm1.validate(&p2), true);
         let p2 = Package::from_name_and_version("regex", "2024.04.17").unwrap();
         assert_eq!(dm1.validate(&p2), false);
+    }
+
+
+    #[test]
+    fn test_to_requirements_a() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            DepSpec::from_string("static-frame>2.0,!=1.3").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("requirements.txt");
+        dm1.to_requirements(&file_path).unwrap();
+
+        let dm2 = DepManifest::from_requirements(&file_path).unwrap();
+        assert_eq!(dm2.len(), 3)
     }
 }

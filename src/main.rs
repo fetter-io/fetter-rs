@@ -10,8 +10,6 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 // NEXT:
-// Need to implment to_file() on DepManifest
-// Implement command line entry points
 // write a requurements bound file based on ScanFSs
 // takes a requirements bound file and validates
 // Implement a colorful display
@@ -35,11 +33,17 @@ enum Commands {
         #[command(subcommand)]
         validate_subcommand: ValidateSubcommand,
     },
-    /// Analyze environment to report on installed packages.
-    Analyze {
+    /// Scan environment to report on installed packages.
+    Scan {
         #[command(subcommand)]
-        analyze_subcommand: AnalyzeSubcommand,
+        scan_subcommand: ScanSubcommand,
     },
+    /// Scan environment to report on installed packages.
+    Derive {
+        #[command(subcommand)]
+        derive_subcommand: DeriveSubcommand,
+    },
+
 }
 
 #[derive(Subcommand)]
@@ -54,10 +58,10 @@ enum ValidateSubcommand {
 }
 
 #[derive(Subcommand)]
-enum AnalyzeSubcommand {
-    /// Display analysis to the terminal.
+enum ScanSubcommand {
+    /// Display scan to the terminal.
     Display,
-    /// Write a analysis report to a file.
+    /// Write a scan report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -65,9 +69,21 @@ enum AnalyzeSubcommand {
 }
 
 
+// might support output to requirements or toml?
+#[derive(Subcommand)]
+enum DeriveSubcommand {
+    /// Display derive to the terminal.
+    Display,
+    /// Write a derive report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+    },
+}
+
 
 //------------------------------------------------------------------------------
-// Analyze: report information on system
+// Scan: report information on system
 // Validate: test system against bound file
 // Derive: produce a requirements file from system condtions
 // Purge: remove unvalid packages
@@ -89,16 +105,30 @@ fn main() {
                 },
             }
         }
-        Some(Commands::Analyze { analyze_subcommand }) => {
-            match analyze_subcommand {
-                AnalyzeSubcommand::Display => {
+        Some(Commands::Scan { scan_subcommand }) => {
+            match scan_subcommand {
+                ScanSubcommand::Display => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    sfs.report_scan();
+                    sfs.display();
                 }
-                AnalyzeSubcommand::Write { output } => {
+                ScanSubcommand::Write { output } => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    let dm = sfs.to_dep_manifest();
-                    println!("{:?}", dm);
+                    sfs.display();
+                },
+            }
+        }
+        // todo: need parameter for min, max, eq
+        Some(Commands::Derive { derive_subcommand }) => {
+            match derive_subcommand {
+                DeriveSubcommand::Display => {
+                    let sfs = ScanFS::from_defaults().unwrap();
+                    let dm = sfs.to_dep_manifest().unwrap();
+                    dm.display();
+                }
+                DeriveSubcommand::Write { output } => {
+                    let sfs = ScanFS::from_defaults().unwrap();
+                    sfs.display();
+                    // TODO: take a file path and write in text or json
                 },
             }
         }
