@@ -8,7 +8,6 @@ use std::io::Write;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
-// TODO: add export routes: to_requirements, to_pyproject
 
 // A DepManifest is essential a requirements file, implemented as HashMap for quick lookup by package name.
 #[derive(Debug)]

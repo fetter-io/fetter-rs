@@ -9,8 +9,17 @@ use rayon::prelude::*;
 
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::dep_spec::DepOperator;
 use crate::exe_search::find_exe;
 use crate::package::Package;
+
+//------------------------------------------------------------------------------
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum Anchor {
+    Lower,
+    Upper,
+    Both,
+}
 
 //------------------------------------------------------------------------------
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
@@ -135,8 +144,11 @@ impl ScanFS {
         invalid
     }
     //--------------------------------------------------------------------------
-    // TODO: add booleans for lower bound, upper bound
-    pub(crate) fn to_dep_manifest(&self) -> Result<DepManifest, String>  {
+    // anchor: lower, upper, both
+    // operator: greater, eq,
+    pub(crate) fn to_dep_manifest(&self,
+            anchor: Anchor,
+            ) -> Result<DepManifest, String>  {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {
@@ -145,6 +157,7 @@ impl ScanFS {
                 .or_insert_with(Vec::new)
                 .push(package.clone());
         }
+        // TODO: need case insensitive sort
         let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();
         names.sort();
 
@@ -153,8 +166,14 @@ impl ScanFS {
         for name in names {
             if let Some(packages) = package_name_to_package.get_mut(&name) {
                 packages.sort();
+                // match anchor {
+                //     Anchor::Lower => {
+                //     }
+                //     Anchor::Upper => todo!(),
+                //     Anchor::Both => todo!(),
+                // }
                 if let Some(package_min) = packages.first() {
-                    if let Ok(ds) = DepSpec::from_package(package_min) {
+                    if let Ok(ds) = DepSpec::from_package(package_min, DepOperator::Eq) {
                         min_depspecs.push(ds);
                     }
                 }
@@ -248,7 +267,7 @@ mod tests {
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         assert_eq!(sfs.len(), 7);
         // sfs.report();
-        let dm = sfs.to_dep_manifest().unwrap();
+        let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
         println!("{:?}", dm);
         assert_eq!(dm.len(), 3);
     }

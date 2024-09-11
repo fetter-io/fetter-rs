@@ -5,12 +5,12 @@ mod package;
 mod scan_fs;
 mod version_spec;
 use crate::scan_fs::ScanFS;
+use crate::scan_fs::Anchor;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 // NEXT:
-// write a requurements bound file based on ScanFSs
 // takes a requirements bound file and validates
 // Implement a colorful display
 // Implement a monitoring mode
@@ -43,7 +43,6 @@ enum Commands {
         #[command(subcommand)]
         derive_subcommand: DeriveSubcommand,
     },
-
 }
 
 #[derive(Subcommand)]
@@ -122,12 +121,12 @@ fn main() {
             match derive_subcommand {
                 DeriveSubcommand::Display => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    let dm = sfs.to_dep_manifest().unwrap();
+                    let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
                     dm.display();
                 }
                 DeriveSubcommand::Write { output } => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    let dm = sfs.to_dep_manifest().unwrap();
+                    let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
                     // TODO: might have a higher-order func that branches based on extension between txt and json
                     dm.to_requirements(output);
                 },

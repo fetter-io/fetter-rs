@@ -14,7 +14,7 @@ use crate::version_spec::VersionSpec;
 struct DepSpecParser;
 
 #[derive(Debug, Clone, PartialEq)]
-enum DepOperator {
+pub(crate) enum DepOperator {
     LessThan,
     LessThanOrEq,
     Eq,
@@ -125,10 +125,13 @@ impl DepSpec {
             versions,
         })
     }
-    pub fn from_package(package: &Package) -> Result<Self, String> {
+    pub fn from_package(
+            package: &Package,
+            operator: DepOperator,
+            ) -> Result<Self, String> {
         let mut operators = Vec::new();
         let mut versions = Vec::new();
-        operators.push(DepOperator::Eq);
+        operators.push(operator);
         versions.push(package.version.clone());
         Ok(DepSpec {
             name: package.name.clone(),
@@ -420,7 +423,19 @@ mod tests {
     #[test]
     fn test_dep_spec_from_package_a() {
         let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
-        let ds = DepSpec::from_package(&p).unwrap();
+        let ds = DepSpec::from_package(&p, DepOperator::Eq).unwrap();
         assert_eq!(ds.to_string(), "foo==1.2.3.4");
+    }
+    #[test]
+    fn test_dep_spec_from_package_b() {
+        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let ds = DepSpec::from_package(&p, DepOperator::GreaterThan).unwrap();
+        assert_eq!(ds.to_string(), "foo>1.2.3.4");
+    }
+    #[test]
+    fn test_dep_spec_from_package_c() {
+        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let ds = DepSpec::from_package(&p, DepOperator::LessThanOrEq).unwrap();
+        assert_eq!(ds.to_string(), "foo<=1.2.3.4");
     }
 }
