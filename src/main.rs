@@ -4,8 +4,8 @@ mod exe_search;
 mod package;
 mod scan_fs;
 mod version_spec;
-use crate::scan_fs::ScanFS;
 use crate::scan_fs::Anchor;
+use crate::scan_fs::ScanFS;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -96,7 +96,6 @@ enum ScanSubcommand {
     },
 }
 
-
 // might support output to requirements or toml?
 #[derive(Subcommand)]
 enum DeriveSubcommand {
@@ -114,7 +113,7 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Validate { bound, subcommands}) => {
+        Some(Commands::Validate { bound, subcommands }) => {
             if bound.is_some() {
                 println!("got bound");
             }
@@ -124,22 +123,23 @@ fn main() {
                 }
                 ValidateSubcommand::Write { output } => {
                     println!("got write");
-                },
-            }
-        }
-        Some(Commands::Scan { subcommands }) => {
-            match subcommands {
-                ScanSubcommand::Display => {
-                    let sfs = ScanFS::from_defaults().unwrap();
-                    sfs.display();
                 }
-                ScanSubcommand::Write { output } => {
-                    let sfs = ScanFS::from_defaults().unwrap();
-                    sfs.display();
-                },
             }
         }
-        Some(Commands::Derive { subcommands, anchor }) => {
+        Some(Commands::Scan { subcommands }) => match subcommands {
+            ScanSubcommand::Display => {
+                let sfs = ScanFS::from_defaults().unwrap();
+                sfs.display();
+            }
+            ScanSubcommand::Write { output } => {
+                let sfs = ScanFS::from_defaults().unwrap();
+                sfs.display();
+            }
+        },
+        Some(Commands::Derive {
+            subcommands,
+            anchor,
+        }) => {
             match subcommands {
                 DeriveSubcommand::Display => {
                     let sfs = ScanFS::from_defaults().unwrap();
@@ -151,7 +151,7 @@ fn main() {
                     let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
                     // TODO: might have a higher-order func that branches based on extension between txt and json
                     let _ = dm.to_requirements(output);
-                },
+                }
             }
         }
         None => {}

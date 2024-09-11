@@ -8,8 +8,8 @@ use std::process::Command;
 use rayon::prelude::*;
 
 use crate::dep_manifest::DepManifest;
-use crate::dep_spec::DepSpec;
 use crate::dep_spec::DepOperator;
+use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
 
@@ -146,9 +146,7 @@ impl ScanFS {
     //--------------------------------------------------------------------------
     // anchor: lower, upper, both
     // operator: greater, eq,
-    pub(crate) fn to_dep_manifest(&self,
-            anchor: Anchor,
-            ) -> Result<DepManifest, String>  {
+    pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {
@@ -170,15 +168,19 @@ impl ScanFS {
                     if let Some(pkg_max) = packages.last() {
                         match anchor {
                             Anchor::Lower => {
-                                if let Ok(ds) = DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq) {
+                                if let Ok(ds) =
+                                    DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq)
+                                {
                                     dep_specs.push(ds);
                                 }
                             }
                             Anchor::Upper => {
-                                if let Ok(ds) = DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq) {
+                                if let Ok(ds) =
+                                    DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
+                                {
                                     dep_specs.push(ds);
                                 }
-                            },
+                            }
                             Anchor::Both => return Err("Not implemented".to_string()),
                         }
                     }

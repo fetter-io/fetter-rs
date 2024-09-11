@@ -125,10 +125,7 @@ impl DepSpec {
             versions,
         })
     }
-    pub fn from_package(
-            package: &Package,
-            operator: DepOperator,
-            ) -> Result<Self, String> {
+    pub fn from_package(package: &Package, operator: DepOperator) -> Result<Self, String> {
         let mut operators = Vec::new();
         let mut versions = Vec::new();
         operators.push(operator);

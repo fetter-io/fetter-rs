@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
-use std::path::PathBuf;
 use std::io::Write;
+use std::path::PathBuf;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
-
 
 // A DepManifest is essential a requirements file, implemented as HashMap for quick lookup by package name.
 #[derive(Debug)]
@@ -104,7 +103,7 @@ impl DepManifest {
     // }
 
     //--------------------------------------------------------------------------
-    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()>{
+    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
         let mut file = File::create(file_path)?;
         writeln!(file, "# created by parcelbind")?;
 
@@ -323,7 +322,6 @@ regex==2024.4.16
         let p2 = Package::from_name_and_version("regex", "2024.04.17").unwrap();
         assert_eq!(dm1.validate(&p2), false);
     }
-
 
     #[test]
     fn test_to_requirements_a() {
