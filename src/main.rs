@@ -117,7 +117,7 @@ fn main() {
                 },
             }
         }
-        // todo: need parameter for min, max, eq
+        // TODO: need parameter for min, max, eq
         Some(Commands::Derive { derive_subcommand }) => {
             match derive_subcommand {
                 DeriveSubcommand::Display => {
@@ -127,8 +127,9 @@ fn main() {
                 }
                 DeriveSubcommand::Write { output } => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    sfs.display();
-                    // TODO: take a file path and write in text or json
+                    let dm = sfs.to_dep_manifest().unwrap();
+                    // TODO: might have a higher-order func that branches based on extension between txt and json
+                    dm.to_requirements(output);
                 },
             }
         }

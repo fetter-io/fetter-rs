@@ -108,15 +108,21 @@ impl DepManifest {
     pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()>{
         let mut file = File::create(file_path)?;
         writeln!(file, "# created by parcelbind")?;
-        for ds in self.dep_specs.values() {
-            writeln!(file, "{}", ds)?;
+
+        let mut names: Vec<String> = self.dep_specs.keys().cloned().collect();
+        names.sort(); // TODO: need case insensitve search
+
+        for name in names {
+            writeln!(file, "{}", self.dep_specs.get(&name).unwrap());
         }
         Ok(())
     }
 
     pub(crate) fn display(&self) {
-        for ds in self.dep_specs.values() {
-            println!("{}", ds);
+        let mut names: Vec<String> = self.dep_specs.keys().cloned().collect();
+        names.sort(); // TODO: need case insensitve search
+        for name in names {
+            println!("{}", self.dep_specs.get(&name).unwrap());
         }
     }
     //--------------------------------------------------------------------------
