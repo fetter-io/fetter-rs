@@ -15,6 +15,8 @@ use std::path::PathBuf;
 // Implement a colorful display
 // Implement a monitoring mode
 
+//------------------------------------------------------------------------------
+// utility enums
 
 #[derive(Copy, Clone, ValueEnum)]
 pub(crate) enum CliAnchor {
@@ -22,14 +24,28 @@ pub(crate) enum CliAnchor {
     Upper,
     Both,
 }
+impl From<CliAnchor> for Anchor {
+    fn from(cli_anchor: CliAnchor) -> Self {
+        match cli_anchor {
+            CliAnchor::Lower => Anchor::Lower,
+            CliAnchor::Upper => Anchor::Upper,
+            CliAnchor::Both => Anchor::Both,
+        }
+    }
+}
 
-
+//------------------------------------------------------------------------------
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 }
+
+// Scan: report information on system
+// Validate: test system against bound file
+// Derive: produce a requirements file from system condtions
+// Purge: remove unvalid packages
 
 #[derive(Subcommand)]
 enum Commands {
@@ -40,17 +56,21 @@ enum Commands {
         bound: Option<PathBuf>,
 
         #[command(subcommand)]
-        validate_subcommand: ValidateSubcommand,
+        subcommands: ValidateSubcommand,
     },
     /// Scan environment to report on installed packages.
     Scan {
         #[command(subcommand)]
-        scan_subcommand: ScanSubcommand,
+        subcommands: ScanSubcommand,
     },
     /// Scan environment to report on installed packages.
     Derive {
+        // Select the nature of the bound in the derived requirements.
+        #[arg(short, long, value_enum)]
+        anchor: CliAnchor,
+
         #[command(subcommand)]
-        derive_subcommand: DeriveSubcommand,
+        subcommands: DeriveSubcommand,
     },
 }
 
@@ -89,22 +109,16 @@ enum DeriveSubcommand {
     },
 }
 
-
 //------------------------------------------------------------------------------
-// Scan: report information on system
-// Validate: test system against bound file
-// Derive: produce a requirements file from system condtions
-// Purge: remove unvalid packages
-
 fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Validate { bound, validate_subcommand}) => {
+        Some(Commands::Validate { bound, subcommands}) => {
             if bound.is_some() {
                 println!("got bound");
             }
-            match validate_subcommand {
+            match subcommands {
                 ValidateSubcommand::Display => {
                     println!("got display");
                 }
@@ -113,8 +127,8 @@ fn main() {
                 },
             }
         }
-        Some(Commands::Scan { scan_subcommand }) => {
-            match scan_subcommand {
+        Some(Commands::Scan { subcommands }) => {
+            match subcommands {
                 ScanSubcommand::Display => {
                     let sfs = ScanFS::from_defaults().unwrap();
                     sfs.display();
@@ -125,17 +139,16 @@ fn main() {
                 },
             }
         }
-        // TODO: need parameter for min, max, eq
-        Some(Commands::Derive { derive_subcommand }) => {
-            match derive_subcommand {
+        Some(Commands::Derive { subcommands, anchor }) => {
+            match subcommands {
                 DeriveSubcommand::Display => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
+                    let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
                     dm.display();
                 }
                 DeriveSubcommand::Write { output } => {
                     let sfs = ScanFS::from_defaults().unwrap();
-                    let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
+                    let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
                     // TODO: might have a higher-order func that branches based on extension between txt and json
                     let _ = dm.to_requirements(output);
                 },
