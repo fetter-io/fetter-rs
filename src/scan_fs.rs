@@ -144,7 +144,6 @@ impl ScanFS {
         invalid
     }
     //--------------------------------------------------------------------------
-    // anchor: lower, upper, both
     // operator: greater, eq,
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
@@ -162,29 +161,28 @@ impl ScanFS {
         let mut dep_specs: Vec<DepSpec> = Vec::new();
 
         for name in names {
-            if let Some(packages) = package_name_to_package.get_mut(&name) {
-                packages.sort();
-                if let Some(pkg_min) = packages.first() {
-                    if let Some(pkg_max) = packages.last() {
-                        match anchor {
-                            Anchor::Lower => {
-                                if let Ok(ds) =
-                                    DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq)
-                                {
-                                    dep_specs.push(ds);
-                                }
-                            }
-                            Anchor::Upper => {
-                                if let Ok(ds) =
-                                    DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
-                                {
-                                    dep_specs.push(ds);
-                                }
-                            }
-                            Anchor::Both => return Err("Not implemented".to_string()),
-                        }
-                    }
-                }
+            let packages = match package_name_to_package.get_mut(&name) {
+                Some(packages) => packages,
+                None => continue,
+            };
+            packages.sort();
+
+            let pkg_min = match packages.first() {
+                Some(pkg) => pkg,
+                None => continue,
+            };
+            let pkg_max = match packages.last() {
+                Some(pkg) => pkg,
+                None => continue,
+            };
+
+            let ds = match anchor {
+                Anchor::Lower => DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq),
+                Anchor::Upper => DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq),
+                Anchor::Both => return Err("Not implemented".to_string()),
+            };
+            if let Ok(dep_spec) = ds {
+                dep_specs.push(dep_spec);
             }
         }
         DepManifest::from_dep_specs(&dep_specs)
