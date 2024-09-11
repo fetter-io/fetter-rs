@@ -139,6 +139,7 @@ impl DepSpec {
             versions,
         })
     }
+    // TODO: from_dep_specs: if all have the same name, combine operators and versions?
 
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length

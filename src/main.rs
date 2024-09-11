@@ -7,13 +7,22 @@ mod version_spec;
 use crate::scan_fs::ScanFS;
 use crate::scan_fs::Anchor;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 // NEXT:
 // takes a requirements bound file and validates
 // Implement a colorful display
 // Implement a monitoring mode
+
+
+#[derive(Copy, Clone, ValueEnum)]
+pub(crate) enum CliAnchor {
+    Lower,
+    Upper,
+    Both,
+}
+
 
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
@@ -128,7 +137,7 @@ fn main() {
                     let sfs = ScanFS::from_defaults().unwrap();
                     let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
                     // TODO: might have a higher-order func that branches based on extension between txt and json
-                    dm.to_requirements(output);
+                    let _ = dm.to_requirements(output);
                 },
             }
         }

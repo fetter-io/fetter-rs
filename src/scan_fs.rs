@@ -161,25 +161,31 @@ impl ScanFS {
         let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();
         names.sort();
 
-        let mut min_depspecs: Vec<DepSpec> = Vec::new();
+        let mut dep_specs: Vec<DepSpec> = Vec::new();
 
         for name in names {
             if let Some(packages) = package_name_to_package.get_mut(&name) {
                 packages.sort();
-                // match anchor {
-                //     Anchor::Lower => {
-                //     }
-                //     Anchor::Upper => todo!(),
-                //     Anchor::Both => todo!(),
-                // }
-                if let Some(package_min) = packages.first() {
-                    if let Ok(ds) = DepSpec::from_package(package_min, DepOperator::Eq) {
-                        min_depspecs.push(ds);
+                if let Some(pkg_min) = packages.first() {
+                    if let Some(pkg_max) = packages.last() {
+                        match anchor {
+                            Anchor::Lower => {
+                                if let Ok(ds) = DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq) {
+                                    dep_specs.push(ds);
+                                }
+                            }
+                            Anchor::Upper => {
+                                if let Ok(ds) = DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq) {
+                                    dep_specs.push(ds);
+                                }
+                            },
+                            Anchor::Both => return Err("Not implemented".to_string()),
+                        }
                     }
                 }
             }
         }
-        DepManifest::from_dep_specs(&min_depspecs)
+        DepManifest::from_dep_specs(&dep_specs)
     }
 
     //--------------------------------------------------------------------------
