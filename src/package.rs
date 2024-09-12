@@ -33,10 +33,11 @@ impl Package {
     //     format!("{}-{}", self.name, self.version)
     // }
 }
+// Perform a case insensitve ordering.
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.name
-            .cmp(&other.name)
+        self.name.to_lowercase()
+            .cmp(&other.name.to_lowercase())
             .then_with(|| self.version.cmp(&other.version))
     }
 }

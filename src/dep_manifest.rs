@@ -103,26 +103,35 @@ impl DepManifest {
     // }
 
     //--------------------------------------------------------------------------
-    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
-        let mut file = File::create(file_path)?;
-        writeln!(file, "# created by parcelbind")?;
-
+    fn get_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self.dep_specs.keys().cloned().collect();
-        names.sort(); // TODO: need case insensitve search
+        names.sort_by_key(|name| name.to_lowercase());
+        names
+    }
 
-        for name in names {
-            writeln!(file, "{}", self.dep_specs.get(&name).unwrap());
+    /// Given a writer, write out all dependency specs
+    fn write_dep_specs<W: Write>(&self, mut writer: W) -> io::Result<()> {
+        writeln!(writer, "# created by fetter")?;
+        for name in self.get_names() {
+            writeln!(writer, "{}", self.dep_specs.get(&name).unwrap())?;
         }
         Ok(())
     }
 
-    pub(crate) fn display(&self) {
-        let mut names: Vec<String> = self.dep_specs.keys().cloned().collect();
-        names.sort(); // TODO: need case insensitve search
-        for name in names {
-            println!("{}", self.dep_specs.get(&name).unwrap());
-        }
+    //--------------------------------------------------------------------------
+    // Writes to a file
+    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
+        let file = File::create(file_path)?;
+        self.write_dep_specs(file)
     }
+
+    // Prints to stdout
+    pub(crate) fn display(&self) {
+        let stdout = io::stdout();
+        let handle = stdout.lock(); // For performance with many writes
+        self.write_dep_specs(handle).unwrap();
+    }
+
     //--------------------------------------------------------------------------
     pub fn len(&self) -> usize {
         self.dep_specs.len()

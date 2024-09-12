@@ -130,6 +130,14 @@ impl ScanFS {
     }
 
     //--------------------------------------------------------------------------
+
+    /// Return sorted packages.
+    fn get_packages(&self) -> Vec<Package> {
+        let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
+        packages.sort();
+        packages
+    }
+
     /// The length of the scan is then number of unique packages.
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
@@ -154,12 +162,8 @@ impl ScanFS {
                 .or_insert_with(Vec::new)
                 .push(package.clone());
         }
-        // TODO: need case insensitive sort
         let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();
-        names.sort();
-
         let mut dep_specs: Vec<DepSpec> = Vec::new();
-
         for name in names {
             let packages = match package_name_to_package.get_mut(&name) {
                 Some(packages) => packages,
@@ -191,12 +195,8 @@ impl ScanFS {
     //--------------------------------------------------------------------------
     // draft implementations
     pub(crate) fn display(&self) {
-        let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
-        packages.sort();
-
         let mut site_packages: HashSet<&PathBuf> = HashSet::new();
-
-        for package in packages {
+        for package in self.get_packages() {
             println!("{:?}", package);
             if let Some(site_paths) = self.package_to_sites.get(&package) {
                 for path in site_paths {
