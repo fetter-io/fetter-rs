@@ -6,6 +6,7 @@ mod scan_fs;
 mod version_spec;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
+use crate::dep_manifest::DepManifest;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -82,6 +83,13 @@ enum Commands {
         #[command(subcommand)]
         subcommands: DeriveSubcommand,
     },
+    /// Purge packages that fail validation
+    Purge {
+        /// File path from which to read bound requirements.
+        #[arg(short, long, value_name = "FILE")]
+        bound: Option<PathBuf>,
+
+    },
 }
 
 #[derive(Subcommand)]
@@ -121,13 +129,22 @@ enum DeriveSubcommand {
 //------------------------------------------------------------------------------
 
 
-// Get a scan, optionally using exe_paths if provided
+// Get a ScanFS, optionally using exe_paths if provided
 fn get_scan(exe_paths: Option<Vec<PathBuf>>) -> Result<ScanFS, String> {
     if let Some(exe_paths) = exe_paths {
         ScanFS::from_exes(exe_paths)
     }
     else {
         ScanFS::from_exe_scan()
+    }
+}
+
+fn get_dep_manifest(bound: &Option<PathBuf>) -> Result<DepManifest, String> {
+    if let Some(bound) = bound {
+        DepManifest::from_requirements(bound)
+    }
+    else {
+        Err("Invalid bound path".to_string())
     }
 }
 
@@ -138,15 +155,14 @@ fn main() {
 
     match &cli.command {
         Some(Commands::Validate { bound, subcommands }) => {
-            if bound.is_some() {
-                println!("got bound");
-            }
+            let dm = get_dep_manifest(bound).unwrap();
+            let vr = sfs.validate(dm);
             match subcommands {
                 ValidateSubcommand::Display => {
-                    println!("got display");
+                    println!("{:?}", vr);
                 }
                 ValidateSubcommand::Write { output } => {
-                    println!("got write");
+                    println!("{:?}", vr);
                 }
             }
         }
@@ -174,6 +190,11 @@ fn main() {
                 }
             }
         }
+        Some(Commands::Purge { bound }) => {
+            let dm = get_dep_manifest(bound);
+            println!("purge");
+        }
+
         None => {}
     }
 }
