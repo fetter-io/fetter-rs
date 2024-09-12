@@ -12,6 +12,8 @@ use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
+use crate::validation::Validation;
+use crate::validation::ValidationItem;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -68,9 +70,7 @@ pub(crate) struct ScanFS {
 
 // The results of a file-system scan.
 impl ScanFS {
-    fn from_exe_to_sites(
-        exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
-    ) -> Result<Self, String> {
+    fn from_exe_to_sites(exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
@@ -97,9 +97,7 @@ impl ScanFS {
         })
     }
     // Given a Vec of PathBuf to executables, use them to collect site packages.
-    pub(crate) fn from_exes(
-        exes: Vec<PathBuf>,
-        ) -> Result<Self, String> {
+    pub(crate) fn from_exes(exes: Vec<PathBuf>) -> Result<Self, String> {
         let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = exes
             .into_par_iter()
             .map(|exe| {
@@ -155,14 +153,17 @@ impl ScanFS {
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
-    pub(crate) fn validate(&self, dm: DepManifest) -> HashSet<Package> {
-        let mut invalid: HashSet<Package> = HashSet::new();
-        for p in self.package_to_sites.keys() {
-            if !dm.validate(p) {
-                invalid.insert(p.clone());
+    pub(crate) fn validate(&self, dm: DepManifest) -> Validation {
+        // note: there might be duplicated validations we want to filter out
+        // let mut invalid: HashSet<Package> = HashSet::new();
+        let mut invalid: Vec<ValidationItem> = Vec::new();
+        for (package, sites) in &self.package_to_sites {
+            if !dm.validate(package) {
+                let ds = dm.get_dep_spec(&package.name).unwrap();
+                invalid.push(ValidationItem::new(package.clone(), ds, sites.clone()));
             }
         }
-        invalid
+        Validation { items: invalid }
     }
     //--------------------------------------------------------------------------
     // operator: greater, eq,

@@ -109,6 +109,10 @@ impl DepManifest {
         names
     }
 
+    pub fn get_dep_spec(&self, key: &str) -> Option<DepSpec> {
+        self.dep_specs.get(key).cloned()
+    }
+
     /// Given a writer, write out all dependency specs
     fn write_dep_specs<W: Write>(&self, mut writer: W) -> io::Result<()> {
         writeln!(writer, "# created by fetter")?;
