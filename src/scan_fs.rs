@@ -68,7 +68,7 @@ pub(crate) struct ScanFS {
 
 // The results of a file-system scan.
 impl ScanFS {
-    pub(crate) fn from_exe_to_sites(
+    fn from_exe_to_sites(
         exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
     ) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
@@ -96,7 +96,20 @@ impl ScanFS {
             package_to_sites,
         })
     }
-    pub(crate) fn from_defaults() -> Result<Self, String> {
+    // Given a Vec of PathBuf to executables, use them to collect site packages.
+    pub(crate) fn from_exes(
+        exes: Vec<PathBuf>,
+        ) -> Result<Self, String> {
+        let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = exes
+            .into_par_iter()
+            .map(|exe| {
+                let dirs = get_site_package_dirs(&exe);
+                (exe, dirs)
+            })
+            .collect();
+        Self::from_exe_to_sites(exe_to_sites)
+    }
+    pub(crate) fn from_exe_scan() -> Result<Self, String> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = find_exe()
             .into_par_iter()
