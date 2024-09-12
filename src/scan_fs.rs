@@ -162,7 +162,7 @@ impl ScanFS {
                 .or_insert_with(Vec::new)
                 .push(package.clone());
         }
-        let mut names: Vec<String> = package_name_to_package.keys().cloned().collect();
+        let names: Vec<String> = package_name_to_package.keys().cloned().collect();
         let mut dep_specs: Vec<DepSpec> = Vec::new();
         for name in names {
             let packages = match package_name_to_package.get_mut(&name) {

@@ -128,7 +128,7 @@ impl DepManifest {
     // Prints to stdout
     pub(crate) fn display(&self) {
         let stdout = io::stdout();
-        let handle = stdout.lock(); // For performance with many writes
+        let handle = stdout.lock();
         self.write_dep_specs(handle).unwrap();
     }
 
