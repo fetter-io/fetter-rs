@@ -1,10 +1,10 @@
 [package]
-name = "vigilnaut"
+name = "fetter"
 version = "0.1.0"
 edition = "2021"
 authors = ["Christopher Ariza"]
-homepage = "https://github.com/flexatone/vigilnaut"
-repository = "https://github.com/flexatone/vigilnaut"
+homepage = "https://github.com/flexatone/fetter"
+repository = "https://github.com/flexatone/fetter"
 readme = "README.md"
 
 description = "A monitor of supply chain dependencies."
