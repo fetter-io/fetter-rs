@@ -59,7 +59,11 @@ impl Validation {
 
             if include_sites {
                 let site_display = match &item.sites {
-                    Some(sites) => sites.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>().join(","),
+                    Some(sites) => sites
+                        .iter()
+                        .map(|s| format!("{:?}", s))
+                        .collect::<Vec<_>>()
+                        .join(","),
                     None => "".to_string(),
                 };
                 site_displays.push(site_display);
@@ -70,7 +74,6 @@ impl Validation {
 
             package_displays.push(pkg_display);
             dep_spec_displays.push(dep_display);
-
         }
         // TODO: optionally show sites
         println!(
