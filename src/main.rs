@@ -155,8 +155,8 @@ fn main() {
     match &cli.command {
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap();
-            let v = sfs.validate(dm);
             let include_sites = false;
+            let v = sfs.validate(dm, include_sites);
             match subcommands {
                 ValidateSubcommand::Display => {
                     v.display(include_sites);

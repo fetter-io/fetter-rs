@@ -154,14 +154,20 @@ impl ScanFS {
         self.package_to_sites.len()
     }
     /// Validate this scan against the provided DepManifest.
-    pub(crate) fn validate(&self, dm: DepManifest) -> Validation {
-        // note: there might be duplicated validations we want to filter out
-        // let mut invalid: HashSet<Package> = HashSet::new();
+    pub(crate) fn validate(&self,
+            dm: DepManifest,
+            include_sites: bool,
+            ) -> Validation {
+        // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
         for (package, sites) in &self.package_to_sites {
             if !dm.validate(package) {
                 let ds = dm.get_dep_spec(&package.name);
-                records.push(ValidationRecord::new(package.clone(), ds.cloned(), None));
+                let sites: Option<Vec<PathBuf>> = match include_sites {
+                    true => Some(sites.clone()),
+                    false => None,
+                };
+                records.push(ValidationRecord::new(package.clone(), ds.cloned(), sites));
             }
         }
         Validation { records }
@@ -262,11 +268,11 @@ mod tests {
 
         let dm1 = DepManifest::from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
         assert_eq!(dm1.len(), 2);
-        let invalid1 = sfs.validate(dm1);
+        let invalid1 = sfs.validate(dm1, false);
         assert_eq!(invalid1.len(), 0);
 
         let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
-        let invalid2 = sfs.validate(dm2);
+        let invalid2 = sfs.validate(dm2, false);
         assert_eq!(invalid2.len(), 1);
 
         // sfs.report();
