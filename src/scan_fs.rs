@@ -153,6 +153,7 @@ impl ScanFS {
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
+    /// Validate this scan against the provided DepManifest.
     pub(crate) fn validate(&self, dm: DepManifest) -> Validation {
         // note: there might be duplicated validations we want to filter out
         // let mut invalid: HashSet<Package> = HashSet::new();
@@ -160,14 +161,10 @@ impl ScanFS {
         for (package, sites) in &self.package_to_sites {
             if !dm.validate(package) {
                 let ds = dm.get_dep_spec(&package.name);
-                records.push(ValidationRecord::new(
-                        package.clone(),
-                        ds.cloned(),
-                        None,
-                    ));
+                records.push(ValidationRecord::new(package.clone(), ds.cloned(), None));
             }
         }
-        Validation { records: records }
+        Validation { records }
     }
     //--------------------------------------------------------------------------
     // operator: greater, eq,

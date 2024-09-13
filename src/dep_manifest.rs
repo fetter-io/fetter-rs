@@ -374,5 +374,4 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         assert!(dm1.get_dep_spec("foo").is_none());
     }
-
 }

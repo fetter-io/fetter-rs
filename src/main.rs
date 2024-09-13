@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 // NEXT:
+// Packages collect url for @ validations
 // takes a requirements bound file and validates
 // Implement a colorful display
 // Implement a monitoring mode
@@ -155,9 +156,10 @@ fn main() {
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap();
             let v = sfs.validate(dm);
+            let include_sites = false;
             match subcommands {
                 ValidateSubcommand::Display => {
-                    v.display();
+                    v.display(include_sites);
                 }
                 ValidateSubcommand::Write { output } => {
                     println!("{:?}", v);
