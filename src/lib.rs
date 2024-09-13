@@ -2,10 +2,10 @@ mod dep_manifest;
 mod dep_spec;
 mod exe_search;
 mod package;
+mod package_durl;
 mod scan_fs;
 mod validation;
 mod version_spec;
-mod package_durl;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;

@@ -16,7 +16,6 @@ struct DirectURL {
     vcs_info: VcsInfo,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,9 +38,11 @@ mod tests {
         // Print the durl information
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
         assert_eq!("git", durl.vcs_info.vcs);
-        assert_eq!("15d7c6d6ccf4781c624ffbf54c90d23c6e94dc52", durl.vcs_info.commit_id);
+        assert_eq!(
+            "15d7c6d6ccf4781c624ffbf54c90d23c6e94dc52",
+            durl.vcs_info.commit_id
+        );
         assert!(durl.vcs_info.requested_revision.is_none());
-
     }
 
     #[test]
@@ -56,9 +57,11 @@ mod tests {
         // Print the durl information
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
         assert_eq!("git", durl.vcs_info.vcs);
-        assert_eq!("a0a8e86976708d0436eec5c8f7d25329da727cb5", durl.vcs_info.commit_id);
+        assert_eq!(
+            "a0a8e86976708d0436eec5c8f7d25329da727cb5",
+            durl.vcs_info.commit_id
+        );
         assert_eq!("0.3.8", durl.vcs_info.requested_revision.unwrap());
-
     }
 }
 
