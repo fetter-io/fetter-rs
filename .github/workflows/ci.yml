@@ -106,18 +106,18 @@ jobs:
 #           slug: flexatone/xensieve-rs
 
   #-----------------------------------------------------------------------------
-#   publish:
-#     name: Publish
-#     if: github.event_name == 'release'
+  publish:
+    name: Publish
+    if: github.event_name == 'release'
 
-#     needs: [build-and-test, quality]
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
+    needs: [build-and-test, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Install Rust
-#         run: rustup install --no-self-update stable && rustup default stable
+      - name: Install Rust
+        run: rustup install --no-self-update stable && rustup default stable
 
-#       - name: Publish
-#         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
