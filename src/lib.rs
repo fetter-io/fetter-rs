@@ -5,6 +5,7 @@ mod package;
 mod scan_fs;
 mod validation;
 mod version_spec;
+mod package_durl;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
