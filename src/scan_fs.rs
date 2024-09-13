@@ -13,7 +13,7 @@ use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
 use crate::validation::Validation;
-use crate::validation::ValidationItem;
+use crate::validation::ValidationRecord;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -149,21 +149,25 @@ impl ScanFS {
         packages
     }
 
-    /// The length of the scan is then number of unique packages.
+    /// The length of the scan is the number of unique packages.
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
     pub(crate) fn validate(&self, dm: DepManifest) -> Validation {
         // note: there might be duplicated validations we want to filter out
         // let mut invalid: HashSet<Package> = HashSet::new();
-        let mut invalid: Vec<ValidationItem> = Vec::new();
+        let mut records: Vec<ValidationRecord> = Vec::new();
         for (package, sites) in &self.package_to_sites {
             if !dm.validate(package) {
                 let ds = dm.get_dep_spec(&package.name);
-                invalid.push(ValidationItem::new(package.clone(), ds, sites.clone()));
+                records.push(ValidationRecord::new(
+                        package.clone(),
+                        ds,
+                        None,
+                    ));
             }
         }
-        Validation { items: invalid }
+        Validation { records: records }
     }
     //--------------------------------------------------------------------------
     // operator: greater, eq,

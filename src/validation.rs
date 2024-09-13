@@ -7,15 +7,18 @@ use crate::package::Package;
 
 // #[derive(PartialEq, Eq, Hash, Clone)]
 #[derive(Debug)]
-pub(crate) struct ValidationItem {
+pub(crate) struct ValidationRecord {
     package: Package,
-    dep_spec: Option<DepSpec>, // in case a package is provdied but does not a depspec
-    sites: Vec<PathBuf>,
+    dep_spec: Option<DepSpec>, // None if no depspec
+    sites: Option<Vec<PathBuf>>,
 }
 
-impl ValidationItem {
-    pub(crate) fn new(package: Package, dep_spec: Option<DepSpec>, sites: Vec<PathBuf>) -> Self {
-        ValidationItem {
+impl ValidationRecord {
+    pub(crate) fn new(package: Package,
+            dep_spec: Option<DepSpec>,
+            sites: Option<Vec<PathBuf>>,
+        ) -> Self {
+        ValidationRecord {
             package,
             dep_spec,
             sites,
@@ -25,20 +28,25 @@ impl ValidationItem {
 
 #[derive(Debug)]
 pub struct Validation {
-    pub items: Vec<ValidationItem>,
+    pub records: Vec<ValidationRecord>,
 }
 
 impl Validation {
+    /// The length of the scan is the number of unique packages.
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
     pub fn display(&self) {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
 
-        let mut items: Vec<&ValidationItem> = self.items.iter().collect();
-        items.sort_by_key(|item| &item.package);
+        let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
+        records.sort_by_key(|item| &item.package);
 
-        for item in &items {
+        for item in &records {
             let pkg_display = format!("{}", item.package);
 
             let dep_display = match &item.dep_spec {
