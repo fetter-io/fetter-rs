@@ -159,7 +159,7 @@ impl ScanFS {
         let mut invalid: Vec<ValidationItem> = Vec::new();
         for (package, sites) in &self.package_to_sites {
             if !dm.validate(package) {
-                let ds = dm.get_dep_spec(&package.name).unwrap();
+                let ds = dm.get_dep_spec(&package.name);
                 invalid.push(ValidationItem::new(package.clone(), ds, sites.clone()));
             }
         }

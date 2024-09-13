@@ -9,12 +9,12 @@ use crate::package::Package;
 #[derive(Debug)]
 pub(crate) struct ValidationItem {
     package: Package,
-    dep_spec: DepSpec,
+    dep_spec: Option<DepSpec>, // in case a package is provdied but does not a depspec
     sites: Vec<PathBuf>,
 }
 
 impl ValidationItem {
-    pub(crate) fn new(package: Package, dep_spec: DepSpec, sites: Vec<PathBuf>) -> Self {
+    pub(crate) fn new(package: Package, dep_spec: Option<DepSpec>, sites: Vec<PathBuf>) -> Self {
         ValidationItem {
             package,
             dep_spec,
@@ -35,9 +35,16 @@ impl Validation {
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
 
-        for item in &self.items {
+        let mut items: Vec<&ValidationItem> = self.items.iter().collect();
+        items.sort_by_key(|item| &item.package);
+
+        for item in &items {
             let pkg_display = format!("{}", item.package);
-            let dep_display = format!("{}", item.dep_spec);
+
+            let dep_display = match &item.dep_spec {
+                Some(dep_spec) => format!("{}", dep_spec),
+                None => "-".to_string(),
+            };
 
             max_package_width = cmp::max(max_package_width, pkg_display.len());
             max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());

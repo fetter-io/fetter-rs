@@ -154,13 +154,13 @@ fn main() {
     match &cli.command {
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap();
-            let vr = sfs.validate(dm);
+            let v = sfs.validate(dm);
             match subcommands {
                 ValidateSubcommand::Display => {
-                    println!("{:?}", vr);
+                    v.display();
                 }
                 ValidateSubcommand::Write { output } => {
-                    println!("{:?}", vr);
+                    println!("{:?}", v);
                 }
             }
         }
