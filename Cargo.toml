@@ -1,10 +1,12 @@
 [package]
 name = "fetter"
-version = "0.1.0"
+version = "0.2.0"
+
 edition = "2021"
 authors = ["Christopher Ariza"]
 homepage = "https://github.com/flexatone/fetter-rs"
 repository = "https://github.com/flexatone/fetter-rs"
+license = "GPL-3.0-or-later"
 readme = "README.md"
 
 description = "Discover, manage, and monitor Python packages accross entire systems."
