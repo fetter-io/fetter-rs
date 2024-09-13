@@ -29,11 +29,8 @@ impl Package {
         }
         None
     }
-    // pub(crate) fn to_string(&self) -> String {
-    //     format!("{}-{}", self.name, self.version)
-    // }
 }
-// Perform a case insensitve ordering.
+// A case insensitive ordering.
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
         self.name

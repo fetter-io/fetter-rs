@@ -109,12 +109,12 @@ impl DepManifest {
         names
     }
 
-    pub fn get_dep_spec(&self, key: &str) -> Option<DepSpec> {
-        self.dep_specs.get(key).cloned()
+    pub fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
+        self.dep_specs.get(key)
     }
 
     /// Given a writer, write out all dependency specs
-    fn write_dep_specs<W: Write>(&self, mut writer: W) -> io::Result<()> {
+    fn to_writer<W: Write>(&self, mut writer: W) -> io::Result<()> {
         writeln!(writer, "# created by fetter")?;
         for name in self.get_names() {
             writeln!(writer, "{}", self.dep_specs.get(&name).unwrap())?;
@@ -126,14 +126,14 @@ impl DepManifest {
     // Writes to a file
     pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.write_dep_specs(file)
+        self.to_writer(file)
     }
 
     // Prints to stdout
     pub(crate) fn display(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.write_dep_specs(handle).unwrap();
+        self.to_writer(handle).unwrap();
     }
 
     //--------------------------------------------------------------------------
@@ -351,4 +351,28 @@ regex==2024.4.16
         let dm2 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm2.len(), 3)
     }
+
+    #[test]
+    fn test_get_dep_spec_a() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            DepSpec::from_string("static-frame>2.0,!=1.3").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let ds1 = dm1.get_dep_spec("requests").unwrap();
+        assert_eq!(format!("{}", ds1), "requests>=1.4");
+    }
+
+    #[test]
+    fn test_get_dep_spec_b() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            DepSpec::from_string("static-frame>2.0,!=1.3").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        assert!(dm1.get_dep_spec("foo").is_none());
+    }
+
 }

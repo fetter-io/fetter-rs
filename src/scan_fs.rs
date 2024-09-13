@@ -162,7 +162,7 @@ impl ScanFS {
                 let ds = dm.get_dep_spec(&package.name);
                 records.push(ValidationRecord::new(
                         package.clone(),
-                        ds,
+                        ds.cloned(),
                         None,
                     ));
             }
