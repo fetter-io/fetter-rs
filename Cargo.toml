@@ -7,13 +7,13 @@ homepage = "https://github.com/flexatone/fetter"
 repository = "https://github.com/flexatone/fetter"
 readme = "README.md"
 
-description = "A monitor of supply chain dependencies."
+description = "Discover, manage, and monitor Python packages accross entire systems."
 
-# keywords = ["sieve", "residual", "modulus", "set", "xenakis"]
-# categories = [
-#     "mathematics",
-#     "data-structures",
-# ]
+keywords = ["package", "allow-listing", "python"]
+categories = [
+    "filesystem",
+    "command-line-utilities",
+]
 
 [dependencies]
 rayon = "1.10"
