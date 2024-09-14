@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::path::PathBuf;
+use serde_json;
 use serde::{Deserialize, Serialize};
 
 // see https://packaging.python.org/en/latest/specifications/direct-url/
@@ -25,11 +28,23 @@ struct DirectURL {
     vcs_info: Option<VcsInfo>,
 }
 
+impl DirectURL {
+    pub(crate) fn from_file(path: &PathBuf) -> Result<Self, String>{
+        let file = File::open(path).map_err(|e|
+            format!("failed to open file: {}", e));
+        serde_json::from_reader(file.unwrap()).map_err(|e|
+            format!("failed to parse JSON: {}", e))
+    }
+}
+
+
 //------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn test_durl_a() {
@@ -96,4 +111,21 @@ mod tests {
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         assert_eq!("https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl", durl.url);
     }
+
+
+    #[test]
+    fn test_durl_from_file_a() {
+        let temp_dir = tempdir().unwrap();
+        let fp_durl = temp_dir.path().join("direct_url.json");
+        let content = r#"
+        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+        "#;
+        let mut file = File::create(&fp_durl).unwrap();
+        write!(file, "{}", content).unwrap();
+
+        let durl = DirectURL::from_file(&fp_durl).unwrap();
+        assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
+
+    }
+
 }
