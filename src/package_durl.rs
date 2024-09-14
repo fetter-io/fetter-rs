@@ -24,7 +24,6 @@ struct DirectURL {
     vcs_info: Option<VcsInfo>,
 }
 
-
 //------------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -68,7 +67,15 @@ mod tests {
             "a0a8e86976708d0436eec5c8f7d25329da727cb5",
             durl.vcs_info.as_ref().unwrap().commit_id
         );
-        assert_eq!("0.3.8", durl.vcs_info.as_ref().unwrap().requested_revision.as_ref().unwrap());
+        assert_eq!(
+            "0.3.8",
+            durl.vcs_info
+                .as_ref()
+                .unwrap()
+                .requested_revision
+                .as_ref()
+                .unwrap()
+        );
     }
 
     #[test]
@@ -87,6 +94,5 @@ mod tests {
           "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         assert_eq!("https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl", durl.url);
-
     }
 }
