@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 // vcs_info: VCS request
 // archive_info: direct download from a url to a whl or similar
 // dir_info: url is a local directory
+// assume we only need vcs_info for matching rquirements
 
 #[derive(Debug, Serialize, Deserialize)]
 struct VcsInfo {
