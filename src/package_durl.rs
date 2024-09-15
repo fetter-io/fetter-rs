@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs::File;
 use std::path::PathBuf;
-use serde_json;
-use serde::{Deserialize, Serialize};
 
 // see https://packaging.python.org/en/latest/specifications/direct-url/
 
@@ -29,14 +29,11 @@ struct DirectURL {
 }
 
 impl DirectURL {
-    pub(crate) fn from_file(path: &PathBuf) -> Result<Self, String>{
-        let file = File::open(path).map_err(|e|
-            format!("failed to open file: {}", e));
-        serde_json::from_reader(file.unwrap()).map_err(|e|
-            format!("failed to parse JSON: {}", e))
+    pub(crate) fn from_file(path: &PathBuf) -> Result<Self, String> {
+        let file = File::open(path).map_err(|e| format!("failed to open file: {}", e));
+        serde_json::from_reader(file.unwrap()).map_err(|e| format!("failed to parse JSON: {}", e))
     }
 }
-
 
 //------------------------------------------------------------------------------
 
@@ -112,7 +109,6 @@ mod tests {
         assert_eq!("https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl", durl.url);
     }
 
-
     #[test]
     fn test_durl_from_file_a() {
         let temp_dir = tempdir().unwrap();
@@ -125,7 +121,5 @@ mod tests {
 
         let durl = DirectURL::from_file(&fp_durl).unwrap();
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
-
     }
-
 }
