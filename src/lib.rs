@@ -66,7 +66,12 @@ enum Commands {
         #[command(subcommand)]
         subcommands: ScanSubcommand,
     },
-    /// Scan environment to report on installed packages.
+    /// Count discovered executables and installed packages.
+    Count {
+        #[command(subcommand)]
+        subcommands: CountSubcommand,
+    },
+    /// Derive new requirements from discovered packages.
     Derive {
         // Select the nature of the bound in the derived requirements.
         #[arg(short, long, value_enum)]
@@ -97,6 +102,19 @@ enum ScanSubcommand {
     /// Display scan to the terminal.
     Display,
     /// Write a scan report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
+#[derive(Subcommand)]
+enum CountSubcommand {
+    /// Display scan to the terminal.
+    Display,
+    /// Write a report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -156,25 +174,22 @@ where
     let sfs = get_scan(cli.exe).unwrap(); // handle error
 
     match &cli.command {
-        Some(Commands::Validate { bound, subcommands }) => {
-            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
-            let include_sites = false;
-            let v = sfs.validate(dm, include_sites);
-            match subcommands {
-                ValidateSubcommand::Display => {
-                    v.to_stdout(include_sites);
-                }
-                ValidateSubcommand::Write { output } => {
-                    println!("{:?}", v);
-                }
-            }
-        }
         Some(Commands::Scan { subcommands }) => match subcommands {
             ScanSubcommand::Display => {
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_stdout();
             }
             ScanSubcommand::Write { output, delimiter } => {
+                let sr = sfs.to_scan_report();
+                let _ = sr.to_file(output, *delimiter);
+            }
+        },
+        Some(Commands::Count { subcommands }) => match subcommands {
+            CountSubcommand::Display => { // TODO
+                let sr = sfs.to_scan_report();
+                let _ = sr.to_stdout();
+            }
+            CountSubcommand::Write { output, delimiter } => { // TODO
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_file(output, *delimiter);
             }
@@ -192,6 +207,19 @@ where
                     let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
                     // TODO: might have a higher-order func that branches based on extension between txt and json
                     let _ = dm.to_requirements(output);
+                }
+            }
+        }
+        Some(Commands::Validate { bound, subcommands }) => {
+            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
+            let include_sites = false;
+            let v = sfs.validate(dm, include_sites);
+            match subcommands {
+                ValidateSubcommand::Display => {
+                    v.to_stdout(include_sites);
+                }
+                ValidateSubcommand::Write { output } => {
+                    println!("{:?}", v);
                 }
             }
         }
