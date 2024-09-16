@@ -65,7 +65,11 @@ impl ScanReport {
                 writeln!(
                     writer,
                     "{:<package_width$}{}{}",
-                    if (index == 0 || repeat_package) { pkg_display } else { "" },
+                    if index == 0 || repeat_package {
+                        pkg_display
+                    } else {
+                        ""
+                    },
                     delimiter,
                     site.display(),
                     package_width = max_package_width,

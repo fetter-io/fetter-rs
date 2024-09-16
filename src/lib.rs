@@ -61,15 +61,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Validate packages in an environment
-    Validate {
-        /// File path from which to read bound requirements.
-        #[arg(short, long, value_name = "FILE")]
-        bound: Option<PathBuf>,
-
-        #[command(subcommand)]
-        subcommands: ValidateSubcommand,
-    },
     /// Scan environment to report on installed packages.
     Scan {
         #[command(subcommand)]
@@ -84,22 +75,20 @@ enum Commands {
         #[command(subcommand)]
         subcommands: DeriveSubcommand,
     },
+    /// Validate packages in an environment
+    Validate {
+        /// File path from which to read bound requirements.
+        #[arg(short, long, value_name = "FILE")]
+        bound: Option<PathBuf>,
+
+        #[command(subcommand)]
+        subcommands: ValidateSubcommand,
+    },
     /// Purge packages that fail validation
     Purge {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum ValidateSubcommand {
-    /// Display validation to the terminal.
-    Display,
-    /// Write a validation report to a file.
-    Write {
-        #[arg(short, long, value_name = "FILE")]
-        output: PathBuf,
     },
 }
 
@@ -127,6 +116,16 @@ enum DeriveSubcommand {
     },
 }
 
+#[derive(Subcommand)]
+enum ValidateSubcommand {
+    /// Display validation to the terminal.
+    Display,
+    /// Write a validation report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+    },
+}
 //------------------------------------------------------------------------------
 
 // Get a ScanFS, optionally using exe_paths if provided
@@ -158,7 +157,7 @@ where
 
     match &cli.command {
         Some(Commands::Validate { bound, subcommands }) => {
-            let dm = get_dep_manifest(bound).unwrap();
+            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let include_sites = false;
             let v = sfs.validate(dm, include_sites);
             match subcommands {
