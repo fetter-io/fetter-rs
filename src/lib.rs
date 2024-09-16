@@ -185,11 +185,13 @@ where
             }
         },
         Some(Commands::Count { subcommands }) => match subcommands {
-            CountSubcommand::Display => { // TODO
+            CountSubcommand::Display => {
+                // TODO
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_stdout();
             }
-            CountSubcommand::Write { output, delimiter } => { // TODO
+            CountSubcommand::Write { output, delimiter } => {
+                // TODO
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_file(output, *delimiter);
             }
