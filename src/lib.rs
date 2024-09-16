@@ -4,6 +4,7 @@ mod exe_search;
 mod package;
 mod package_durl;
 mod scan_fs;
+mod scan_report;
 mod validation_report;
 mod version_spec;
 
@@ -42,7 +43,8 @@ Examples:
   fetter --exe python3 validate --bound requirements.txt display
 
   fetter scan display
-  fetter derive write -o /tmp/bond_requirements.txt
+  fetter scan write -o /tmp/pkgscan.txt --delimiter '|'
+  fetter derive write -o /tmp/bound_requirements.txt
   fetter purge
 ";
 
@@ -109,10 +111,11 @@ enum ScanSubcommand {
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
     },
 }
 
-// might support output to requirements or toml?
 #[derive(Subcommand)]
 enum DeriveSubcommand {
     /// Display derive to the terminal.
@@ -160,7 +163,7 @@ where
             let v = sfs.validate(dm, include_sites);
             match subcommands {
                 ValidateSubcommand::Display => {
-                    v.display(include_sites);
+                    v.to_stdout(include_sites);
                 }
                 ValidateSubcommand::Write { output } => {
                     println!("{:?}", v);
@@ -169,10 +172,12 @@ where
         }
         Some(Commands::Scan { subcommands }) => match subcommands {
             ScanSubcommand::Display => {
-                sfs.display();
+                let sr = sfs.to_scan_report();
+                let _ = sr.to_stdout();
             }
-            ScanSubcommand::Write { output } => {
-                sfs.display();
+            ScanSubcommand::Write { output, delimiter } => {
+                let sr = sfs.to_scan_report();
+                let _ = sr.to_file(output, *delimiter);
             }
         },
         Some(Commands::Derive {
@@ -182,7 +187,7 @@ where
             match subcommands {
                 DeriveSubcommand::Display => {
                     let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
-                    dm.display();
+                    dm.to_stdout();
                 }
                 DeriveSubcommand::Write { output } => {
                     let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();

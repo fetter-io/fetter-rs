@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
+// use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -12,8 +12,9 @@ use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
-use crate::validation_report::ValidationReport;
+use crate::scan_report::ScanReport;
 use crate::validation_report::ValidationRecord;
+use crate::validation_report::ValidationReport;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -56,14 +57,6 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
                 packages.push(package);
             }
         }
-
-        // for entry in entries.flatten() {
-        //     if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
-        //         if let Some(package) = Package::from_dist_info(file_name) {
-        //             packages.push(package);
-        //         }
-        //     }
-        // }
     }
     packages
 }
@@ -160,6 +153,7 @@ impl ScanFS {
     pub fn len(&self) -> usize {
         self.package_to_sites.len()
     }
+
     /// Validate this scan against the provided DepManifest.
     pub(crate) fn validate(&self, dm: DepManifest, include_sites: bool) -> ValidationReport {
         // NOTE: there might be duplicated validations we want to filter out
@@ -217,23 +211,25 @@ impl ScanFS {
         DepManifest::from_dep_specs(&dep_specs)
     }
 
-    //--------------------------------------------------------------------------
-    // draft implementations
-    pub(crate) fn display(&self) {
-        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
-        for package in self.get_packages() {
-            println!("{:?}", package);
-            if let Some(site_paths) = self.package_to_sites.get(&package) {
-                for path in site_paths {
-                    site_packages.insert(path);
-                    println!("    {:?}", path);
-                }
-            }
-        }
-        println!("exes: {:?}", self.exe_to_sites.len());
-        println!("site packages: {:?}", site_packages.len());
-        println!("packages: {:?}", self.package_to_sites.len());
+    pub(crate) fn to_scan_report(&self) -> ScanReport {
+        ScanReport::from_package_to_sites(&self.package_to_sites)
     }
+    //--------------------------------------------------------------------------
+    // pub(crate) fn to_stdout(&self) {
+    //     let mut site_packages: HashSet<&PathBuf> = HashSet::new();
+    //     for package in self.get_packages() {
+    //         println!("{:?}", package);
+    //         if let Some(site_paths) = self.package_to_sites.get(&package) {
+    //             for path in site_paths {
+    //                 site_packages.insert(path);
+    //                 println!("    {:?}", path);
+    //             }
+    //         }
+    //     }
+    //     println!("exes: {:?}", self.exe_to_sites.len());
+    //     println!("site packages: {:?}", site_packages.len());
+    //     println!("packages: {:?}", self.package_to_sites.len());
+    // }
 }
 
 //------------------------------------------------------------------------------

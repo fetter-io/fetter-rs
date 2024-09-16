@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
-// #[derive(PartialEq, Eq, Hash, Clone)]
 #[derive(Debug)]
 pub(crate) struct ValidationRecord {
     package: Package,
@@ -39,7 +38,7 @@ impl ValidationReport {
         self.records.len()
     }
 
-    pub fn display(&self, include_sites: bool) {
+    pub fn to_stdout(&self, include_sites: bool) {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut site_displays: Vec<String> = Vec::new();

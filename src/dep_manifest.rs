@@ -130,7 +130,7 @@ impl DepManifest {
     }
 
     // Prints to stdout
-    pub(crate) fn display(&self) {
+    pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
         self.to_writer(handle).unwrap();
