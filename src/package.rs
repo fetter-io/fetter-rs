@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::version_spec::VersionSpec;
+use crate::package_durl::DirectURL;
 
 //------------------------------------------------------------------------------
 // A Package is package release artifact, representing one specific version installed. This differs from a DepSpec, which might refer to a range of acceptable versions.
@@ -9,12 +10,14 @@ use crate::version_spec::VersionSpec;
 pub(crate) struct Package {
     pub(crate) name: String,
     pub(crate) version: VersionSpec,
+    pub(crate) direct_url: Option<DirectURL>,
 }
 impl Package {
     pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
         Some(Package {
             name: name.to_string(),
             version: VersionSpec::new(version),
+            direct_url: None,
         })
     }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
