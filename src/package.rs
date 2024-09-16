@@ -20,6 +20,17 @@ impl Package {
             direct_url: None,
         })
     }
+    pub(crate) fn from_name_version_direct_url(
+            name: &str,
+            version: &str,
+            direct_url: Option<DirectURL>,
+            ) -> Option<Self> {
+        Some(Package {
+            name: name.to_string(),
+            version: VersionSpec::new(version),
+            direct_url: direct_url,
+        })
+    }
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
             let trimmed_input = input.trim_end_matches(".dist-info");
