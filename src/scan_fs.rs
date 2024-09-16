@@ -12,8 +12,8 @@ use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
-use crate::validation::Validation;
-use crate::validation::ValidationRecord;
+use crate::validation_report::ValidationReport;
+use crate::validation_report::ValidationRecord;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -161,7 +161,7 @@ impl ScanFS {
         self.package_to_sites.len()
     }
     /// Validate this scan against the provided DepManifest.
-    pub(crate) fn validate(&self, dm: DepManifest, include_sites: bool) -> Validation {
+    pub(crate) fn validate(&self, dm: DepManifest, include_sites: bool) -> ValidationReport {
         // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
         for (package, sites) in &self.package_to_sites {
@@ -174,7 +174,7 @@ impl ScanFS {
                 records.push(ValidationRecord::new(package.clone(), ds.cloned(), sites));
             }
         }
-        Validation { records }
+        ValidationReport { records }
     }
     //--------------------------------------------------------------------------
     // operator: greater, eq,

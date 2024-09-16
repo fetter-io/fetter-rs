@@ -4,7 +4,7 @@ mod exe_search;
 mod package;
 mod package_durl;
 mod scan_fs;
-mod validation;
+mod validation_report;
 mod version_spec;
 
 use clap::{Parser, Subcommand, ValueEnum};

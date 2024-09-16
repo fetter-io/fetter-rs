@@ -29,11 +29,11 @@ impl ValidationRecord {
 
 // These are validation results
 #[derive(Debug)]
-pub struct Validation {
+pub struct ValidationReport {
     pub records: Vec<ValidationRecord>,
 }
 
-impl Validation {
+impl ValidationReport {
     /// The length of the scan is the number of unique packages.
     pub fn len(&self) -> usize {
         self.records.len()
