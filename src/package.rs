@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::path::PathBuf;
 
 use crate::version_spec::VersionSpec;
 use crate::package_durl::DirectURL;
@@ -43,7 +44,28 @@ impl Package {
         }
         None
     }
+    pub(crate) fn from_file_path(file_path: &PathBuf) -> Option<Self> {
+        let file_name = file_path.file_name().and_then(|name| name.to_str())?;
+        if file_name.ends_with(".dist-info") && file_path.is_dir() {
+            let durl_fp = file_path.join("direct_url.json");
+            let durl = if durl_fp.is_file() {
+                DirectURL::from_file(&durl_fp).ok()
+            } else {
+                None
+            };
+            let tfn = file_name.trim_end_matches(".dist-info");
+            let parts: Vec<&str> = tfn.split('-').collect();
+            if parts.len() >= 2 {
+                let name = parts[..parts.len() - 1].join("-");
+                let version = parts.last()?;
+                return Self::from_name_version_direct_url(&name, version, durl);
+            }
+        }
+        None
+    }
+
 }
+
 // A case insensitive ordering.
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {

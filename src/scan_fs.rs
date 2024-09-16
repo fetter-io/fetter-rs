@@ -51,12 +51,19 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
     let mut packages = Vec::new();
     if let Ok(entries) = fs::read_dir(site_packages) {
         for entry in entries.flatten() {
-            if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
-                if let Some(package) = Package::from_dist_info(file_name) {
-                    packages.push(package);
-                }
+            let file_path = entry.path();
+            if let Some(package) = Package::from_file_path(&file_path) {
+                packages.push(package);
             }
         }
+
+        // for entry in entries.flatten() {
+        //     if let Some(file_name) = entry.path().file_name().and_then(|name| name.to_str()) {
+        //         if let Some(package) = Package::from_dist_info(file_name) {
+        //             packages.push(package);
+        //         }
+        //     }
+        // }
     }
     packages
 }
@@ -254,9 +261,10 @@ mod tests {
         fs::create_dir(fp_sp.clone()).unwrap();
 
         let fp_p1 = fp_sp.join("numpy-1.19.1.dist-info");
-        let _ = File::create(fp_p1.clone()).unwrap();
+        fs::create_dir(&fp_p1).unwrap();
+
         let fp_p2 = fp_sp.join("foo-3.0.dist-info");
-        let _ = File::create(fp_p2.clone()).unwrap();
+        fs::create_dir(&fp_p2).unwrap();
 
         let mut exe_to_sites = HashMap::<PathBuf, Vec<PathBuf>>::new();
         exe_to_sites.insert(fp_exe.clone(), vec![fp_sp]);
