@@ -27,6 +27,7 @@ impl ValidationRecord {
     }
 }
 
+// These are validation results
 #[derive(Debug)]
 pub struct Validation {
     pub records: Vec<ValidationRecord>,
