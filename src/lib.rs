@@ -45,11 +45,12 @@ Examples:
 
   fetter count display
 
-  fetter validate --bound requirements.txt display
-  fetter --exe python3 validate --bound requirements.txt display
+  fetter --exe python3 derive -a lower write -o /tmp/bound_requirements.txt
 
-  fetter derive write -o /tmp/bound_requirements.txt
-  fetter purge
+  fetter validate --bound /tmp/bound_requirements.txt display
+  fetter --exe python3 validate --bound /tmp/bound_requirements.txt display
+
+  fetter purge --bound /tmp/bound_requirements.txt
 ";
 
 #[derive(clap::Parser)]
