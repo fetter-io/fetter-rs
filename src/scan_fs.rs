@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-// use std::collections::HashSet;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,6 +7,8 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
+use crate::count_report::CountRecord;
+use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
@@ -143,14 +145,14 @@ impl ScanFS {
     //--------------------------------------------------------------------------
 
     /// Return sorted packages.
-    fn get_packages(&self) -> Vec<Package> {
+    pub(crate) fn get_packages(&self) -> Vec<Package> {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
         packages
     }
 
     /// The length of the scan is the number of unique packages.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.package_to_sites.len()
     }
 
@@ -214,6 +216,33 @@ impl ScanFS {
     pub(crate) fn to_scan_report(&self) -> ScanReport {
         ScanReport::from_package_to_sites(&self.package_to_sites)
     }
+
+    pub(crate) fn to_count_report(&self) -> CountReport {
+        // discover unique packages
+        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
+        for package in self.package_to_sites.keys() {
+            if let Some(site_paths) = self.package_to_sites.get(&package) {
+                for path in site_paths {
+                    site_packages.insert(path);
+                }
+            }
+        }
+        let mut records: Vec<CountRecord> = Vec::new();
+        records.push(CountRecord::new(
+            "executables".to_string(),
+            self.exe_to_sites.len(),
+        ));
+        records.push(CountRecord::new(
+            "site packages".to_string(),
+            site_packages.len(),
+        ));
+        records.push(CountRecord::new(
+            "packages".to_string(),
+            self.package_to_sites.len(),
+        ));
+        CountReport::new(records)
+    }
+
     //--------------------------------------------------------------------------
     // pub(crate) fn to_stdout(&self) {
     //     let mut site_packages: HashSet<&PathBuf> = HashSet::new();

@@ -1,3 +1,4 @@
+mod count_report;
 mod dep_manifest;
 mod dep_spec;
 mod exe_search;
@@ -186,14 +187,12 @@ where
         },
         Some(Commands::Count { subcommands }) => match subcommands {
             CountSubcommand::Display => {
-                // TODO
-                let sr = sfs.to_scan_report();
-                let _ = sr.to_stdout();
+                let cr = sfs.to_count_report();
+                let _ = cr.to_stdout();
             }
             CountSubcommand::Write { output, delimiter } => {
-                // TODO
-                let sr = sfs.to_scan_report();
-                let _ = sr.to_file(output, *delimiter);
+                let cr = sfs.to_count_report();
+                let _ = cr.to_file(output, *delimiter);
             }
         },
         Some(Commands::Derive {
