@@ -40,11 +40,14 @@ impl From<CliAnchor> for Anchor {
 
 const AFTER_HELP: &str = "\
 Examples:
+  fetter scan display
+  fetter scan write -o /tmp/pkgscan.txt --delimiter '|'
+
+  fetter count display
+
   fetter validate --bound requirements.txt display
   fetter --exe python3 validate --bound requirements.txt display
 
-  fetter scan display
-  fetter scan write -o /tmp/pkgscan.txt --delimiter '|'
   fetter derive write -o /tmp/bound_requirements.txt
   fetter purge
 ";
@@ -143,6 +146,8 @@ enum ValidateSubcommand {
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
     },
 }
 //------------------------------------------------------------------------------
@@ -219,13 +224,13 @@ where
                 ValidateSubcommand::Display => {
                     v.to_stdout(include_sites);
                 }
-                ValidateSubcommand::Write { output } => {
-                    println!("{:?}", v);
+                ValidateSubcommand::Write { output, delimiter } => {
+                    v.to_file(output, *delimiter, include_sites);
                 }
             }
         }
         Some(Commands::Purge { bound }) => {
-            let dm = get_dep_manifest(bound);
+            let _dm = get_dep_manifest(bound);
             println!("purge");
         }
 

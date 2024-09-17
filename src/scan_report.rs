@@ -58,7 +58,7 @@ impl ScanReport {
             delimiter,
             "Site",
             package_width = max_package_width,
-        );
+        )?;
 
         for (pkg_display, record) in package_displays.iter().zip(records.iter()) {
             for (index, site) in record.sites.iter().enumerate() {
@@ -73,7 +73,7 @@ impl ScanReport {
                     delimiter,
                     site.display(),
                     package_width = max_package_width,
-                );
+                )?;
             }
         }
         Ok(())

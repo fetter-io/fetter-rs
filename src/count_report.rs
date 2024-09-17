@@ -50,7 +50,6 @@ impl CountReport {
         ));
         // CountReport::new(records)
         CountReport { records }
-
     }
 
     fn to_writer<W: Write>(
@@ -74,7 +73,7 @@ impl CountReport {
             delimiter,
             "Count",
             package_width = max_package_width,
-        );
+        )?;
 
         for (pkg_display, record) in package_displays.iter().zip(self.records.iter()) {
             writeln!(
@@ -84,7 +83,7 @@ impl CountReport {
                 delimiter,
                 record.value,
                 package_width = max_package_width,
-            );
+            )?;
         }
         Ok(())
     }

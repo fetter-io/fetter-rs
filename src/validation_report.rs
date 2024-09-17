@@ -1,6 +1,9 @@
-// use std::fmt;
 use std::cmp;
+// use std::fmt;
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
+use std::fs::File;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -38,7 +41,13 @@ impl ValidationReport {
         self.records.len()
     }
 
-    pub fn to_stdout(&self, include_sites: bool) {
+    fn to_writer<W: Write>(
+        &self,
+        mut writer: W,
+        delimiter: char,
+        include_sites: bool,
+    ) -> io::Result<()> {
+        // pub fn to_stdout(&self, include_sites: bool) {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut site_displays: Vec<String> = Vec::new();
@@ -76,22 +85,41 @@ impl ValidationReport {
             dep_spec_displays.push(dep_display);
         }
         // TODO: optionally show sites
-        println!(
+        writeln!(
+            writer,
             "{:<package_width$} {:<dep_spec_width$}",
             "Package",
             "Dependency",
             package_width = max_package_width,
             dep_spec_width = max_dep_spec_width
-        );
+        )?;
 
         for (pkg_display, dep_display) in package_displays.iter().zip(dep_spec_displays.iter()) {
-            println!(
+            writeln!(
+                writer,
                 "{:<package_width$} {:<dep_spec_width$}",
                 pkg_display,
                 dep_display,
                 package_width = max_package_width,
                 dep_spec_width = max_dep_spec_width
-            );
+            )?;
         }
+        Ok(())
+    }
+
+    pub fn to_file(
+        &self,
+        file_path: &PathBuf,
+        delimiter: char,
+        include_sites: bool,
+    ) -> io::Result<()> {
+        let file = File::create(file_path)?;
+        self.to_writer(file, delimiter, include_sites)
+    }
+
+    pub(crate) fn to_stdout(&self, include_sites: bool) {
+        let stdout = io::stdout();
+        let handle = stdout.lock();
+        self.to_writer(handle, ' ', include_sites).unwrap();
     }
 }
