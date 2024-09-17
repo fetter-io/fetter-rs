@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,7 +6,7 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
-use crate::count_report::CountRecord;
+// use crate::count_report::CountRecord;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
@@ -66,8 +65,9 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 // #[derive(Debug)]
 pub(crate) struct ScanFS {
-    exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
-    package_to_sites: HashMap<Package, Vec<PathBuf>>,
+    // NOTE: these are used by reporters
+    pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    pub(crate) package_to_sites: HashMap<Package, Vec<PathBuf>>,
 }
 
 // The results of a file-system scan.
@@ -218,47 +218,8 @@ impl ScanFS {
     }
 
     pub(crate) fn to_count_report(&self) -> CountReport {
-        // discover unique packages
-        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
-        for package in self.package_to_sites.keys() {
-            if let Some(site_paths) = self.package_to_sites.get(&package) {
-                for path in site_paths {
-                    site_packages.insert(path);
-                }
-            }
-        }
-        let mut records: Vec<CountRecord> = Vec::new();
-        records.push(CountRecord::new(
-            "executables".to_string(),
-            self.exe_to_sites.len(),
-        ));
-        records.push(CountRecord::new(
-            "site packages".to_string(),
-            site_packages.len(),
-        ));
-        records.push(CountRecord::new(
-            "packages".to_string(),
-            self.package_to_sites.len(),
-        ));
-        CountReport::new(records)
+        CountReport::from_scan_fs(&self)
     }
-
-    //--------------------------------------------------------------------------
-    // pub(crate) fn to_stdout(&self) {
-    //     let mut site_packages: HashSet<&PathBuf> = HashSet::new();
-    //     for package in self.get_packages() {
-    //         println!("{:?}", package);
-    //         if let Some(site_paths) = self.package_to_sites.get(&package) {
-    //             for path in site_paths {
-    //                 site_packages.insert(path);
-    //                 println!("    {:?}", path);
-    //             }
-    //         }
-    //     }
-    //     println!("exes: {:?}", self.exe_to_sites.len());
-    //     println!("site packages: {:?}", site_packages.len());
-    //     println!("packages: {:?}", self.package_to_sites.len());
-    // }
 }
 
 //------------------------------------------------------------------------------

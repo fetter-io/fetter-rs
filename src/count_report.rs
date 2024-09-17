@@ -5,6 +5,8 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
+use crate::scan_fs::ScanFS;
+
 #[derive(Debug)]
 pub(crate) struct CountRecord {
     key: String,
@@ -23,8 +25,32 @@ pub struct CountReport {
 }
 
 impl CountReport {
-    pub(crate) fn new(records: Vec<CountRecord>) -> Self {
+    pub(crate) fn from_scan_fs(scan_fs: &ScanFS) -> CountReport {
+        // discover unique packages
+        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
+        for package in scan_fs.package_to_sites.keys() {
+            if let Some(site_paths) = scan_fs.package_to_sites.get(&package) {
+                for path in site_paths {
+                    site_packages.insert(path);
+                }
+            }
+        }
+        let mut records: Vec<CountRecord> = Vec::new();
+        records.push(CountRecord::new(
+            "executables".to_string(),
+            scan_fs.exe_to_sites.len(),
+        ));
+        records.push(CountRecord::new(
+            "package sites".to_string(),
+            site_packages.len(),
+        ));
+        records.push(CountRecord::new(
+            "packages".to_string(),
+            scan_fs.package_to_sites.len(),
+        ));
+        // CountReport::new(records)
         CountReport { records }
+
     }
 
     fn to_writer<W: Write>(
@@ -36,10 +62,7 @@ impl CountReport {
         let mut package_displays: Vec<String> = Vec::new();
         let mut max_package_width = 0;
 
-        let mut records: Vec<&CountRecord> = self.records.iter().collect();
-        records.sort_by_key(|item| &item.key);
-
-        for item in &records {
+        for item in self.records.iter() {
             let pkg_display = format!("{}", item.key);
             max_package_width = cmp::max(max_package_width, pkg_display.len());
             package_displays.push(pkg_display);
@@ -47,13 +70,13 @@ impl CountReport {
         writeln!(
             writer,
             "{:<package_width$}{}{}",
-            "String",
+            "",
             delimiter,
-            "Site",
+            "Count",
             package_width = max_package_width,
         );
 
-        for (pkg_display, record) in package_displays.iter().zip(records.iter()) {
+        for (pkg_display, record) in package_displays.iter().zip(self.records.iter()) {
             writeln!(
                 writer,
                 "{:<package_width$}{}{}",

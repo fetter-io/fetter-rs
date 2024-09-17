@@ -9,7 +9,7 @@ repository = "https://github.com/flexatone/fetter-rs"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 
-description = "Discover, manage, and monitor Python packages across entire systems."
+description = "Discover, manage, and monitor Python packages across systems."
 
 keywords = ["package", "allow-listing", "python"]
 categories = [
