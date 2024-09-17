@@ -1,0 +1,89 @@
+
+
+
+Supply chain threats in open-source packaging ecosystems are numerous. Malicious packages of all sorts have been found on PyPI, some using clever typo squatting, others taking over names of deprecated packages, others used as part of fake-recruiter social engineering campaigns. Of course, individuals can take risks, but for organizations of 30 or 300 Python users running within corporate networks, the risks are greater. There are various controls that can be put in place to limit or deny access to PyPI, but many of those can be circumvented. These observations led me to consider building a tool that can do enterprise-wide package allow listing. There are maybe two ways to do this: one is low-level file-system event monitoring with (on Linux) something like fanotify; another is system-wide scans of all installed packages. While both approaches could be used by a persistent agent that monitors systems and sends data to a central server, the latter also provides convenient system auditing functions, similar to what our check_dependencies.py does, and is my present focus.
+
+
+Fetter is a Rust-built tool for system-wide package auditing. The fetter CLI presently offers four main tools: scan (discover all packages), derive (create a requirements file reflecting system-wide packages), validate (determine which packages violate a requirements file), and purge (remove packages that violate a requirements file).
+
+
+
+
+
+The problem with virtual environments
+    They proliferate
+    They support multiple Python versions
+    The let the same Python exe have different site packages
+
+Accumulation of lint
+                  Count
+    executables   63
+    package sites 40
+    packages      1179
+
+
+How do we find packages?
+
+Must find Pythons first
+
+    Can look at PATH
+    Can look at typical bin locations
+    Can search user HOME
+
+Using each Python, we can find site packages
+    There are three possible site packages:
+        site.getsitepackages()
+        site.getusersitepackages()
+        dist-packages
+
+        python -c "import site; print(site.getsitepackages()); print(site.getusersitepackages())"
+
+        /usr/bin/python3 -c "import site; print(site.getsitepackages()); print(site.getusersitepackages())"
+
+    Can identify virtual environs with "pyvenv.cfg"
+        Can find a Python in bin/python3
+
+Once we find a site directory, how do we find packages
+    find ".dist-info" directories
+
+    ls -la /home/ariza/.env311-fetter/lib/python3.11/site-packages
+
+    ls /home/ariza/.env311-fetter/lib/python3.11/site-packages/maturin-1.7.1.dist-info
+
+
+    can find direct_url.json
+    can find RECORD
+        cat /home/ariza/.env311-fetter/lib/python3.11/site-packages/fetter-0.4.0.dist-info/RECORD
+
+        ls /home/ariza/.env311-fetter/bin
+        cat /home/ariza/.env311-fetter/bin/fetter
+
+    Parsing JSON in direct_url.json
+
+ScanFS:
+    mapping of exe to sites
+    mapping of package to sites
+
+    Constructors
+
+
+DepSpec
+    Using partial grammar based on
+    https://packaging.python.org/en/latest/specifications/dependency-specifiers/
+
+
+DepManifest
+
+
+Command-line interface with CLAP
+
+
+
+Build a Python wrapper with Maturin
+
+
+The magic of project.scripts
+
+    [project.scripts]
+    fetter = "fetter:run_with_argv"
+
