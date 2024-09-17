@@ -226,7 +226,7 @@ where
                     v.to_stdout(include_sites);
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
-                    v.to_file(output, *delimiter, include_sites);
+                    let _ = v.to_file(output, *delimiter, include_sites);
                 }
             }
         }
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_run_cli_a() {
-        let args = vec![OsString::from("fetter"), OsString::from("-h")];
+        let _args = vec![OsString::from("fetter"), OsString::from("-h")];
         // run_cli(args); // print to stdout
     }
 }
