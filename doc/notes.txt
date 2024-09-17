@@ -13,13 +13,14 @@ Fetter is a Rust-built tool for system-wide package auditing. The fetter CLI pre
 The problem with virtual environments
     They proliferate
     They support multiple Python versions
-    The let the same Python exe have different site packages
+    They let the same Python exe have different site packages
 
 Accumulation of lint
-                  Count
-    executables   63
-    package sites 40
-    packages      1179
+
+    fetter count display
+
+Opportunity
+    A tool for system-wide package auditing
 
 
 How do we find packages?
@@ -46,17 +47,9 @@ Using each Python, we can find site packages
 Once we find a site directory, how do we find packages
     find ".dist-info" directories
 
-    ls -la /home/ariza/.env311-fetter/lib/python3.11/site-packages
-
-    ls /home/ariza/.env311-fetter/lib/python3.11/site-packages/maturin-1.7.1.dist-info
-
 
     can find direct_url.json
     can find RECORD
-        cat /home/ariza/.env311-fetter/lib/python3.11/site-packages/fetter-0.4.0.dist-info/RECORD
-
-        ls /home/ariza/.env311-fetter/bin
-        cat /home/ariza/.env311-fetter/bin/fetter
 
     Parsing JSON in direct_url.json
 
@@ -86,4 +79,19 @@ The magic of project.scripts
 
     [project.scripts]
     fetter = "fetter:run_with_argv"
+
+
+Next steps
+    Validating URL based packages
+    Implement purge
+    Support toml
+    Pulling in vulnerability information
+
+    Total serialization: for caching, communication to a server
+    Monitor mode, server implementation
+    Explore fanotify
+
+
+
+
 
