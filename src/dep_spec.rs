@@ -311,8 +311,10 @@ mod tests {
         let ds1 =
             DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
         assert_eq!(ds1.to_string(), "pip==1.3.1");
-        assert_eq!(ds1.url.unwrap(), "file:///localbuilds/pip-1.3.1-py33-none-any.whl");
-
+        assert_eq!(
+            ds1.url.unwrap(),
+            "file:///localbuilds/pip-1.3.1-py33-none-any.whl"
+        );
     }
     #[test]
     fn test_dep_spec_h5() {
@@ -523,9 +525,14 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_url_d() {
-        let ds = DepSpec::from_string("foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl").unwrap();
+        let ds =
+            DepSpec::from_string("foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl")
+                .unwrap();
         assert_eq!(ds.to_string(), "foo==3.1.4");
-        assert_eq!(ds.url.unwrap(), "http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl");
+        assert_eq!(
+            ds.url.unwrap(),
+            "http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl"
+        );
     }
 
     //--------------------------------------------------------------------------
@@ -548,4 +555,3 @@ mod tests {
         assert_eq!(ds.url.unwrap(), "file:///a/b/c/app-2.0.whl")
     }
 }
-
