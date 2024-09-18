@@ -106,7 +106,7 @@ impl DepSpec {
         return Err("Invalid .whl".to_string());
     }
 
-    pub fn from_string(input: &str) -> Result<Self, String> {
+    pub(crate) fn from_string(input: &str) -> Result<Self, String> {
         if let Ok(ds) = DepSpec::from_whl(input) {
             return Ok(ds);
         }
@@ -186,7 +186,7 @@ impl DepSpec {
             versions,
         })
     }
-    pub fn from_package(package: &Package, operator: DepOperator) -> Result<Self, String> {
+    pub(crate) fn from_package(package: &Package, operator: DepOperator) -> Result<Self, String> {
         let mut operators = Vec::new();
         let mut versions = Vec::new();
         operators.push(operator);
@@ -201,7 +201,7 @@ impl DepSpec {
     // TODO: from_dep_specs: if all have the same name, combine operators and versions?
 
     //--------------------------------------------------------------------------
-    pub fn validate_version(&self, version: &VersionSpec) -> bool {
+    pub(crate) fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             let valid = match op {
@@ -220,7 +220,7 @@ impl DepSpec {
         }
         true
     }
-    pub fn validate_package(&self, package: &Package) -> bool {
+    pub(crate) fn validate_package(&self, package: &Package) -> bool {
         self.name == package.name && self.validate_version(&package.version)
     }
 }

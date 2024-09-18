@@ -31,12 +31,19 @@ impl ValidationRecord {
 
 #[derive(Debug)]
 pub struct ValidationReport {
-    pub records: Vec<ValidationRecord>,
+    pub(crate) records: Vec<ValidationRecord>,
 }
 
 impl ValidationReport {
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.records.len()
+    }
+
+    pub(crate) fn get_package_strings(&self) -> Vec<String> {
+        self.records
+            .iter()
+            .map(|record| record.package.to_string())
+            .collect()
     }
 
     fn to_writer<W: Write>(
@@ -52,6 +59,8 @@ impl ValidationReport {
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
 
+        let dep_missing = '-';
+
         let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
         records.sort_by_key(|item| &item.package);
 
@@ -60,7 +69,7 @@ impl ValidationReport {
 
             let dep_display = match &item.dep_spec {
                 Some(dep_spec) => format!("{}", dep_spec),
-                None => "-".to_string(),
+                None => dep_missing.to_string(),
             };
 
             if report_sites {
@@ -106,7 +115,7 @@ impl ValidationReport {
         Ok(())
     }
 
-    pub fn to_file(
+    pub(crate) fn to_file(
         &self,
         file_path: &PathBuf,
         delimiter: char,

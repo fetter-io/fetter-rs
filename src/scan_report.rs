@@ -79,7 +79,7 @@ impl ScanReport {
         Ok(())
     }
 
-    pub fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
+    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
         self.to_writer(file, delimiter, true)
     }

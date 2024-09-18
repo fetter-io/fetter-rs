@@ -15,7 +15,7 @@ pub(crate) struct DepManifest {
 }
 
 impl DepManifest {
-    pub fn from_iter<I, S>(ds_iter: I) -> Result<Self, String>
+    pub(crate) fn from_iter<I, S>(ds_iter: I) -> Result<Self, String>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -30,7 +30,7 @@ impl DepManifest {
         }
         Ok(DepManifest { dep_specs })
     }
-    pub fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
+    pub(crate) fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
         let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let lines = io::BufReader::new(file).lines();
         let filtered_lines = lines.filter_map(|line| {
@@ -48,7 +48,7 @@ impl DepManifest {
         });
         DepManifest::from_iter(filtered_lines)
     }
-    pub fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
+    pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
         for dep_spec in dep_specs {
             if ds.contains_key(&dep_spec.name) {
@@ -58,7 +58,7 @@ impl DepManifest {
         }
         Ok(DepManifest { dep_specs: ds })
     }
-    // pub fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
+    // pub(crate) fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
     //     let contents = fs::read_to_string(file_path)
     //         .map_err(|e| format!("Failed to read pyproject.toml file: {}", e))?;
     //     let parsed_toml: toml::Value = toml::from_str(&contents)
@@ -77,7 +77,7 @@ impl DepManifest {
     //     Ok(DepManifest { packages })
     // }
 
-    // pub fn from_git_repo(repo_url: &str) -> Result<Self, String> {
+    // pub(crate) fn from_git_repo(repo_url: &str) -> Result<Self, String> {
     //     // Create a temporary directory
     //     let tmp_dir = tempdir().map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     //     let repo_path = tmp_dir.path().join("repo");
@@ -109,7 +109,7 @@ impl DepManifest {
         names
     }
 
-    pub fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
+    pub(crate) fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
         self.dep_specs.get(key)
     }
 
@@ -124,7 +124,7 @@ impl DepManifest {
 
     //--------------------------------------------------------------------------
     // Writes to a file
-    pub fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
+    pub(crate) fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
         let file = File::create(file_path)?;
         self.to_writer(file)
     }
@@ -137,10 +137,10 @@ impl DepManifest {
     }
 
     //--------------------------------------------------------------------------
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.dep_specs.len()
     }
-    pub fn validate(&self, package: &Package) -> bool {
+    pub(crate) fn validate(&self, package: &Package) -> bool {
         if let Some(dep_spec) = self.dep_specs.get(&package.name) {
             dep_spec.validate_version(&package.version)
         } else {

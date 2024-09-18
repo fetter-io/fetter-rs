@@ -29,17 +29,7 @@ impl VersionSpec {
             .collect();
         VersionSpec(parts)
     }
-    // pub(crate) fn to_string(&self) -> String {
-    //     self.0
-    //         .iter()
-    //         .map(|part| match part {
-    //             VersionPart::Number(num) => num.to_string(),
-    //             VersionPart::Text(text) => text.clone(),
-    //         })
-    //         .collect::<Vec<_>>()
-    //         .join(".")
-    // }
-    pub fn is_compatible(&self, other: &Self) -> bool {
+    pub(crate) fn is_compatible(&self, other: &Self) -> bool {
         // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
         if let (Some(VersionPart::Number(self_major)), Some(VersionPart::Number(other_major))) =
             (self.0.first(), other.0.first())
@@ -48,7 +38,7 @@ impl VersionSpec {
         }
         false
     }
-    pub fn is_arbitrary_equal(&self, other: &Self) -> bool {
+    pub(crate) fn is_arbitrary_equal(&self, other: &Self) -> bool {
         // https://packaging.python.org/en/latest/specifications/version-specifiers/#arbitrary-equality
         self.to_string() == other.to_string()
     }

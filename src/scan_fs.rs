@@ -145,6 +145,7 @@ impl ScanFS {
     //--------------------------------------------------------------------------
 
     /// Return sorted packages.
+    #[allow(dead_code)]
     pub(crate) fn get_packages(&self) -> Vec<Package> {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
@@ -164,8 +165,9 @@ impl ScanFS {
     ) -> ValidationReport {
         // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
-        for (package, sites) in &self.package_to_sites {
-            if !dm.validate(package) {
+        for package in self.get_packages() {
+            let sites = self.package_to_sites.get(&package).unwrap();
+            if !dm.validate(&package) {
                 let ds = dm.get_dep_spec(&package.name);
                 let sites: Option<Vec<PathBuf>> = match report_sites {
                     true => Some(sites.clone()),
@@ -290,26 +292,56 @@ mod tests {
     }
 
     //--------------------------------------------------------------------------
-    //     #[test]
-    //     fn test_validation_a() {
-    //         let exe = PathBuf::from("/usr/bin/python3");
-    //         let site = PathBuf::from("/usr/lib/python3/site-packages");
-    //         let packages = vec![
-    //             Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
-    //             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
-    //             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
-    //         ];
-    //         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+    #[test]
+    fn test_validation_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let dm = DepManifest::from_iter(vec!["numpy>1.19", "requests==0.7.6", "flask> 1"].iter())
+            .unwrap();
 
-    //         let fp_dir = tempdir().unwrap();
-    //         let fp = fp_dir.path().join("report.txt");
-    //         let _ = cr.to_file(&fp, ',');
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let vr = sfs.to_validation_report(dm, false);
+        assert_eq!(vr.len(), 0);
+    }
+    #[test]
+    fn test_validation_b() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let dm = DepManifest::from_iter(vec!["numpy>1.19", "requests==0.7.6", "flask> 2"].iter())
+            .unwrap();
 
-    //         let file = File::open(&fp).unwrap();
-    //         let mut lines = io::BufReader::new(file).lines();
-    //         assert_eq!(lines.next().unwrap().unwrap(), "             ,Count");
-    //         assert_eq!(lines.next().unwrap().unwrap(), "executables  ,1");
-    //         assert_eq!(lines.next().unwrap().unwrap(), "package sites,1");
-    //         assert_eq!(lines.next().unwrap().unwrap(), "packages     ,3");
-    //     }
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let vr = sfs.to_validation_report(dm, false);
+
+        vr.to_stdout(false);
+        assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3"]);
+    }
+    #[test]
+    fn test_validation_c() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let dm = DepManifest::from_iter(vec!["numpy>2", "requests==0.7.1", "flask> 2,<3"].iter())
+            .unwrap();
+
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let vr = sfs.to_validation_report(dm, false);
+
+        vr.to_stdout(false);
+        assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]);
+    }
 }
