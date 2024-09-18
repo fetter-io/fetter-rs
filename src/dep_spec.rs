@@ -1,9 +1,9 @@
-use std::error::Error;
-use std::fmt;
-use std::str::FromStr;
-
 use pest::Parser;
 use pest_derive::Parser;
+use std::error::Error;
+use std::fmt;
+use std::path::Path;
+use std::str::FromStr;
 
 use crate::package::Package;
 use crate::version_spec::VersionSpec;
@@ -58,21 +58,62 @@ impl fmt::Display for DepOperator {
     }
 }
 
+fn url_trim(mut input: String) -> String {
+    input = input.trim().to_string();
+    if input.starts_with('@') {
+        input.remove(0);
+        input = input.trim().to_string();
+    }
+    input
+}
+
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
 #[derive(Debug, Clone)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
+    pub(crate) url: Option<String>,
     operators: Vec<DepOperator>,
     versions: Vec<VersionSpec>,
 }
 impl DepSpec {
+    // Given a URL to whl file, parse the name and version and return a DepSpec
+    fn from_whl(input: &str) -> Result<Self, String> {
+        let input = input.trim();
+        // TODO: can start with http(s):// or file://
+        if input.starts_with("http") && input.ends_with(".whl") {
+            // extract the last path component
+            let name = Path::new(input)
+                .file_stem()
+                .ok_or_else(|| "bad whl".to_string())?
+                .to_str()
+                .unwrap();
+
+            let parts: Vec<_> = name.split('-').collect();
+            if parts.len() >= 2 {
+                let package_name = parts[0];
+                let versions = vec![VersionSpec::new(parts[1])];
+                let operators = vec![DepOperator::Eq];
+                return Ok(DepSpec {
+                    name: package_name.to_string(),
+                    url: Some(input.to_string()),
+                    operators: operators,
+                    versions: versions,
+                });
+            }
+        }
+        return Err("Invalid .whl file name".to_string());
+    }
+
     pub fn from_string(input: &str) -> Result<Self, String> {
+        if let Ok(ds) = DepSpec::from_whl(input) {
+            return Ok(ds);
+        }
+
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
             .map_err(|e| format!("Parsing error: {}", e))?;
 
-        // check for unconsumed input
         let parse_result = parsed.next().ok_or("Parsing error: No results")?;
-
+        // check for unconsumed input
         if parse_result.as_str() != input {
             return Err(format!(
                 "Unrecognized input: {:?}",
@@ -81,6 +122,7 @@ impl DepSpec {
         }
 
         let mut package_name = None;
+        let mut url = None;
         let mut operators = Vec::new();
         let mut versions = Vec::new();
 
@@ -90,6 +132,10 @@ impl DepSpec {
                 Rule::identifier => {
                     // grammar permits only one
                     package_name = Some(pair.as_str().to_string());
+                }
+                Rule::url_reference => {
+                    println!("url_reference: {}", pair.as_str().to_string());
+                    url = Some(url_trim(pair.as_str().to_string()));
                 }
                 Rule::version_many => {
                     for version_pair in pair.into_inner() {
@@ -119,8 +165,11 @@ impl DepSpec {
             }
         }
         let package_name = package_name.ok_or("Missing package name")?;
+        // if url is defined and it is wheel, take definition from the wheel
+
         Ok(DepSpec {
             name: package_name,
+            url,
             operators,
             versions,
         })
@@ -132,12 +181,14 @@ impl DepSpec {
         versions.push(package.version.clone());
         Ok(DepSpec {
             name: package.name.clone(),
+            url: None,
             operators,
             versions,
         })
     }
     // TODO: from_dep_specs: if all have the same name, combine operators and versions?
 
+    //--------------------------------------------------------------------------
     pub fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
@@ -436,4 +487,22 @@ mod tests {
         let ds = DepSpec::from_package(&p, DepOperator::LessThanOrEq).unwrap();
         assert_eq!(ds.to_string(), "foo<=1.2.3.4");
     }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_url_a() {
+        let ds =
+            DepSpec::from_string("SomeProject@git+https://git.repo/some_pkg.git@1.3.1").unwrap();
+        assert_eq!(ds.to_string(), "SomeProject");
+        assert_eq!(ds.url.unwrap(), "git+https://git.repo/some_pkg.git@1.3.1")
+    }
+    #[test]
+    fn test_dep_spec_url_b() {
+        // we cannot parse raw URLs, as we cannot always get the package name
+        let ds = DepSpec::from_string("https://example.com/app-1.0.whl").unwrap();
+        assert_eq!(ds.to_string(), "app==1.0");
+        assert_eq!(ds.url.unwrap(), "https://example.com/app-1.0.whl");
+    }
 }
+
+// might see some like
+// foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl
