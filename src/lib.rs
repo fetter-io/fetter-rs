@@ -8,6 +8,7 @@ mod scan_fs;
 mod scan_report;
 mod validation_report;
 mod version_spec;
+use std::process;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -150,6 +151,11 @@ enum ValidateSubcommand {
         #[arg(short, long, default_value = ",")]
         delimiter: char,
     },
+    /// Return an exit code, 0 on success, 3 (by default) on error.
+    Exit {
+        #[arg(short, long, default_value = "3")]
+        code: i32,
+    }
 }
 //------------------------------------------------------------------------------
 
@@ -228,13 +234,16 @@ where
                 ValidateSubcommand::Write { output, delimiter } => {
                     let _ = v.to_file(output, *delimiter, include_sites);
                 }
+                ValidateSubcommand::Exit { code } => {
+                    process::exit(if v.len() > 0 {*code} else {0});
+                }
+
             }
         }
         Some(Commands::Purge { bound }) => {
             let _dm = get_dep_manifest(bound);
             println!("purge");
         }
-
         None => {}
     }
 }
