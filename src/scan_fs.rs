@@ -157,7 +157,11 @@ impl ScanFS {
     }
 
     /// Validate this scan against the provided DepManifest.
-    pub(crate) fn validate(&self, dm: DepManifest, report_sites: bool) -> ValidationReport {
+    pub(crate) fn to_validation_report(
+        &self,
+        dm: DepManifest,
+        report_sites: bool,
+    ) -> ValidationReport {
         // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
         for (package, sites) in &self.package_to_sites {
@@ -172,8 +176,7 @@ impl ScanFS {
         }
         ValidationReport { records }
     }
-    //--------------------------------------------------------------------------
-    // operator: greater, eq,
+
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
@@ -257,11 +260,11 @@ mod tests {
 
         let dm1 = DepManifest::from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
         assert_eq!(dm1.len(), 2);
-        let invalid1 = sfs.validate(dm1, false);
+        let invalid1 = sfs.to_validation_report(dm1, false);
         assert_eq!(invalid1.len(), 0);
 
         let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
-        let invalid2 = sfs.validate(dm2, false);
+        let invalid2 = sfs.to_validation_report(dm2, false);
         assert_eq!(invalid2.len(), 1);
     }
     //--------------------------------------------------------------------------

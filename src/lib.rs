@@ -226,16 +226,16 @@ where
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
-            let v = sfs.validate(dm, report_sites);
+            let vr = sfs.to_validation_report(dm, report_sites);
             match subcommands {
                 ValidateSubcommand::Display => {
-                    v.to_stdout(report_sites);
+                    vr.to_stdout(report_sites);
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
-                    let _ = v.to_file(output, *delimiter, report_sites);
+                    let _ = vr.to_file(output, *delimiter, report_sites);
                 }
                 ValidateSubcommand::Exit { code } => {
-                    process::exit(if v.len() > 0 { *code } else { 0 });
+                    process::exit(if vr.len() > 0 { *code } else { 0 });
                 }
             }
         }
