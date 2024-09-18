@@ -155,7 +155,7 @@ enum ValidateSubcommand {
     Exit {
         #[arg(short, long, default_value = "3")]
         code: i32,
-    }
+    },
 }
 //------------------------------------------------------------------------------
 
@@ -235,9 +235,8 @@ where
                     let _ = v.to_file(output, *delimiter, include_sites);
                 }
                 ValidateSubcommand::Exit { code } => {
-                    process::exit(if v.len() > 0 {*code} else {0});
+                    process::exit(if v.len() > 0 { *code } else { 0 });
                 }
-
             }
         }
         Some(Commands::Purge { bound }) => {
