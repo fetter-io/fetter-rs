@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
-// A DepManifest is essential a requirements file, implemented as HashMap for quick lookup by package name.
+// A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
 #[derive(Debug)]
 pub(crate) struct DepManifest {
     dep_specs: HashMap<String, DepSpec>,
@@ -123,6 +123,19 @@ impl DepManifest {
     }
 
     //--------------------------------------------------------------------------
+    pub(crate) fn len(&self) -> usize {
+        self.dep_specs.len()
+    }
+
+    pub(crate) fn validate(&self, package: &Package) -> bool {
+        if let Some(dep_spec) = self.dep_specs.get(&package.name) {
+            dep_spec.validate_version(&package.version)
+        } else {
+            false
+        }
+    }
+
+    //--------------------------------------------------------------------------
     // Writes to a file
     pub(crate) fn to_requirements(&self, file_path: &PathBuf) -> io::Result<()> {
         let file = File::create(file_path)?;
@@ -134,18 +147,6 @@ impl DepManifest {
         let stdout = io::stdout();
         let handle = stdout.lock();
         self.to_writer(handle).unwrap();
-    }
-
-    //--------------------------------------------------------------------------
-    pub(crate) fn len(&self) -> usize {
-        self.dep_specs.len()
-    }
-    pub(crate) fn validate(&self, package: &Package) -> bool {
-        if let Some(dep_spec) = self.dep_specs.get(&package.name) {
-            dep_spec.validate_version(&package.version)
-        } else {
-            false
-        }
     }
 }
 

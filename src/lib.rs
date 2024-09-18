@@ -226,7 +226,8 @@ where
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
-            let vr = sfs.to_validation_report(dm, report_sites);
+            let permit_unspecified = false;
+            let vr = sfs.to_validation_report(dm, permit_unspecified, report_sites);
             match subcommands {
                 ValidateSubcommand::Display => {
                     vr.to_stdout(report_sites);

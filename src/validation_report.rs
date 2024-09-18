@@ -39,6 +39,7 @@ impl ValidationReport {
         self.records.len()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_package_strings(&self) -> Vec<String> {
         self.records
             .iter()

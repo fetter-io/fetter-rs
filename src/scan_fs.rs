@@ -121,6 +121,7 @@ impl ScanFS {
         Self::from_exe_to_sites(exe_to_sites)
     }
     // Alternative constructor from in-memory objects, mostly for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
+    #[allow(dead_code)]
     pub(crate) fn from_exe_site_packages(
         exe: PathBuf,
         site: PathBuf,
@@ -160,18 +161,26 @@ impl ScanFS {
     pub(crate) fn to_validation_report(
         &self,
         dm: DepManifest,
+        permit_unspecified: bool,
         report_sites: bool,
     ) -> ValidationReport {
-        // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
+        // iterate over found packages in order for better reporting
         for package in self.get_packages() {
-            let sites = self.package_to_sites.get(&package).unwrap();
-            if !dm.validate(&package) {
-                let ds = dm.get_dep_spec(&package.name);
+            let ds = dm.get_dep_spec(&package.name);
+
+            // package is valid if ds exists and version is valid, or it does not exist and permit_unspecified is true
+            let package_valid = match ds {
+                Some(ds) => ds.validate_version(&package.version),
+                None => permit_unspecified,
+            };
+            if !package_valid  {
+                // sites might be None
                 let sites: Option<Vec<PathBuf>> = match report_sites {
-                    true => Some(sites.clone()),
+                    true => Some(self.package_to_sites.get(&package).unwrap().clone()),
                     false => None,
                 };
+                // ds might be None
                 records.push(ValidationRecord::new(package.clone(), ds.cloned(), sites));
             }
         }
@@ -261,11 +270,11 @@ mod tests {
 
         let dm1 = DepManifest::from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
         assert_eq!(dm1.len(), 2);
-        let invalid1 = sfs.to_validation_report(dm1, false);
+        let invalid1 = sfs.to_validation_report(dm1, false, false);
         assert_eq!(invalid1.len(), 0);
 
         let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
-        let invalid2 = sfs.to_validation_report(dm2, false);
+        let invalid2 = sfs.to_validation_report(dm2, false, false);
         assert_eq!(invalid2.len(), 1);
     }
     //--------------------------------------------------------------------------
@@ -304,7 +313,7 @@ mod tests {
             .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false);
+        let vr = sfs.to_validation_report(dm, false, false);
         assert_eq!(vr.len(), 0);
     }
     #[test]
@@ -320,9 +329,8 @@ mod tests {
             .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false);
+        let vr = sfs.to_validation_report(dm, false, false);
 
-        vr.to_stdout(false);
         assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3"]);
     }
     #[test]
@@ -338,9 +346,8 @@ mod tests {
             .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false);
+        let vr = sfs.to_validation_report(dm, false, false);
 
-        vr.to_stdout(false);
         assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]);
     }
 }
