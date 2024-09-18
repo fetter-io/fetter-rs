@@ -29,7 +29,7 @@ marker = { marker_or | marker_expr }
 
 quoted_marker = { ";" ~ wsp? ~ marker }
 
-url_scheme = { "git+" ~ ("https" | "ssh") | "file" | "https" }
+url_scheme = { "git+" ~ ("https" | "ssh") | "file" | "https" | "http" }
 url_host = { (!"@" ~ ANY)+ }
 commit_hash = { ("@" ~ (!"#" ~ ANY)+)? }
 url_fragment = { "#" ~ (!" " ~ ANY)* }

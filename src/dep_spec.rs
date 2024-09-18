@@ -5,7 +5,7 @@ use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::package::Package;
+use crate::package::{self, Package};
 use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
@@ -76,15 +76,17 @@ pub(crate) struct DepSpec {
     versions: Vec<VersionSpec>,
 }
 impl DepSpec {
-    // Given a URL to whl file, parse the name and version and return a DepSpec
+    // Given a URL to a whl file, parse the name and version and return a DepSpec
     fn from_whl(input: &str) -> Result<Self, String> {
         let input = input.trim();
-        // TODO: can start with http(s):// or file://
-        if input.starts_with("http") && input.ends_with(".whl") {
+        if input.starts_with("http://")
+            || input.starts_with("https://")
+            || input.starts_with("file://") && input.ends_with(".whl")
+        {
             // extract the last path component
             let name = Path::new(input)
                 .file_stem()
-                .ok_or_else(|| "bad whl".to_string())?
+                .ok_or_else(|| "Invalid .whl".to_string())?
                 .to_str()
                 .unwrap();
 
@@ -101,7 +103,7 @@ impl DepSpec {
                 });
             }
         }
-        return Err("Invalid .whl file name".to_string());
+        return Err("Invalid .whl".to_string());
     }
 
     pub fn from_string(input: &str) -> Result<Self, String> {
@@ -166,7 +168,17 @@ impl DepSpec {
         }
         let package_name = package_name.ok_or("Missing package name")?;
         // if url is defined and it is wheel, take definition from the wheel
-
+        if let Some(ref url) = url {
+            if let Ok(ds) = DepSpec::from_whl(&url) {
+                if ds.name != package_name {
+                    return Err(format!(
+                        "Provided name {} does not match whl name {}",
+                        ds.name, package_name
+                    ));
+                }
+                return Ok(ds);
+            }
+        }
         Ok(DepSpec {
             name: package_name,
             url,
@@ -298,7 +310,9 @@ mod tests {
     fn test_dep_spec_h4() {
         let ds1 =
             DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
-        assert_eq!(ds1.to_string(), "pip");
+        assert_eq!(ds1.to_string(), "pip==1.3.1");
+        assert_eq!(ds1.url.unwrap(), "file:///localbuilds/pip-1.3.1-py33-none-any.whl");
+
     }
     #[test]
     fn test_dep_spec_h5() {
@@ -497,12 +511,41 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_url_b() {
-        // we cannot parse raw URLs, as we cannot always get the package name
         let ds = DepSpec::from_string("https://example.com/app-1.0.whl").unwrap();
         assert_eq!(ds.to_string(), "app==1.0");
         assert_eq!(ds.url.unwrap(), "https://example.com/app-1.0.whl");
     }
+    #[test]
+    fn test_dep_spec_url_c() {
+        let ds = DepSpec::from_string("http://example.com/app-1.0.whl").unwrap();
+        assert_eq!(ds.to_string(), "app==1.0");
+        assert_eq!(ds.url.unwrap(), "http://example.com/app-1.0.whl");
+    }
+    #[test]
+    fn test_dep_spec_url_d() {
+        let ds = DepSpec::from_string("foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl").unwrap();
+        assert_eq!(ds.to_string(), "foo==3.1.4");
+        assert_eq!(ds.url.unwrap(), "http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl");
+    }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_from_whl_a() {
+        let ds = DepSpec::from_whl("https://example.com/app-1.0.whl").unwrap();
+        assert_eq!(ds.to_string(), "app==1.0");
+        assert_eq!(ds.url.unwrap(), "https://example.com/app-1.0.whl")
+    }
+    #[test]
+    fn test_dep_spec_from_whl_b() {
+        let ds = DepSpec::from_whl("http://example.com/app-1.0.whl").unwrap();
+        assert_eq!(ds.to_string(), "app==1.0");
+        assert_eq!(ds.url.unwrap(), "http://example.com/app-1.0.whl")
+    }
+    #[test]
+    fn test_dep_spec_from_whl_c() {
+        let ds = DepSpec::from_whl("file:///a/b/c/app-2.0.whl").unwrap();
+        assert_eq!(ds.to_string(), "app==2.0");
+        assert_eq!(ds.url.unwrap(), "file:///a/b/c/app-2.0.whl")
+    }
 }
 
-// might see some like
-// foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl
