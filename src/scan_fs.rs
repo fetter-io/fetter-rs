@@ -273,13 +273,13 @@ mod tests {
         let exe = PathBuf::from("/usr/bin/python3");
         let site = PathBuf::from("/usr/lib/python3.8/site-packages");
         let packages = vec![
-            Package::from_name_and_version("numpy", "1.19.3").unwrap(),
-            Package::from_name_and_version("numpy", "1.20.1").unwrap(),
-            Package::from_name_and_version("numpy", "2.1.1").unwrap(),
-            Package::from_name_and_version("requests", "0.7.6").unwrap(),
-            Package::from_name_and_version("requests", "2.32.3").unwrap(),
-            Package::from_name_and_version("flask", "3.0.3").unwrap(),
-            Package::from_name_and_version("flask", "1.1.3").unwrap(),
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("numpy", "1.20.1", None).unwrap(),
+            Package::from_name_version_durl("numpy", "2.1.1", None).unwrap(),
+            Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+            Package::from_name_version_durl("requests", "2.32.3", None).unwrap(),
+            Package::from_name_version_durl("flask", "3.0.3", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         assert_eq!(sfs.len(), 7);
@@ -288,4 +288,28 @@ mod tests {
         println!("{:?}", dm);
         assert_eq!(dm.len(), 3);
     }
+
+    //--------------------------------------------------------------------------
+    //     #[test]
+    //     fn test_validation_a() {
+    //         let exe = PathBuf::from("/usr/bin/python3");
+    //         let site = PathBuf::from("/usr/lib/python3/site-packages");
+    //         let packages = vec![
+    //             Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+    //             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+    //             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+    //         ];
+    //         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+    //         let fp_dir = tempdir().unwrap();
+    //         let fp = fp_dir.path().join("report.txt");
+    //         let _ = cr.to_file(&fp, ',');
+
+    //         let file = File::open(&fp).unwrap();
+    //         let mut lines = io::BufReader::new(file).lines();
+    //         assert_eq!(lines.next().unwrap().unwrap(), "             ,Count");
+    //         assert_eq!(lines.next().unwrap().unwrap(), "executables  ,1");
+    //         assert_eq!(lines.next().unwrap().unwrap(), "package sites,1");
+    //         assert_eq!(lines.next().unwrap().unwrap(), "packages     ,3");
+    //     }
 }

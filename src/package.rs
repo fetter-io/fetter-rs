@@ -14,14 +14,7 @@ pub(crate) struct Package {
     pub(crate) direct_url: Option<DirectURL>,
 }
 impl Package {
-    pub(crate) fn from_name_and_version(name: &str, version: &str) -> Option<Self> {
-        Some(Package {
-            name: name.to_string(),
-            version: VersionSpec::new(version),
-            direct_url: None,
-        })
-    }
-    pub(crate) fn from_name_version_direct_url(
+    pub(crate) fn from_name_version_durl(
         name: &str,
         version: &str,
         direct_url: Option<DirectURL>,
@@ -32,6 +25,7 @@ impl Package {
             direct_url: direct_url,
         })
     }
+    /// Create a Package from a dist_info string.
     pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
         if input.ends_with(".dist-info") {
             let trimmed_input = input.trim_end_matches(".dist-info");
@@ -39,11 +33,12 @@ impl Package {
             if parts.len() >= 2 {
                 let name = parts[..parts.len() - 1].join("-");
                 let version = parts.last()?;
-                return Self::from_name_and_version(&name, version);
+                return Self::from_name_version_durl(&name, version, None);
             }
         }
         None
     }
+    /// Create a Package from a dist_info file path.
     pub(crate) fn from_file_path(file_path: &PathBuf) -> Option<Self> {
         let file_name = file_path.file_name().and_then(|name| name.to_str())?;
         if file_name.ends_with(".dist-info") && file_path.is_dir() {
@@ -58,7 +53,7 @@ impl Package {
             if parts.len() >= 2 {
                 let name = parts[..parts.len() - 1].join("-");
                 let version = parts.last()?;
-                return Self::from_name_version_direct_url(&name, version, durl);
+                return Self::from_name_version_durl(&name, version, durl);
             }
         }
         None
@@ -125,12 +120,12 @@ mod tests {
     }
     #[test]
     fn test_package_to_string_b() {
-        let p1 = Package::from_name_and_version("matplotlib", "3.9.0").unwrap();
+        let p1 = Package::from_name_version_durl("matplotlib", "3.9.0", None).unwrap();
         assert_eq!(p1.to_string(), "matplotlib-3.9.0");
     }
     #[test]
     fn test_package_to_string_c() {
-        let p1 = Package::from_name_and_version("numpy", "2.1.2").unwrap();
+        let p1 = Package::from_name_version_durl("numpy", "2.1.2", None).unwrap();
         assert_eq!(p1.to_string(), "numpy-2.1.2");
         assert_eq!(format!("{:?}", p1), "<Package: numpy-2.1.2>");
     }

@@ -200,14 +200,14 @@ mod tests {
         let dep_manifest = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dep_manifest.len(), 2);
 
-        let p1 = Package::from_name_and_version("pk2", "2.1").unwrap();
+        let p1 = Package::from_name_version_durl("pk2", "2.1", None).unwrap();
         assert_eq!(dep_manifest.validate(&p1), true);
-        let p2 = Package::from_name_and_version("pk2", "0.1").unwrap();
+        let p2 = Package::from_name_version_durl("pk2", "0.1", None).unwrap();
         assert_eq!(dep_manifest.validate(&p2), false);
-        let p3 = Package::from_name_and_version("pk1", "0.2.2.999").unwrap();
+        let p3 = Package::from_name_version_durl("pk1", "0.2.2.999", None).unwrap();
         assert_eq!(dep_manifest.validate(&p3), true);
 
-        let p4 = Package::from_name_and_version("pk99", "0.2.2.999").unwrap();
+        let p4 = Package::from_name_version_durl("pk99", "0.2.2.999", None).unwrap();
         assert_eq!(dep_manifest.validate(&p4), false);
     }
 
@@ -240,13 +240,13 @@ tomlkit==0.12.4
 
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 7);
-        let p1 = Package::from_name_and_version("termcolor", "2.2.0").unwrap();
+        let p1 = Package::from_name_version_durl("termcolor", "2.2.0", None).unwrap();
         assert_eq!(dm1.validate(&p1), true);
-        let p2 = Package::from_name_and_version("termcolor", "2.2.1").unwrap();
+        let p2 = Package::from_name_version_durl("termcolor", "2.2.1", None).unwrap();
         assert_eq!(dm1.validate(&p2), false);
-        let p3 = Package::from_name_and_version("text-unicide", "1.3").unwrap();
+        let p3 = Package::from_name_version_durl("text-unicide", "1.3", None).unwrap();
         assert_eq!(dm1.validate(&p3), false);
-        let p3 = Package::from_name_and_version("text-unidecode", "1.3").unwrap();
+        let p3 = Package::from_name_version_durl("text-unidecode", "1.3", None).unwrap();
         assert_eq!(dm1.validate(&p3), true);
     }
 
@@ -288,14 +288,26 @@ opentelemetry-semantic-conventions==0.45b0
 
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 8);
-        let p1 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.0")
-            .unwrap();
+        let p1 = Package::from_name_version_durl(
+            "opentelemetry-exporter-otlp-proto-grpc",
+            "1.24.0",
+            None,
+        )
+        .unwrap();
         assert_eq!(dm1.validate(&p1), true);
-        let p2 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-grpc", "1.24.1")
-            .unwrap();
+        let p2 = Package::from_name_version_durl(
+            "opentelemetry-exporter-otlp-proto-grpc",
+            "1.24.1",
+            None,
+        )
+        .unwrap();
         assert_eq!(dm1.validate(&p2), false);
-        let p3 = Package::from_name_and_version("opentelemetry-exporter-otlp-proto-gpc", "1.24.0")
-            .unwrap();
+        let p3 = Package::from_name_version_durl(
+            "opentelemetry-exporter-otlp-proto-gpc",
+            "1.24.0",
+            None,
+        )
+        .unwrap();
         assert_eq!(dm1.validate(&p3), false);
     }
 
@@ -328,11 +340,11 @@ regex==2024.4.16
 
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 9);
-        let p1 = Package::from_name_and_version("regex", "2024.4.16").unwrap();
+        let p1 = Package::from_name_version_durl("regex", "2024.4.16", None).unwrap();
         assert_eq!(dm1.validate(&p1), true);
-        let p2 = Package::from_name_and_version("regex", "2024.04.16").unwrap();
+        let p2 = Package::from_name_version_durl("regex", "2024.04.16", None).unwrap();
         assert_eq!(dm1.validate(&p2), true);
-        let p2 = Package::from_name_and_version("regex", "2024.04.17").unwrap();
+        let p2 = Package::from_name_version_durl("regex", "2024.04.17", None).unwrap();
         assert_eq!(dm1.validate(&p2), false);
     }
 

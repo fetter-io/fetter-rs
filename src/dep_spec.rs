@@ -450,25 +450,25 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_package_a() {
-        let p1 = Package::from_name_and_version("package", "1.0").unwrap();
+        let p1 = Package::from_name_version_durl("package", "1.0", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
         assert_eq!(ds1.validate_package(&p1), true);
     }
     #[test]
     fn test_dep_spec_validate_package_b() {
-        let p1 = Package::from_name_and_version("package", "1.5").unwrap();
+        let p1 = Package::from_name_version_durl("package", "1.5", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
         assert_eq!(ds1.validate_package(&p1), false);
     }
     #[test]
     fn test_dep_spec_validate_package_c() {
-        let p1 = Package::from_name_and_version("package", "1.0").unwrap();
+        let p1 = Package::from_name_version_durl("package", "1.0", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
         assert_eq!(ds1.validate_package(&p1), false);
     }
     #[test]
     fn test_dep_spec_validate_package_d() {
-        let p1 = Package::from_name_and_version("package", "1.0.0.0.1").unwrap();
+        let p1 = Package::from_name_version_durl("package", "1.0.0.0.1", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
         assert_eq!(ds1.validate_package(&p1), true);
     }
@@ -487,19 +487,19 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_from_package_a() {
-        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let p = Package::from_name_version_durl("foo", "1.2.3.4", None).unwrap();
         let ds = DepSpec::from_package(&p, DepOperator::Eq).unwrap();
         assert_eq!(ds.to_string(), "foo==1.2.3.4");
     }
     #[test]
     fn test_dep_spec_from_package_b() {
-        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let p = Package::from_name_version_durl("foo", "1.2.3.4", None).unwrap();
         let ds = DepSpec::from_package(&p, DepOperator::GreaterThan).unwrap();
         assert_eq!(ds.to_string(), "foo>1.2.3.4");
     }
     #[test]
     fn test_dep_spec_from_package_c() {
-        let p = Package::from_name_and_version("foo", "1.2.3.4").unwrap();
+        let p = Package::from_name_version_durl("foo", "1.2.3.4", None).unwrap();
         let ds = DepSpec::from_package(&p, DepOperator::LessThanOrEq).unwrap();
         assert_eq!(ds.to_string(), "foo<=1.2.3.4");
     }
