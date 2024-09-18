@@ -63,14 +63,13 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 }
 
 //------------------------------------------------------------------------------
-// #[derive(Debug)]
+// The result of a file-system scan.
 pub(crate) struct ScanFS {
     // NOTE: these are used by reporters
     pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
     pub(crate) package_to_sites: HashMap<Package, Vec<PathBuf>>,
 }
 
-// The results of a file-system scan.
 impl ScanFS {
     fn from_exe_to_sites(exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
