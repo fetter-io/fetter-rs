@@ -145,7 +145,6 @@ impl ScanFS {
     //--------------------------------------------------------------------------
 
     /// Return sorted packages.
-    #[allow(dead_code)]
     pub(crate) fn get_packages(&self) -> Vec<Package> {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
