@@ -52,11 +52,7 @@ impl CountReport {
         CountReport { records }
     }
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: char,
-    ) -> io::Result<()> {
+    fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut max_package_width = 0;
 
@@ -99,4 +95,35 @@ impl CountReport {
     }
 }
 
-// TODO: need tests
+//------------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::package::Package;
+    use std::io::BufRead;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_from_scan_fs() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_and_version("numpy", "1.19.3").unwrap(),
+            Package::from_name_and_version("requests", "0.7.6").unwrap(),
+            Package::from_name_and_version("flask", "1.1.3").unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let cr = CountReport::from_scan_fs(&sfs);
+
+        let fp_dir = tempdir().unwrap();
+        let fp = fp_dir.path().join("report.txt");
+        let _ = cr.to_file(&fp, ',');
+
+        let file = File::open(&fp).unwrap();
+        let mut lines = io::BufReader::new(file).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "             ,Count");
+        assert_eq!(lines.next().unwrap().unwrap(), "executables  ,1");
+        assert_eq!(lines.next().unwrap().unwrap(), "package sites,1");
+        assert_eq!(lines.next().unwrap().unwrap(), "packages     ,3");
+    }
+}

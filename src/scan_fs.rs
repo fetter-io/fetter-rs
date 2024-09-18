@@ -121,7 +121,7 @@ impl ScanFS {
         Self::from_exe_to_sites(exe_to_sites)
     }
     // Alternative constructor from in-memory objects, mostly for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
-    fn from_exe_site_packages(
+    pub(crate) fn from_exe_site_packages(
         exe: PathBuf,
         site: PathBuf,
         packages: Vec<Package>,
@@ -225,7 +225,6 @@ impl ScanFS {
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-    // use crate::dep_spec::DepSpec;
     use super::*;
     use std::fs::File;
     use tempfile::tempdir;
@@ -238,12 +237,11 @@ mod tests {
     }
     #[test]
     fn test_from_exe_to_sites_a() {
-        let temp_dir = tempdir().unwrap();
-        let fp_dir = temp_dir.path();
-        let fp_exe = fp_dir.join("python");
+        let fp_dir = tempdir().unwrap();
+        let fp_exe = fp_dir.path().join("python");
         let _ = File::create(fp_exe.clone()).unwrap();
 
-        let fp_sp = fp_dir.join("site-packages");
+        let fp_sp = fp_dir.path().join("site-packages");
         fs::create_dir(fp_sp.clone()).unwrap();
 
         let fp_p1 = fp_sp.join("numpy-1.19.1.dist-info");
@@ -265,8 +263,6 @@ mod tests {
         let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
         let invalid2 = sfs.validate(dm2, false);
         assert_eq!(invalid2.len(), 1);
-
-        // sfs.report();
     }
     //--------------------------------------------------------------------------
     #[test]

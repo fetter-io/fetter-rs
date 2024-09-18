@@ -29,7 +29,6 @@ impl ValidationRecord {
     }
 }
 
-// These are validation results
 #[derive(Debug)]
 pub struct ValidationReport {
     pub records: Vec<ValidationRecord>,
@@ -47,7 +46,6 @@ impl ValidationReport {
         delimiter: char,
         include_sites: bool,
     ) -> io::Result<()> {
-
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut site_displays: Vec<String> = Vec::new();
@@ -84,7 +82,7 @@ impl ValidationReport {
             package_displays.push(pkg_display);
             dep_spec_displays.push(dep_display);
         }
-        // TODO: optionally show sites
+        // TODO: show sites
         writeln!(
             writer,
             "{:<package_width$}{}{:<dep_spec_width$}",
