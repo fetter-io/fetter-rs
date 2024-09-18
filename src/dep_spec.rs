@@ -5,7 +5,7 @@ use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::package::{self, Package};
+use crate::package::Package;
 use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
