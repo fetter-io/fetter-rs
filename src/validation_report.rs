@@ -11,7 +11,7 @@ use crate::package::Package;
 #[derive(Debug)]
 pub(crate) struct ValidationRecord {
     package: Package,
-    dep_spec: Option<DepSpec>, // None if no depspec
+    dep_spec: Option<DepSpec>,
     sites: Option<Vec<PathBuf>>,
 }
 
@@ -47,7 +47,7 @@ impl ValidationReport {
         delimiter: char,
         include_sites: bool,
     ) -> io::Result<()> {
-        // pub fn to_stdout(&self, include_sites: bool) {
+
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut site_displays: Vec<String> = Vec::new();
@@ -87,8 +87,9 @@ impl ValidationReport {
         // TODO: optionally show sites
         writeln!(
             writer,
-            "{:<package_width$} {:<dep_spec_width$}",
+            "{:<package_width$}{}{:<dep_spec_width$}",
             "Package",
+            delimiter,
             "Dependency",
             package_width = max_package_width,
             dep_spec_width = max_dep_spec_width
@@ -97,8 +98,9 @@ impl ValidationReport {
         for (pkg_display, dep_display) in package_displays.iter().zip(dep_spec_displays.iter()) {
             writeln!(
                 writer,
-                "{:<package_width$} {:<dep_spec_width$}",
+                "{:<package_width$}{}{:<dep_spec_width$}",
                 pkg_display,
+                delimiter,
                 dep_display,
                 package_width = max_package_width,
                 dep_spec_width = max_dep_spec_width

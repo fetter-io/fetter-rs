@@ -56,7 +56,6 @@ impl CountReport {
         &self,
         mut writer: W,
         delimiter: char,
-        repeat_package: bool,
     ) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut max_package_width = 0;
@@ -69,7 +68,7 @@ impl CountReport {
         writeln!(
             writer,
             "{:<package_width$}{}{}",
-            "",
+            "", // no header for key
             delimiter,
             "Count",
             package_width = max_package_width,
@@ -90,13 +89,13 @@ impl CountReport {
 
     pub fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, true)
+        self.to_writer(file, delimiter)
     }
 
     pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ', false).unwrap();
+        self.to_writer(handle, ' ').unwrap();
     }
 }
 
