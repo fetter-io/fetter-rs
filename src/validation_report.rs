@@ -43,7 +43,7 @@ impl ValidationReport {
         &self,
         mut writer: W,
         delimiter: char,
-        include_sites: bool,
+        report_sites: bool,
     ) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
@@ -63,7 +63,7 @@ impl ValidationReport {
                 None => "-".to_string(),
             };
 
-            if include_sites {
+            if report_sites {
                 let site_display = match &item.sites {
                     Some(sites) => sites
                         .iter()
@@ -110,15 +110,15 @@ impl ValidationReport {
         &self,
         file_path: &PathBuf,
         delimiter: char,
-        include_sites: bool,
+        report_sites: bool,
     ) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, include_sites)
+        self.to_writer(file, delimiter, report_sites)
     }
 
-    pub(crate) fn to_stdout(&self, include_sites: bool) {
+    pub(crate) fn to_stdout(&self, report_sites: bool) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ', include_sites).unwrap();
+        self.to_writer(handle, ' ', report_sites).unwrap();
     }
 }

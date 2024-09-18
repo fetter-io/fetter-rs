@@ -86,7 +86,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: DeriveSubcommand,
     },
-    /// Validate packages in an environment
+    /// Validate if packages conform to a validation target.
     Validate {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
@@ -225,14 +225,14 @@ where
         }
         Some(Commands::Validate { bound, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
-            let include_sites = false;
-            let v = sfs.validate(dm, include_sites);
+            let report_sites = false;
+            let v = sfs.validate(dm, report_sites);
             match subcommands {
                 ValidateSubcommand::Display => {
-                    v.to_stdout(include_sites);
+                    v.to_stdout(report_sites);
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
-                    let _ = v.to_file(output, *delimiter, include_sites);
+                    let _ = v.to_file(output, *delimiter, report_sites);
                 }
                 ValidateSubcommand::Exit { code } => {
                     process::exit(if v.len() > 0 { *code } else { 0 });

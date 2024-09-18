@@ -157,13 +157,13 @@ impl ScanFS {
     }
 
     /// Validate this scan against the provided DepManifest.
-    pub(crate) fn validate(&self, dm: DepManifest, include_sites: bool) -> ValidationReport {
+    pub(crate) fn validate(&self, dm: DepManifest, report_sites: bool) -> ValidationReport {
         // NOTE: there might be duplicated validations we want to filter out
         let mut records: Vec<ValidationRecord> = Vec::new();
         for (package, sites) in &self.package_to_sites {
             if !dm.validate(package) {
                 let ds = dm.get_dep_spec(&package.name);
-                let sites: Option<Vec<PathBuf>> = match include_sites {
+                let sites: Option<Vec<PathBuf>> = match report_sites {
                     true => Some(sites.clone()),
                     false => None,
                 };
