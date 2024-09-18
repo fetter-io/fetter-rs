@@ -31,7 +31,8 @@ impl DepManifest {
         Ok(DepManifest { dep_specs })
     }
     pub(crate) fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
-        let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let file =
+            File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let lines = io::BufReader::new(file).lines();
         let filtered_lines = lines.filter_map(|line| {
             match line {
@@ -159,7 +160,8 @@ mod tests {
 
     #[test]
     fn test_dep_spec_a() {
-        let dm = DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
+        let dm =
+            DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info").unwrap();
         assert_eq!(dm.validate(&p1), true);

@@ -31,7 +31,8 @@ pub(crate) struct DirectURL {
 impl DirectURL {
     pub(crate) fn from_file(path: &PathBuf) -> Result<Self, String> {
         let file = File::open(path).map_err(|e| format!("failed to open file: {}", e));
-        serde_json::from_reader(file.unwrap()).map_err(|e| format!("failed to parse JSON: {}", e))
+        serde_json::from_reader(file.unwrap())
+            .map_err(|e| format!("failed to parse JSON: {}", e))
     }
 }
 
@@ -56,7 +57,8 @@ mod tests {
         }
         "#;
 
-        let durl: DirectURL = serde_json::from_str(json_str).expect("Failed to parse JSON");
+        let durl: DirectURL =
+            serde_json::from_str(json_str).expect("Failed to parse JSON");
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
         assert_eq!("git", durl.vcs_info.as_ref().unwrap().vcs);
         assert_eq!(
@@ -73,7 +75,8 @@ mod tests {
         {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
         "#;
 
-        let durl: DirectURL = serde_json::from_str(json_str).expect("Failed to parse JSON");
+        let durl: DirectURL =
+            serde_json::from_str(json_str).expect("Failed to parse JSON");
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
         assert_eq!("git", durl.vcs_info.as_ref().unwrap().vcs);
         assert_eq!(

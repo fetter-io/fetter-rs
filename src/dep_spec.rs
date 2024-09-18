@@ -153,7 +153,8 @@ impl DepSpec {
                             .parse::<DepOperator>()
                             .map_err(|e| format!("Invalid operator: {}", e))?;
                         // version
-                        let version_pair = inner_pairs.next().ok_or("Expected version")?;
+                        let version_pair =
+                            inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
                             return Err("Expected version".to_string());
                         }
@@ -186,7 +187,10 @@ impl DepSpec {
             versions,
         })
     }
-    pub(crate) fn from_package(package: &Package, operator: DepOperator) -> Result<Self, String> {
+    pub(crate) fn from_package(
+        package: &Package,
+        operator: DepOperator,
+    ) -> Result<Self, String> {
         let mut operators = Vec::new();
         let mut versions = Vec::new();
         operators.push(operator);
@@ -297,19 +301,22 @@ mod tests {
     #[test]
     fn test_dep_spec_h2() {
         let ds1 =
-            DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec").unwrap();
+            DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec")
+                .unwrap();
         assert_eq!(ds1.to_string(), "package-two");
     }
     #[test]
     fn test_dep_spec_h3() {
         let ds1 =
-            DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main").unwrap();
+            DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main")
+                .unwrap();
         assert_eq!(ds1.to_string(), "package-four");
     }
     #[test]
     fn test_dep_spec_h4() {
         let ds1 =
-            DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl").unwrap();
+            DepSpec::from_string("pip @ file:///localbuilds/pip-1.3.1-py33-none-any.whl")
+                .unwrap();
         assert_eq!(ds1.to_string(), "pip==1.3.1");
         assert_eq!(
             ds1.url.unwrap(),
@@ -369,7 +376,8 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_validate_version_e() {
-        let input = "requests [security,tests] >= 2.8.1, == 2.8.*, < 3; python_version < '2.7'";
+        let input =
+            "requests [security,tests] >= 2.8.1, == 2.8.*, < 3; python_version < '2.7'";
         let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.1")), true);
         assert_eq!(ds1.validate_version(&VersionSpec::new("2.2.1")), false);
@@ -481,7 +489,8 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_to_string_b() {
-        let ds1 = DepSpec::from_string("requests [security,tests] >= 2.8.1, == 2.8.* ").unwrap();
+        let ds1 = DepSpec::from_string("requests [security,tests] >= 2.8.1, == 2.8.* ")
+            .unwrap();
         assert_eq!(ds1.to_string(), "requests>=2.8.1,==2.8.*");
     }
     //--------------------------------------------------------------------------
@@ -507,7 +516,8 @@ mod tests {
     #[test]
     fn test_dep_spec_url_a() {
         let ds =
-            DepSpec::from_string("SomeProject@git+https://git.repo/some_pkg.git@1.3.1").unwrap();
+            DepSpec::from_string("SomeProject@git+https://git.repo/some_pkg.git@1.3.1")
+                .unwrap();
         assert_eq!(ds.to_string(), "SomeProject");
         assert_eq!(ds.url.unwrap(), "git+https://git.repo/some_pkg.git@1.3.1")
     }
@@ -525,9 +535,10 @@ mod tests {
     }
     #[test]
     fn test_dep_spec_url_d() {
-        let ds =
-            DepSpec::from_string("foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl")
-                .unwrap();
+        let ds = DepSpec::from_string(
+            "foo @ http://foo/package/foo-3.1.4/foo-3.1.4-py3-none-any.whl",
+        )
+        .unwrap();
         assert_eq!(ds.to_string(), "foo==3.1.4");
         assert_eq!(
             ds.url.unwrap(),

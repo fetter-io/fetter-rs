@@ -102,7 +102,9 @@ impl ValidationReport {
             dep_spec_width = max_dep_spec_width
         )?;
 
-        for (pkg_display, dep_display) in package_displays.iter().zip(dep_spec_displays.iter()) {
+        for (pkg_display, dep_display) in
+            package_displays.iter().zip(dep_spec_displays.iter())
+        {
             writeln!(
                 writer,
                 "{:<package_width$}{}{:<dep_spec_width$}",

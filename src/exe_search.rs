@@ -85,7 +85,8 @@ fn is_exe(path: &Path) -> bool {
     return match path.file_name().and_then(|f| f.to_str()) {
         Some(file_name) if file_name.starts_with("python") => {
             let suffix = &file_name[6..];
-            if suffix.is_empty() || suffix.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            if suffix.is_empty() || suffix.chars().all(|c| c.is_ascii_digit() || c == '.')
+            {
                 match fs::metadata(path) {
                     Ok(md) => md.permissions().mode() & 0o111 != 0,
                     Err(_) => false,
@@ -120,7 +121,11 @@ fn get_exe_default() -> Option<PathBuf> {
     };
 }
 /// Try to find all Python executables given a starting directory. This will recursively search all directories that are not symlinks.
-fn find_exe_inner(path: &Path, exclude_paths: &HashSet<PathBuf>, recurse: bool) -> Vec<PathBuf> {
+fn find_exe_inner(
+    path: &Path,
+    exclude_paths: &HashSet<PathBuf>,
+    recurse: bool,
+) -> Vec<PathBuf> {
     if exclude_paths.contains(path) {
         return Vec::with_capacity(0);
     }

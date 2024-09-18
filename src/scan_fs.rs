@@ -71,7 +71,9 @@ pub(crate) struct ScanFS {
 }
 
 impl ScanFS {
-    fn from_exe_to_sites(exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>) -> Result<Self, String> {
+    fn from_exe_to_sites(
+        exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    ) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
@@ -213,8 +215,12 @@ impl ScanFS {
             };
 
             let ds = match anchor {
-                Anchor::Lower => DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq),
-                Anchor::Upper => DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq),
+                Anchor::Lower => {
+                    DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq)
+                }
+                Anchor::Upper => {
+                    DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
+                }
                 Anchor::Both => return Err("Not implemented".to_string()),
             };
             if let Ok(dep_spec) = ds {
@@ -307,8 +313,10 @@ mod tests {
             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
-        let dm = DepManifest::from_iter(vec!["numpy>1.19", "requests==0.7.6", "flask> 1"].iter())
-            .unwrap();
+        let dm = DepManifest::from_iter(
+            vec!["numpy>1.19", "requests==0.7.6", "flask> 1"].iter(),
+        )
+        .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         let vr = sfs.to_validation_report(dm, false, false);
@@ -323,8 +331,10 @@ mod tests {
             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
-        let dm = DepManifest::from_iter(vec!["numpy>1.19", "requests==0.7.6", "flask> 2"].iter())
-            .unwrap();
+        let dm = DepManifest::from_iter(
+            vec!["numpy>1.19", "requests==0.7.6", "flask> 2"].iter(),
+        )
+        .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         let vr = sfs.to_validation_report(dm, false, false);
@@ -340,8 +350,10 @@ mod tests {
             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
-        let dm = DepManifest::from_iter(vec!["numpy>2", "requests==0.7.1", "flask> 2,<3"].iter())
-            .unwrap();
+        let dm = DepManifest::from_iter(
+            vec!["numpy>2", "requests==0.7.1", "flask> 2,<3"].iter(),
+        )
+        .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         let vr = sfs.to_validation_report(dm, false, false);

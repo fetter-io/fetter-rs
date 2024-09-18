@@ -31,8 +31,10 @@ impl VersionSpec {
     }
     pub(crate) fn is_compatible(&self, other: &Self) -> bool {
         // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
-        if let (Some(VersionPart::Number(self_major)), Some(VersionPart::Number(other_major))) =
-            (self.0.first(), other.0.first())
+        if let (
+            Some(VersionPart::Number(self_major)),
+            Some(VersionPart::Number(other_major)),
+        ) = (self.0.first(), other.0.first())
         {
             return self_major == other_major;
         }
@@ -124,11 +126,15 @@ impl PartialEq for VersionSpec {
 
             match (self_part, other_part) {
                 // if wildcard "*" both equal
-                (VersionPart::Text(a), VersionPart::Text(b)) if a == "*" || b == "*" => continue,
+                (VersionPart::Text(a), VersionPart::Text(b)) if a == "*" || b == "*" => {
+                    continue
+                }
                 (VersionPart::Text(a), VersionPart::Number(_)) if a == "*" => continue,
                 (VersionPart::Number(_), VersionPart::Text(b)) if b == "*" => continue,
                 // parts must match exactly
-                (VersionPart::Number(a), VersionPart::Number(b)) if a != b => return false,
+                (VersionPart::Number(a), VersionPart::Number(b)) if a != b => {
+                    return false
+                }
                 (VersionPart::Text(a), VersionPart::Text(b)) if a != b => return false,
                 // not equal
                 (VersionPart::Number(_), VersionPart::Text(_)) => return false,
@@ -217,7 +223,8 @@ mod tests {
             false
         );
         assert_eq!(
-            VersionSpec::new("1.0").is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")),
+            VersionSpec::new("1.0")
+                .is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")),
             false
         );
     }

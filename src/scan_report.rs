@@ -25,7 +25,9 @@ pub struct ScanReport {
 }
 
 impl ScanReport {
-    pub(crate) fn from_package_to_sites(package_to_sites: &HashMap<Package, Vec<PathBuf>>) -> Self {
+    pub(crate) fn from_package_to_sites(
+        package_to_sites: &HashMap<Package, Vec<PathBuf>>,
+    ) -> Self {
         let mut records = Vec::new();
         for (package, sites) in package_to_sites {
             let record = ScanRecord::new(package.clone(), sites.clone());
