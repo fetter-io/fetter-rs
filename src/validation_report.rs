@@ -35,7 +35,6 @@ pub struct ValidationReport {
 }
 
 impl ValidationReport {
-    /// The length of the scan is the number of unique packages.
     pub fn len(&self) -> usize {
         self.records.len()
     }
