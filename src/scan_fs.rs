@@ -168,13 +168,12 @@ impl ScanFS {
         // iterate over found packages in order for better reporting
         for package in self.get_packages() {
             let ds = dm.get_dep_spec(&package.name);
-
             // package is valid if ds exists and version is valid, or it does not exist and permit_unspecified is true
             let package_valid = match ds {
                 Some(ds) => ds.validate_version(&package.version),
                 None => permit_unspecified,
             };
-            if !package_valid  {
+            if !package_valid {
                 // sites might be None
                 let sites: Option<Vec<PathBuf>> = match report_sites {
                     true => Some(self.package_to_sites.get(&package).unwrap().clone()),
@@ -348,6 +347,9 @@ mod tests {
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         let vr = sfs.to_validation_report(dm, false, false);
 
-        assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]);
+        assert_eq!(
+            vr.get_package_strings(),
+            vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]
+        );
     }
 }
