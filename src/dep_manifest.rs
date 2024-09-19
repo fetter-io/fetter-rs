@@ -130,7 +130,7 @@ impl DepManifest {
 
     pub(crate) fn validate(&self, package: &Package) -> bool {
         if let Some(dep_spec) = self.dep_specs.get(&package.key) {
-            dep_spec.validate_version(&package.version)
+            dep_spec.validate_version(&package.version) && dep_spec.validate_url(&package)
         } else {
             false
         }
