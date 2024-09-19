@@ -6,7 +6,7 @@ use crate::package_durl::DirectURL;
 use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
-// A Package is package release artifact, representing one specific version installed. This differs from a DepSpec, which might refer to a range of acceptable versions.
+// A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
     pub(crate) name: String,

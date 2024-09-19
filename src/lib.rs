@@ -93,6 +93,10 @@ enum Commands {
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
 
+        /// If the subset flag is set, observed packages must be a strict subset of the bound requirements.
+        #[arg(short, long)]
+        subset: bool,
+
         #[command(subcommand)]
         subcommands: ValidateSubcommand,
     },
@@ -184,6 +188,11 @@ where
     T: Into<OsString> + Clone,
 {
     let cli = Cli::parse_from(args);
+
+    if cli.command.is_none() {
+        println!("For more information, try '--help'.");
+        return;
+    }
     // we always do a scan; we might cache this
     let sfs = get_scan(cli.exe).unwrap(); // handle error
 
@@ -224,10 +233,10 @@ where
                 }
             }
         }
-        Some(Commands::Validate { bound, subcommands }) => {
+        Some(Commands::Validate { bound, subset, subcommands }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
-            let permit_unspecified = false;
+            let permit_unspecified = !subset;
             let vr = sfs.to_validation_report(
                 dm,
                 ValidationFlags {
