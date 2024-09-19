@@ -6,8 +6,8 @@ use std::path::Path;
 use std::str::FromStr;
 
 use crate::package::Package;
-use crate::version_spec::VersionSpec;
 use crate::util::name_to_key;
+use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
 #[derive(Parser)]
@@ -586,5 +586,4 @@ mod tests {
         let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
         assert!(ds1.validate_package(&p1));
     }
-
 }

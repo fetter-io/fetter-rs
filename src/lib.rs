@@ -6,9 +6,9 @@ mod package;
 mod package_durl;
 mod scan_fs;
 mod scan_report;
+mod util;
 mod validation_report;
 mod version_spec;
-mod util;
 
 use std::process;
 

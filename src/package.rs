@@ -3,10 +3,8 @@ use std::fmt;
 use std::path::PathBuf;
 
 use crate::package_durl::DirectURL;
-use crate::version_spec::VersionSpec;
 use crate::util::name_to_key;
-
-
+use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
