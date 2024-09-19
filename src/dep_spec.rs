@@ -245,7 +245,9 @@ impl DepSpec {
     }
 
     pub(crate) fn validate_package(&self, package: &Package) -> bool {
-        self.key == package.key && self.validate_version(&package.version) && self.validate_url(&package)
+        self.key == package.key
+            && self.validate_version(&package.version)
+            && self.validate_url(&package)
     }
 }
 
@@ -599,7 +601,8 @@ mod tests {
         // while we can install/require from the hyphen, the .dist-info file will always have an underscore
         let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
 
-        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl)).unwrap();
+        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
+            .unwrap();
         assert!(ds1.validate_package(&p1));
 
         let ds2 = DepSpec::from_string("static-frame==2.13.0").unwrap();
@@ -619,11 +622,8 @@ mod tests {
         assert!(!ds1.validate_package(&p1)); // this fais without durl
 
         let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
-        let p2 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl)).unwrap();
+        let p2 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
+            .unwrap();
         assert!(ds1.validate_package(&p2));
-
     }
-
-
-
 }

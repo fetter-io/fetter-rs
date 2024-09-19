@@ -36,7 +36,10 @@ impl DirectURL {
     }
 
     pub(crate) fn from_url(url: String) -> Result<Self, String> {
-        Ok(DirectURL{ url, vcs_info: None })
+        Ok(DirectURL {
+            url,
+            vcs_info: None,
+        })
     }
 }
 
