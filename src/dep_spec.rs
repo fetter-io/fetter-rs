@@ -236,7 +236,7 @@ impl DepSpec {
         true
     }
     pub(crate) fn validate_package(&self, package: &Package) -> bool {
-        self.name == package.name && self.validate_version(&package.version)
+        self.key == package.key && self.validate_version(&package.version)
     }
 }
 
