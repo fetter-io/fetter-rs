@@ -13,6 +13,7 @@ use std::process;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 use std::path::PathBuf;
+use validation_report::ValidationFlags;
 
 use crate::dep_manifest::DepManifest;
 use crate::scan_fs::Anchor;
@@ -227,13 +228,19 @@ where
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
             let permit_unspecified = false;
-            let vr = sfs.to_validation_report(dm, permit_unspecified, report_sites);
+            let vr = sfs.to_validation_report(
+                dm,
+                ValidationFlags {
+                    permit_unspecified,
+                    report_sites,
+                },
+            );
             match subcommands {
                 ValidateSubcommand::Display => {
-                    vr.to_stdout(report_sites);
+                    vr.to_stdout();
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
-                    let _ = vr.to_file(output, *delimiter, report_sites);
+                    let _ = vr.to_file(output, *delimiter);
                 }
                 ValidateSubcommand::Exit { code } => {
                     process::exit(if vr.len() > 0 { *code } else { 0 });

@@ -6,7 +6,6 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
-// use crate::count_report::CountRecord;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
@@ -14,6 +13,7 @@ use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
 use crate::scan_report::ScanReport;
+use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
 
@@ -162,8 +162,9 @@ impl ScanFS {
     pub(crate) fn to_validation_report(
         &self,
         dm: DepManifest,
-        permit_unspecified: bool,
-        report_sites: bool,
+        vf: ValidationFlags,
+        // permit_unspecified: bool,
+        // report_sites: bool,
     ) -> ValidationReport {
         let mut records: Vec<ValidationRecord> = Vec::new();
         // iterate over found packages in order for better reporting
@@ -172,11 +173,11 @@ impl ScanFS {
             // package is valid if ds exists and version is valid, or it does not exist and permit_unspecified is true
             let package_valid = match ds {
                 Some(ds) => ds.validate_version(&package.version),
-                None => permit_unspecified,
+                None => vf.permit_unspecified,
             };
             if !package_valid {
                 // sites might be None
-                let sites: Option<Vec<PathBuf>> = match report_sites {
+                let sites: Option<Vec<PathBuf>> = match vf.report_sites {
                     true => Some(self.package_to_sites.get(&package).unwrap().clone()),
                     false => None,
                 };
@@ -184,7 +185,10 @@ impl ScanFS {
                 records.push(ValidationRecord::new(package.clone(), ds.cloned(), sites));
             }
         }
-        ValidationReport { records }
+        ValidationReport {
+            records: records,
+            flags: vf,
+        }
     }
 
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
@@ -274,11 +278,23 @@ mod tests {
 
         let dm1 = DepManifest::from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
         assert_eq!(dm1.len(), 2);
-        let invalid1 = sfs.to_validation_report(dm1, false, false);
+        let invalid1 = sfs.to_validation_report(
+            dm1,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
         assert_eq!(invalid1.len(), 0);
 
         let dm2 = DepManifest::from_iter(vec!["numpy >= 2", "foo==3"]).unwrap();
-        let invalid2 = sfs.to_validation_report(dm2, false, false);
+        let invalid2 = sfs.to_validation_report(
+            dm2,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
         assert_eq!(invalid2.len(), 1);
     }
     //--------------------------------------------------------------------------
@@ -319,7 +335,13 @@ mod tests {
         .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false, false);
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
         assert_eq!(vr.len(), 0);
     }
     #[test]
@@ -337,7 +359,13 @@ mod tests {
         .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false, false);
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
 
         assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3"]);
     }
@@ -356,11 +384,42 @@ mod tests {
         .unwrap();
 
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let vr = sfs.to_validation_report(dm, false, false);
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
 
         assert_eq!(
             vr.get_package_strings(),
             vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]
+        );
+    }
+    #[test]
+    fn test_validation_d() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let dm = DepManifest::from_iter(vec!["numpy>2", "flask> 2,<3"].iter()).unwrap();
+
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_unspecified: true,
+                report_sites: false,
+            },
+        );
+        assert_eq!(
+            vr.get_package_strings(),
+            vec!["flask-1.1.3", "numpy-1.19.3"]
         );
     }
 }

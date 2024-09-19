@@ -9,6 +9,12 @@ use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
 #[derive(Debug)]
+pub(crate) struct ValidationFlags {
+    pub(crate) permit_unspecified: bool,
+    pub(crate) report_sites: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct ValidationRecord {
     package: Package,
     dep_spec: Option<DepSpec>,
@@ -32,6 +38,7 @@ impl ValidationRecord {
 #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
+    pub(crate) flags: ValidationFlags,
 }
 
 impl ValidationReport {
@@ -47,12 +54,7 @@ impl ValidationReport {
             .collect()
     }
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: char,
-        report_sites: bool,
-    ) -> io::Result<()> {
+    fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut site_displays: Vec<String> = Vec::new();
@@ -73,7 +75,7 @@ impl ValidationReport {
                 None => dep_missing.to_string(),
             };
 
-            if report_sites {
+            if self.flags.report_sites {
                 let site_display = match &item.sites {
                     Some(sites) => sites
                         .iter()
@@ -118,19 +120,14 @@ impl ValidationReport {
         Ok(())
     }
 
-    pub(crate) fn to_file(
-        &self,
-        file_path: &PathBuf,
-        delimiter: char,
-        report_sites: bool,
-    ) -> io::Result<()> {
+    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, report_sites)
+        self.to_writer(file, delimiter)
     }
 
-    pub(crate) fn to_stdout(&self, report_sites: bool) {
+    pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ', report_sites).unwrap();
+        self.to_writer(handle, ' ').unwrap();
     }
 }
