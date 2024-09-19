@@ -233,7 +233,11 @@ where
                 }
             }
         }
-        Some(Commands::Validate { bound, subset, subcommands }) => {
+        Some(Commands::Validate {
+            bound,
+            subset,
+            subcommands,
+        }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
             let permit_unspecified = !subset;
