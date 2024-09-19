@@ -4,13 +4,8 @@ use std::path::PathBuf;
 
 use crate::package_durl::DirectURL;
 use crate::version_spec::VersionSpec;
+use crate::util::name_to_key;
 
-
-
-// Normalize all names
-fn name_to_key(name: &String) -> String {
-    name.replace("-", "_")
-}
 
 
 //------------------------------------------------------------------------------

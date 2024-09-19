@@ -8,6 +8,8 @@ mod scan_fs;
 mod scan_report;
 mod validation_report;
 mod version_spec;
+mod util;
+
 use std::process;
 
 use clap::{Parser, Subcommand, ValueEnum};

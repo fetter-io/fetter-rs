@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 use crate::package::Package;
 use crate::version_spec::VersionSpec;
+use crate::util::name_to_key;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
 #[derive(Parser)]
@@ -66,12 +67,6 @@ fn url_trim(mut input: String) -> String {
     }
     input
 }
-
-// Normalize all names
-fn name_to_key(name: &String) -> String {
-    name.replace("-", "_")
-}
-
 
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
 #[derive(Debug, Clone)]
