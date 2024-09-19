@@ -23,10 +23,10 @@ impl DepManifest {
         let mut dep_specs = HashMap::new();
         for spec in ds_iter {
             let dep_spec = DepSpec::from_string(spec.as_ref())?;
-            if dep_specs.contains_key(&dep_spec.name) {
-                return Err(format!("Duplicate package name found: {}", dep_spec.name));
+            if dep_specs.contains_key(&dep_spec.key) {
+                return Err(format!("Duplicate package key found: {}", dep_spec.key));
             }
-            dep_specs.insert(dep_spec.name.clone(), dep_spec);
+            dep_specs.insert(dep_spec.key.clone(), dep_spec);
         }
         Ok(DepManifest { dep_specs })
     }
@@ -52,10 +52,10 @@ impl DepManifest {
     pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
         for dep_spec in dep_specs {
-            if ds.contains_key(&dep_spec.name) {
-                return Err(format!("Duplicate DepSpec name found: {}", dep_spec.name));
+            if ds.contains_key(&dep_spec.key) {
+                return Err(format!("Duplicate DepSpec key found: {}", dep_spec.key));
             }
-            ds.insert(dep_spec.name.clone(), dep_spec.clone());
+            ds.insert(dep_spec.key.clone(), dep_spec.clone());
         }
         Ok(DepManifest { dep_specs: ds })
     }
@@ -104,10 +104,10 @@ impl DepManifest {
     // }
 
     //--------------------------------------------------------------------------
-    fn get_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.dep_specs.keys().cloned().collect();
-        names.sort_by_key(|name| name.to_lowercase());
-        names
+    fn keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.dep_specs.keys().cloned().collect();
+        keys.sort_by_key(|name| name.to_lowercase());
+        keys
     }
 
     pub(crate) fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
@@ -117,8 +117,8 @@ impl DepManifest {
     /// Given a writer, write out all dependency specs
     fn to_writer<W: Write>(&self, mut writer: W) -> io::Result<()> {
         writeln!(writer, "# created by fetter")?;
-        for name in self.get_names() {
-            writeln!(writer, "{}", self.dep_specs.get(&name).unwrap())?;
+        for key in self.keys() {
+            writeln!(writer, "{}", self.dep_specs.get(&key).unwrap())?;
         }
         Ok(())
     }
@@ -129,7 +129,7 @@ impl DepManifest {
     }
 
     pub(crate) fn validate(&self, package: &Package) -> bool {
-        if let Some(dep_spec) = self.dep_specs.get(&package.name) {
+        if let Some(dep_spec) = self.dep_specs.get(&package.key) {
             dep_spec.validate_version(&package.version)
         } else {
             false
