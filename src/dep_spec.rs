@@ -67,10 +67,17 @@ fn url_trim(mut input: String) -> String {
     input
 }
 
+// Normalize all names
+fn name_to_key(name: &String) -> String {
+    name.replace("-", "_")
+}
+
+
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
 #[derive(Debug, Clone)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
+    pub(crate) key: String,
     pub(crate) url: Option<String>,
     operators: Vec<DepOperator>,
     versions: Vec<VersionSpec>,
@@ -92,11 +99,12 @@ impl DepSpec {
 
             let parts: Vec<_> = name.split('-').collect();
             if parts.len() >= 2 {
-                let package_name = parts[0];
+                let package_name = parts[0].to_string();
                 let versions = vec![VersionSpec::new(parts[1])];
                 let operators = vec![DepOperator::Eq];
                 return Ok(DepSpec {
-                    name: package_name.to_string(),
+                    key: name_to_key(&package_name),
+                    name: package_name,
                     url: Some(input.to_string()),
                     operators: operators,
                     versions: versions,
@@ -168,10 +176,11 @@ impl DepSpec {
             }
         }
         let package_name = package_name.ok_or("Missing package name")?;
+        let key = name_to_key(&package_name);
         // if url is defined and it is wheel, take definition from the wheel
         if let Some(ref url) = url {
             if let Ok(ds) = DepSpec::from_whl(&url) {
-                if ds.name != package_name {
+                if ds.key != key {
                     return Err(format!(
                         "Provided name {} does not match whl name {}",
                         ds.name, package_name
@@ -182,6 +191,7 @@ impl DepSpec {
         }
         Ok(DepSpec {
             name: package_name,
+            key,
             url,
             operators,
             versions,
@@ -197,6 +207,7 @@ impl DepSpec {
         versions.push(package.version.clone());
         Ok(DepSpec {
             name: package.name.clone(),
+            key: package.key.clone(),
             url: None,
             operators,
             versions,

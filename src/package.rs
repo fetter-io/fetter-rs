@@ -5,11 +5,20 @@ use std::path::PathBuf;
 use crate::package_durl::DirectURL;
 use crate::version_spec::VersionSpec;
 
+
+
+// Normalize all names
+fn name_to_key(name: &String) -> String {
+    name.replace("-", "_")
+}
+
+
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct Package {
     pub(crate) name: String,
+    pub(crate) key: String,
     pub(crate) version: VersionSpec,
     pub(crate) direct_url: Option<DirectURL>,
 }
@@ -19,8 +28,10 @@ impl Package {
         version: &str,
         direct_url: Option<DirectURL>,
     ) -> Option<Self> {
+        let ns = name.to_string();
         Some(Package {
-            name: name.to_string(),
+            key: name_to_key(&ns),
+            name: ns,
             version: VersionSpec::new(version),
             direct_url: direct_url,
         })
