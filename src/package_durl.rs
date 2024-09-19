@@ -34,6 +34,10 @@ impl DirectURL {
         serde_json::from_reader(file.unwrap())
             .map_err(|e| format!("failed to parse JSON: {}", e))
     }
+
+    pub(crate) fn from_url(url: String) -> Result<Self, String> {
+        Ok(DirectURL{ url, vcs_info: None })
+    }
 }
 
 //------------------------------------------------------------------------------

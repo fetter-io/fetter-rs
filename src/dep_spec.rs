@@ -230,8 +230,22 @@ impl DepSpec {
         }
         true
     }
+
+    pub(crate) fn validate_url(&self, package: &Package) -> bool {
+        // if the DepSpec has a URL (the requirements specfied a URL) we have to validate that the installed package has a direct url.
+        if self.url.is_some() {
+            if let Some(durl) = &package.direct_url {
+                // compare this url to package.direct_url
+                return true;
+            }
+            // Package does not have durl data
+            return false;
+        }
+        true
+    }
+
     pub(crate) fn validate_package(&self, package: &Package) -> bool {
-        self.key == package.key && self.validate_version(&package.version)
+        self.key == package.key && self.validate_version(&package.version) && self.validate_url(&package)
     }
 }
 
@@ -249,6 +263,8 @@ impl fmt::Display for DepSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::package_durl::DirectURL;
+
     use super::*;
 
     #[test]
@@ -578,12 +594,36 @@ mod tests {
         let ds1 = DepSpec::from_string("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl").unwrap();
         // note: the DepSpec discovers the package name with an underscore
         assert_eq!(ds1.to_string(), "static_frame==2.13.0");
-        assert_eq!(ds1.url.unwrap(), "https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl");
+        assert_eq!(ds1.url.clone().unwrap(), "https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl");
 
         // while we can install/require from the hyphen, the .dist-info file will always have an underscore
-        let ds1 = DepSpec::from_string("static-frame==2.13.0").unwrap();
+        let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
 
-        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
+        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl)).unwrap();
         assert!(ds1.validate_package(&p1));
+
+        let ds2 = DepSpec::from_string("static-frame==2.13.0").unwrap();
+        assert!(ds2.validate_package(&p1));
     }
+
+    #[test]
+    fn test_dep_spec_validate_url_b() {
+        // this will use the currently defined version in setup.py in authoring the entry in site-packages
+        let ds1 = DepSpec::from_string("static-frame @ git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e").unwrap();
+
+        assert_eq!(ds1.to_string(), "static-frame"); // we get no version
+        assert_eq!(ds1.url.clone().unwrap(), "git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e");
+
+        // even without a version in the depspec, the observed package will have a version, which is why we need to check durl
+        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
+        assert!(!ds1.validate_package(&p1)); // this fais without durl
+
+        let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
+        let p2 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl)).unwrap();
+        assert!(ds1.validate_package(&p2));
+
+    }
+
+
+
 }
