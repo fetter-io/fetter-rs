@@ -31,6 +31,7 @@ impl Package {
             let trimmed_input = input.trim_end_matches(".dist-info");
             let parts: Vec<&str> = trimmed_input.split('-').collect();
             if parts.len() >= 2 {
+                // NOTE: we expect that dist-info based names have already normalized hyphens to underscores, joingwith '-' may not be meaningful here
                 let name = parts[..parts.len() - 1].join("-");
                 let version = parts.last()?;
                 return Self::from_name_version_durl(&name, version, None);

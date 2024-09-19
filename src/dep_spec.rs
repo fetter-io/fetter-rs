@@ -565,4 +565,20 @@ mod tests {
         assert_eq!(ds.to_string(), "app==2.0");
         assert_eq!(ds.url.unwrap(), "file:///a/b/c/app-2.0.whl")
     }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_validate_url_a() {
+        let ds1 = DepSpec::from_string("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl").unwrap();
+        // note: the DepSpec discovers the package name with an underscore
+        assert_eq!(ds1.to_string(), "static_frame==2.13.0");
+        assert_eq!(ds1.url.unwrap(), "https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl");
+
+        // while we can install/require from the hyphen, the .dist-info file will always have an underscore
+        let ds1 = DepSpec::from_string("static-frame==2.13.0").unwrap();
+
+        let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
+        assert!(ds1.validate_package(&p1));
+    }
+
 }
