@@ -135,7 +135,6 @@ impl ValidationReport {
             package_displays.push(pkg_display);
             dep_spec_displays.push(dep_display);
             explain_displays.push(explain_display);
-
         }
         // TODO: show sites
         writeln!(
@@ -151,8 +150,9 @@ impl ValidationReport {
             explain_width = max_explain_width,
         )?;
 
-        for (pkg_display, (dep_display, explain_display)) in
-            package_displays.iter().zip(dep_spec_displays.iter().zip(explain_displays))
+        for (pkg_display, (dep_display, explain_display)) in package_displays
+            .iter()
+            .zip(dep_spec_displays.iter().zip(explain_displays))
         {
             writeln!(
                 writer,
