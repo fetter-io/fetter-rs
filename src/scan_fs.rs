@@ -187,7 +187,11 @@ impl ScanFS {
                     false => None,
                 };
                 // ds  is an Option type, might be None
-                records.push(ValidationRecord::new(Some(package.clone()), ds.cloned(), sites));
+                records.push(ValidationRecord::new(
+                    Some(package.clone()),
+                    ds.cloned(),
+                    sites,
+                ));
             }
         }
         if !vf.permit_subset {
@@ -385,7 +389,8 @@ mod tests {
             },
         );
 
-        assert_eq!(vr.get_package_strings(), vec!["flask-1.1.3"]);
+        let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
+        assert_eq!(json, r#"[["flask-1.1.3","flask>2",null]]"#);
     }
     #[test]
     fn test_validation_c() {
@@ -411,11 +416,10 @@ mod tests {
             },
         );
 
-        assert_eq!(
-            vr.get_package_strings(),
-            vec!["flask-1.1.3", "numpy-1.19.3", "requests-0.7.6"]
-        );
+        let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
+        assert_eq!(json, r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null],["requests-0.7.6","requests==0.7.1",null]]"#);
     }
+
     #[test]
     fn test_validation_d() {
         let exe = PathBuf::from("/usr/bin/python3");
@@ -437,10 +441,10 @@ mod tests {
                 report_sites: false,
             },
         );
-        assert_eq!(
-            vr.get_package_strings(),
-            vec!["flask-1.1.3", "numpy-1.19.3"]
-        );
+        let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
+        assert_eq!(json, r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null]]"#);
+
+
     }
     #[test]
     fn test_validation_e() {
@@ -492,7 +496,7 @@ mod tests {
             },
         );
         assert_eq!(vr.len(), 1);
-        // do this with JSON
-        // assert_eq!(vr.records[0], ValidationRecord::new(None, None, None));
+        let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
+        assert_eq!(json, "[[null,\"flask>1,<2\",null]]");
     }
 }

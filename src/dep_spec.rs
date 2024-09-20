@@ -662,5 +662,4 @@ mod tests {
         let json = serde_json::to_string(&ds).unwrap();
         assert_eq!(json, "{\"name\":\"app\",\"key\":\"app\",\"url\":\"https://example.com/app-1.0.whl\",\"operators\":[\"Eq\"],\"versions\":[[{\"Number\":1},{\"Number\":0}]]}")
     }
-
 }

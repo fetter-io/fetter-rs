@@ -5,8 +5,12 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
+// use serde::{Deserialize, Serialize};
+
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
+
+//------------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub(crate) struct ValidationFlags {
@@ -36,12 +40,9 @@ impl ValidationRecord {
     }
 }
 
-
+//------------------------------------------------------------------------------
 // A summary of validation results suitable for JSON serialziation to naive readers
-#[derive(Debug)]
-pub struct ValidationDigest {
-    records: Vec<(Option<String>, Option<String>, Option<Vec<String>>)>,
-}
+pub type ValidationDigest = Vec<(Option<String>, Option<String>, Option<Vec<String>>)>;
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
@@ -149,7 +150,7 @@ impl ValidationReport {
         let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
         records.sort_by_key(|item| &item.package);
 
-        let mut digests: Vec<(Option<String>, Option<String>, Option<Vec<String>>)> = Vec::new();
+        let mut digests: ValidationDigest = Vec::new();
         for item in &records {
             let pkg_display = match &item.package {
                 Some(package) => Some(format!("{}", package)),
@@ -160,14 +161,13 @@ impl ValidationReport {
                 None => None,
             };
             let sites_display = match &item.sites {
-                Some(sites) => Some(sites
-                    .iter()
-                    .map(|s| format!("{:?}", s))
-                    .collect::<Vec<_>>()),
+                Some(sites) => {
+                    Some(sites.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>())
+                }
                 None => None,
             };
             digests.push((pkg_display, dep_display, sites_display));
         }
-        ValidationDigest{ records: digests }
+        digests
     }
 }
