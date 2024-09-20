@@ -264,7 +264,10 @@ where
                     vr.to_stdout();
                 }
                 ValidateSubcommand::JSON => {
-                    print!("{}", serde_json::to_string(&vr.to_validation_digest()).unwrap());
+                    print!(
+                        "{}",
+                        serde_json::to_string(&vr.to_validation_digest()).unwrap()
+                    );
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
                     let _ = vr.to_file(output, *delimiter);
