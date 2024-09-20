@@ -598,7 +598,7 @@ mod tests {
         assert_eq!(ds1.url.clone().unwrap(), "https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl");
 
         // while we can install/require from the hyphen, the .dist-info file will always have an underscore
-        let durl = DirectURL::from_url_vcs_commit_id("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string(), None, None).unwrap();
+        let durl = DirectURL::from_url_vcs_cid("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string(), None, None).unwrap();
 
         let p1 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
             .unwrap();
@@ -618,9 +618,9 @@ mod tests {
 
         // even without a version in the depspec, the observed package will have a version, which is why we need to check durl
         let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
-        assert!(!ds1.validate_package(&p1)); // this fais without durl
+        assert!(!ds1.validate_package(&p1)); // this fails without durl
 
-        let durl = DirectURL::from_url_vcs_commit_id(
+        let durl = DirectURL::from_url_vcs_cid(
             "https://github.com/static-frame/static-frame.git".to_string(),
             Some("git".to_string()),
             Some("454d8d5446b71eceb57935b5ea9ba4efb051210e".to_string()),
@@ -629,5 +629,28 @@ mod tests {
         let p2 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
             .unwrap();
         assert!(ds1.validate_package(&p2));
+    }
+
+    #[test]
+    fn test_dep_spec_validate_url_c() {
+        // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
+        let ds1 = DepSpec::from_string(
+            "dill @ git+ssh://git@github.com/uqfoundation/dill.git@0.3.8",
+        )
+        .unwrap();
+
+        assert_eq!(ds1.to_string(), "dill"); // we get no version
+        assert_eq!(
+            ds1.url.clone().unwrap(),
+            "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
+        );
+
+        let json_str = r#"
+            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+            "#;
+
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        let p = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
+        assert!(ds1.validate_package(&p));
     }
 }

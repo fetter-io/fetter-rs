@@ -35,7 +35,9 @@ impl DirectURL {
             .map_err(|e| format!("failed to parse JSON: {}", e))
     }
 
-    pub(crate) fn from_url_vcs_commit_id(
+    // Alternate constructor for test.
+    #[allow(dead_code)]
+    pub(crate) fn from_url_vcs_cid(
         url: String,
         vcs: Option<String>,
         commit_id: Option<String>,
@@ -55,18 +57,29 @@ impl DirectURL {
 
     //--------------------------------------------------------------------------
 
-    //     packag durl url:
-    // git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e
-    // depspec url:
-    // git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e
-    fn get_url_origin(&self) {
-        // if we have vcs_info, need to put vcs+ in fromt and @commit id in the back
+    // Combine components to produce a URL string as used in a DepSpec
+    fn get_url_origin(&self) -> String {
+        // if we have vcs_info, need to put vcs+ in from and @commit id in the back
+        if let Some(vcs_info) = &self.vcs_info {
+            // use requested_revision if defined, else commit_id
+            let target = match &vcs_info.requested_revision {
+                Some(requested_revision) => requested_revision,
+                None => &vcs_info.commit_id,
+            };
+            format!("{}+{}@{}", vcs_info.vcs, self.url, target)
+        } else {
+            self.url.clone()
+        }
     }
 
+    // Given url from a DepSpec
     pub(crate) fn validate(&self, url: &String) -> bool {
-        // if we have vcs_info, need to put vcs+ in fromt and @commit id in the back
-        println!("packag durl url:\n{}\ndepspec url:\n{}\n", self.url, *url);
-        self.url == *url
+        // println!(
+        //     "package durl url origin:\n{}\ndepspec url:\n{}\n",
+        //     self.get_url_origin(),
+        //     *url
+        // );
+        self.get_url_origin() == *url
     }
 }
 
