@@ -145,11 +145,11 @@ impl ValidationReport {
         self.to_writer(handle, ' ').unwrap();
     }
 
-    pub(crate) fn to_validation_digest() -> ValidationDigest {
+    pub(crate) fn to_validation_digest(&self) -> ValidationDigest {
         let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
         records.sort_by_key(|item| &item.package);
 
-        digests: Vec<(Option<String>, Option<String>, Option<Vec<String>>) = Vec::new();
+        let mut digests: Vec<(Option<String>, Option<String>, Option<Vec<String>>)> = Vec::new();
         for item in &records {
             let pkg_display = match &item.package {
                 Some(package) => Some(format!("{}", package)),
@@ -163,11 +163,11 @@ impl ValidationReport {
                 Some(sites) => Some(sites
                     .iter()
                     .map(|s| format!("{:?}", s))
-                    .collect::<Vec<_>>())
+                    .collect::<Vec<_>>()),
                 None => None,
             };
             digests.push((pkg_display, dep_display, sites_display));
-
         }
+        ValidationDigest{ records: digests }
     }
 }
