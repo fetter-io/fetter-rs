@@ -1,12 +1,9 @@
 use std::cmp;
-// use std::fmt;
 use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
-
-// use serde::{Deserialize, Serialize};
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
