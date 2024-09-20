@@ -390,7 +390,7 @@ mod tests {
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["flask-1.1.3","flask>2",null]]"#);
+        assert_eq!(json, r#"[["flask-1.1.3","flask>2","Invalid",null]]"#);
     }
     #[test]
     fn test_validation_c() {
@@ -419,7 +419,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null],["requests-0.7.6","requests==0.7.1",null]]"#
+            r#"[["flask-1.1.3","flask>2,<3","Invalid",null],["numpy-1.19.3","numpy>2","Invalid",null],["requests-0.7.6","requests==0.7.1","Invalid",null]]"#
         );
     }
 
@@ -447,7 +447,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null]]"#
+            r#"[["flask-1.1.3","flask>2,<3","Invalid",null],["numpy-1.19.3","numpy>2","Invalid",null]]"#
         );
     }
     #[test]
@@ -501,6 +501,74 @@ mod tests {
         );
         assert_eq!(vr.len(), 1);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, "[[null,\"flask>1,<2\",null]]");
+        assert_eq!(json, r#"[[null,"flask>1,<2","Missing",null]]"#);
+    }
+    #[test]
+    fn test_validation_g() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let dm = DepManifest::from_iter(vec!["numpy==1.19.3"].iter()).unwrap();
+        let vr1 = sfs.to_validation_report(
+            dm.clone(),
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: false,
+                report_sites: false,
+            },
+        );
+        assert_eq!(vr1.len(), 1);
+        let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
+        assert_eq!(json, r#"[["static-frame-2.13.0",null,"Disallowed",null]]"#);
+
+        let vr2 = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_superset: true,
+                permit_subset: false,
+                report_sites: false,
+            },
+        );
+        assert_eq!(vr2.len(), 0);
+    }
+    #[test]
+    fn test_validation_h() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        // hyphen / underscore are normalized
+        let dm = DepManifest::from_iter(
+            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+        )
+        .unwrap();
+        let vr1 = sfs.to_validation_report(
+            dm.clone(),
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: false,
+                report_sites: false,
+            },
+        );
+        let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
+        assert_eq!(json, r#"[[null,"flask>1,<2","Missing",null]]"#);
+
+        let vr2 = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: true,
+                report_sites: false,
+            },
+        );
+        assert_eq!(vr2.len(), 0);
     }
 }

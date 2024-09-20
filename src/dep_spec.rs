@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_dep_spec_validate_url_c() {
-        // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
+        // from pip3 install "dill @ git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
         let ds1 = DepSpec::from_string(
             "dill @ git+ssh://git@github.com/uqfoundation/dill.git@0.3.8",
         )
@@ -655,6 +655,17 @@ mod tests {
         let p = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
         assert!(ds1.validate_package(&p));
     }
+
+    // NOTE: parser cannot handle git+ssh without starting with "package @"
+    // #[test]
+    // fn test_dep_spec_validate_url_d() {
+    //     // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
+    //     let ds1 = DepSpec::from_string(
+    //         "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8",
+    //     )
+    //     .unwrap();
+    // }
+
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_json_a() {

@@ -10,7 +10,7 @@ use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
 // A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct DepManifest {
     dep_specs: HashMap<String, DepSpec>,
 }

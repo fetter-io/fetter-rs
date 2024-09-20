@@ -1,5 +1,6 @@
 use std::cmp;
 // use std::fmt;
+use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::Write;
@@ -40,8 +41,28 @@ impl ValidationRecord {
 }
 
 //------------------------------------------------------------------------------
+enum DigestExplain {
+    Missing,
+    Disallowed,
+    Invalid,
+    Undefined,
+}
+
+impl fmt::Display for DigestExplain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            DigestExplain::Missing => "Missing",
+            DigestExplain::Disallowed => "Disallowed",
+            DigestExplain::Invalid => "Invalid",
+            DigestExplain::Undefined => "Undefined",
+        };
+        write!(f, "{}", value)
+    }
+}
+
 // A summary of validation results suitable for JSON serialziation to naive readers
-pub type ValidationDigest = Vec<(Option<String>, Option<String>, Option<Vec<String>>)>;
+pub type ValidationDigest =
+    Vec<(Option<String>, Option<String>, String, Option<Vec<String>>)>;
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
@@ -165,7 +186,14 @@ impl ValidationReport {
                 }
                 None => None,
             };
-            digests.push((pkg_display, dep_display, sites_display));
+            let explain = match (&pkg_display, &dep_display) {
+                (Some(_), Some(_)) => DigestExplain::Invalid.to_string(),
+                (None, Some(_)) => DigestExplain::Missing.to_string(),
+                (Some(_), None) => DigestExplain::Disallowed.to_string(),
+                (None, None) => DigestExplain::Undefined.to_string(),
+            };
+
+            digests.push((pkg_display, dep_display, explain, sites_display));
         }
         digests
     }
