@@ -88,9 +88,9 @@ impl ValidationReport {
         let mut explain_displays: Vec<String> = Vec::new();
         let mut sites_displays: Vec<String> = Vec::new();
 
-        let mut max_package_width = 0;
-        let mut max_dep_spec_width = 0;
-        let mut max_explain_width = 0;
+        let mut max_package_width = "Package".len();
+        let mut max_dep_spec_width = "Dependency".len();
+        let mut max_explain_width = "Explain".len();
 
         let dep_missing = "";
         let pkg_missing = "";
@@ -109,7 +109,7 @@ impl ValidationReport {
                 None => dep_missing.to_string(),
             };
 
-            let explain_display = match (&pkg_display, &dep_display) {
+            let explain_display = match (&item.package, &item.dep_spec) {
                 (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
                 (Some(_), None) => ValidationExplain::Disallowed.to_string(),
@@ -151,7 +151,7 @@ impl ValidationReport {
             explain_width = max_explain_width,
         )?;
 
-        for (pkg_display, dep_display, explain_display) in
+        for (pkg_display, (dep_display, explain_display)) in
             package_displays.iter().zip(dep_spec_displays.iter().zip(explain_displays))
         {
             writeln!(
