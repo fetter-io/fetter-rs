@@ -96,11 +96,11 @@ enum Commands {
         bound: Option<PathBuf>,
 
         /// If the subset flag is set, observed packages can be a subset of the bound requirements.
-        #[arg(short, long)]
+        #[arg(long)]
         subset: bool,
 
         /// If the superset flag is set, observed packages can be a superset of the bound requirements.
-        #[arg(short, long)]
+        #[arg(long)]
         superset: bool,
 
         #[command(subcommand)]
@@ -155,6 +155,8 @@ enum DeriveSubcommand {
 enum ValidateSubcommand {
     /// Display validation to the terminal.
     Display,
+    /// Print a JSON representation of validation results.
+    JSON,
     /// Write a validation report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
@@ -260,6 +262,9 @@ where
             match subcommands {
                 ValidateSubcommand::Display => {
                     vr.to_stdout();
+                }
+                ValidateSubcommand::JSON => {
+                    print!("{}", serde_json::to_string(&vr.to_validation_digest()).unwrap());
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
                     let _ = vr.to_file(output, *delimiter);
