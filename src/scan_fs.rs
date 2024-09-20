@@ -417,7 +417,10 @@ mod tests {
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null],["requests-0.7.6","requests==0.7.1",null]]"#);
+        assert_eq!(
+            json,
+            r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null],["requests-0.7.6","requests==0.7.1",null]]"#
+        );
     }
 
     #[test]
@@ -442,9 +445,10 @@ mod tests {
             },
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null]]"#);
-
-
+        assert_eq!(
+            json,
+            r#"[["flask-1.1.3","flask>2,<3",null],["numpy-1.19.3","numpy>2",null]]"#
+        );
     }
     #[test]
     fn test_validation_e() {

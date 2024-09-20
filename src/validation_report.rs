@@ -11,7 +11,6 @@ use crate::dep_spec::DepSpec;
 use crate::package::Package;
 
 //------------------------------------------------------------------------------
-
 #[derive(Debug)]
 pub(crate) struct ValidationFlags {
     pub(crate) permit_superset: bool,
