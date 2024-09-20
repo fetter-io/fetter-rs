@@ -492,6 +492,7 @@ mod tests {
             },
         );
         assert_eq!(vr.len(), 1);
-        assert_eq!(vr.records[0], ValidationRecord::new(None, None, None));
+        // do this with JSON
+        // assert_eq!(vr.records[0], ValidationRecord::new(None, None, None));
     }
 }

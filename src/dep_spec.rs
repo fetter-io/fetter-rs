@@ -5,6 +5,8 @@ use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
+
 use crate::package::Package;
 use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
@@ -14,7 +16,7 @@ use crate::version_spec::VersionSpec;
 #[grammar = "dep_spec.pest"]
 struct DepSpecParser;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) enum DepOperator {
     LessThan,
     LessThanOrEq,
@@ -69,7 +71,7 @@ fn url_trim(mut input: String) -> String {
 }
 
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
     pub(crate) key: String,
@@ -653,4 +655,12 @@ mod tests {
         let p = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
         assert!(ds1.validate_package(&p));
     }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_json_a() {
+        let ds = DepSpec::from_whl("https://example.com/app-1.0.whl").unwrap();
+        let json = serde_json::to_string(&ds).unwrap();
+        assert_eq!(json, "{\"name\":\"app\",\"key\":\"app\",\"url\":\"https://example.com/app-1.0.whl\",\"operators\":[\"Eq\"],\"versions\":[[{\"Number\":1},{\"Number\":0}]]}")
+    }
+
 }

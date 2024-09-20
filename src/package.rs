@@ -2,13 +2,15 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::package_durl::DirectURL;
 use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub(crate) struct Package {
     pub(crate) name: String,
     pub(crate) key: String,
@@ -133,5 +135,24 @@ mod tests {
         let p1 = Package::from_name_version_durl("numpy", "2.1.2", None).unwrap();
         assert_eq!(p1.to_string(), "numpy-2.1.2");
         assert_eq!(format!("{:?}", p1), "<Package: numpy-2.1.2>");
+    }
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_package_json_a() {
+        let p1 = Package::from_name_version_durl("numpy", "2.1.2", None);
+        let json = serde_json::to_string(&p1).unwrap();
+        assert_eq!(json, "{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":[{\"Number\":2},{\"Number\":1},{\"Number\":2}],\"direct_url\":null}");
+    }
+    #[test]
+    fn test_package_json_b() {
+
+        let json_str = r#"
+            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+            "#;
+
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        let p1 = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
+        let json = serde_json::to_string(&p1).unwrap();
+        assert_eq!(json, "{\"name\":\"dill\",\"key\":\"dill\",\"version\":[{\"Number\":0},{\"Number\":3},{\"Number\":8}],\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"requested_revision\":\"0.3.8\"}}}");
     }
 }

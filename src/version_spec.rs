@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
+
+use serde::{Deserialize, Serialize};
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
