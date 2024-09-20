@@ -169,10 +169,12 @@ impl ScanFS {
         let mut records: Vec<ValidationRecord> = Vec::new();
         // iterate over found packages in order for better reporting
         for package in self.get_packages() {
-            let ds = dm.get_dep_spec(&package.name);
+            let ds = dm.get_dep_spec(&package.key);
             // package is valid if ds exists and version is valid, or it does not exist and permit_unspecified is true
             let package_valid = match ds {
-                Some(ds) => ds.validate_version(&package.version),
+                Some(ds) => {
+                    ds.validate_version(&package.version) && ds.validate_url(&package)
+                }
                 None => vf.permit_unspecified,
             };
             if !package_valid {
@@ -421,5 +423,30 @@ mod tests {
             vr.get_package_strings(),
             vec!["flask-1.1.3", "numpy-1.19.3"]
         );
+    }
+    #[test]
+    fn test_validation_e() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        // hyphen / underscore are normalized
+        let dm = DepManifest::from_iter(
+            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+        )
+        .unwrap();
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_unspecified: false,
+                report_sites: false,
+            },
+        );
+        assert_eq!(vr.len(), 0);
     }
 }
