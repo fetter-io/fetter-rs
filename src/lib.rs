@@ -95,9 +95,13 @@ enum Commands {
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
 
-        /// If the subset flag is set, observed packages must be a strict subset of the bound requirements.
+        /// If the subset flag is set, observed packages can be a subset of the bound requirements.
         #[arg(short, long)]
         subset: bool,
+
+        /// If the superset flag is set, observed packages can be a superset of the bound requirements.
+        #[arg(short, long)]
+        superset: bool,
 
         #[command(subcommand)]
         subcommands: ValidateSubcommand,
@@ -238,16 +242,18 @@ where
         Some(Commands::Validate {
             bound,
             subset,
+            superset,
             subcommands,
         }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
-            let permit_superset = !subset;
+            let permit_superset = *superset;
+            let permit_subset = *subset;
             let vr = sfs.to_validation_report(
                 dm,
                 ValidationFlags {
                     permit_superset,
-                    permit_subset: true,
+                    permit_subset,
                     report_sites,
                 },
             );
