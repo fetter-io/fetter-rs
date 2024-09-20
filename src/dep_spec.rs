@@ -139,7 +139,6 @@ impl DepSpec {
                     package_name = Some(pair.as_str().to_string());
                 }
                 Rule::url_reference => {
-                    println!("url_reference: {}", pair.as_str().to_string());
                     url = Some(url_trim(pair.as_str().to_string()));
                 }
                 Rule::version_many => {
@@ -233,10 +232,10 @@ impl DepSpec {
 
     pub(crate) fn validate_url(&self, package: &Package) -> bool {
         // if the DepSpec has a URL (the requirements specfied a URL) we have to validate that the installed package has a direct url.
-        if self.url.is_some() {
+        if let Some(url) = &self.url {
             if let Some(durl) = &package.direct_url {
                 // compare this url to package.direct_url
-                return true;
+                return durl.validate(url);
             }
             // Package does not have durl data
             return false;
@@ -599,7 +598,7 @@ mod tests {
         assert_eq!(ds1.url.clone().unwrap(), "https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl");
 
         // while we can install/require from the hyphen, the .dist-info file will always have an underscore
-        let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
+        let durl = DirectURL::from_url_vcs_commit_id("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string(), None, None).unwrap();
 
         let p1 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
             .unwrap();
@@ -621,7 +620,12 @@ mod tests {
         let p1 = Package::from_name_version_durl("static_frame", "2.13.0", None).unwrap();
         assert!(!ds1.validate_package(&p1)); // this fais without durl
 
-        let durl = DirectURL::from_url("https://files.pythonhosted.org/packages/5d/01/a4e76fc45b9352d6b762c6452172584b0be0006bd745e4e2a561b2972b28/static_frame-2.13.0-py3-none-any.whl".to_string()).unwrap();
+        let durl = DirectURL::from_url_vcs_commit_id(
+            "https://github.com/static-frame/static-frame.git".to_string(),
+            Some("git".to_string()),
+            Some("454d8d5446b71eceb57935b5ea9ba4efb051210e".to_string()),
+        )
+        .unwrap();
         let p2 = Package::from_name_version_durl("static_frame", "2.13.0", Some(durl))
             .unwrap();
         assert!(ds1.validate_package(&p2));

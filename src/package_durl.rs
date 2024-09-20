@@ -35,11 +35,38 @@ impl DirectURL {
             .map_err(|e| format!("failed to parse JSON: {}", e))
     }
 
-    pub(crate) fn from_url(url: String) -> Result<Self, String> {
-        Ok(DirectURL {
-            url,
-            vcs_info: None,
-        })
+    pub(crate) fn from_url_vcs_commit_id(
+        url: String,
+        vcs: Option<String>,
+        commit_id: Option<String>,
+    ) -> Result<Self, String> {
+        let vcs_info: Option<VcsInfo>;
+        if vcs.is_some() && commit_id.is_some() {
+            vcs_info = Some(VcsInfo {
+                vcs: vcs.unwrap(),
+                commit_id: commit_id.unwrap(),
+                requested_revision: None,
+            });
+        } else {
+            vcs_info = None;
+        }
+        Ok(DirectURL { url, vcs_info })
+    }
+
+    //--------------------------------------------------------------------------
+
+    //     packag durl url:
+    // git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e
+    // depspec url:
+    // git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e
+    fn get_url_origin(&self) {
+        // if we have vcs_info, need to put vcs+ in fromt and @commit id in the back
+    }
+
+    pub(crate) fn validate(&self, url: &String) -> bool {
+        // if we have vcs_info, need to put vcs+ in fromt and @commit id in the back
+        println!("packag durl url:\n{}\ndepspec url:\n{}\n", self.url, *url);
+        self.url == *url
     }
 }
 
