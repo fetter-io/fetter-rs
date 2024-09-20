@@ -38,20 +38,20 @@ impl ValidationRecord {
 }
 
 //------------------------------------------------------------------------------
-enum DigestExplain {
+enum ValidationExplain {
     Missing,
     Disallowed,
     Invalid,
     Undefined,
 }
 
-impl fmt::Display for DigestExplain {
+impl fmt::Display for ValidationExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
-            DigestExplain::Missing => "Missing",
-            DigestExplain::Disallowed => "Disallowed",
-            DigestExplain::Invalid => "Invalid",
-            DigestExplain::Undefined => "Undefined",
+            ValidationExplain::Missing => "Missing",
+            ValidationExplain::Disallowed => "Disallowed",
+            ValidationExplain::Invalid => "Invalid",
+            ValidationExplain::Undefined => "Undefined",
         };
         write!(f, "{}", value)
     }
@@ -85,10 +85,12 @@ impl ValidationReport {
     fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
+        let mut explain_displays: Vec<String> = Vec::new();
         let mut sites_displays: Vec<String> = Vec::new();
 
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
+        let mut max_explain_width = 0;
 
         let dep_missing = "";
         let pkg_missing = "";
@@ -107,6 +109,13 @@ impl ValidationReport {
                 None => dep_missing.to_string(),
             };
 
+            let explain_display = match (&pkg_display, &dep_display) {
+                (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
+                (None, Some(_)) => ValidationExplain::Missing.to_string(),
+                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (None, None) => ValidationExplain::Undefined.to_string(),
+            };
+
             if self.flags.report_sites {
                 let sites_display = match &item.sites {
                     Some(sites) => sites
@@ -121,32 +130,41 @@ impl ValidationReport {
 
             max_package_width = cmp::max(max_package_width, pkg_display.len());
             max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());
+            max_explain_width = cmp::max(max_explain_width, explain_display.len());
 
             package_displays.push(pkg_display);
             dep_spec_displays.push(dep_display);
+            explain_displays.push(explain_display);
+
         }
         // TODO: show sites
         writeln!(
             writer,
-            "{:<package_width$}{}{:<dep_spec_width$}",
+            "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
             "Package",
             delimiter,
             "Dependency",
+            delimiter,
+            "Explain",
             package_width = max_package_width,
-            dep_spec_width = max_dep_spec_width
+            dep_spec_width = max_dep_spec_width,
+            explain_width = max_explain_width,
         )?;
 
-        for (pkg_display, dep_display) in
-            package_displays.iter().zip(dep_spec_displays.iter())
+        for (pkg_display, dep_display, explain_display) in
+            package_displays.iter().zip(dep_spec_displays.iter().zip(explain_displays))
         {
             writeln!(
                 writer,
-                "{:<package_width$}{}{:<dep_spec_width$}",
+                "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
                 pkg_display,
                 delimiter,
                 dep_display,
+                delimiter,
+                explain_display,
                 package_width = max_package_width,
-                dep_spec_width = max_dep_spec_width
+                dep_spec_width = max_dep_spec_width,
+                explain_width = max_explain_width,
             )?;
         }
         Ok(())
@@ -184,10 +202,10 @@ impl ValidationReport {
                 None => None,
             };
             let explain = match (&pkg_display, &dep_display) {
-                (Some(_), Some(_)) => DigestExplain::Invalid.to_string(),
-                (None, Some(_)) => DigestExplain::Missing.to_string(),
-                (Some(_), None) => DigestExplain::Disallowed.to_string(),
-                (None, None) => DigestExplain::Undefined.to_string(),
+                (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
+                (None, Some(_)) => ValidationExplain::Missing.to_string(),
+                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
             digests.push((pkg_display, dep_display, explain, sites_display));
