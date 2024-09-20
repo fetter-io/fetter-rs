@@ -36,6 +36,15 @@ impl ValidationRecord {
     }
 }
 
+
+// A summary of validation results suitable for JSON serialziation to naive readers
+#[derive(Debug)]
+pub struct ValidationDigest {
+    records: Vec<(Option<String>, Option<String>, Option<Vec<String>>)>,
+}
+
+//------------------------------------------------------------------------------
+// Complete report of a validation process.
 #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
@@ -58,7 +67,7 @@ impl ValidationReport {
     fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
-        let mut site_displays: Vec<String> = Vec::new();
+        let mut sites_displays: Vec<String> = Vec::new();
 
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
@@ -70,8 +79,6 @@ impl ValidationReport {
         records.sort_by_key(|item| &item.package);
 
         for item in &records {
-            // let pkg_display =format!("{}", item.package);
-
             let pkg_display = match &item.package {
                 Some(package) => format!("{}", package),
                 None => pkg_missing.to_string(),
@@ -83,7 +90,7 @@ impl ValidationReport {
             };
 
             if self.flags.report_sites {
-                let site_display = match &item.sites {
+                let sites_display = match &item.sites {
                     Some(sites) => sites
                         .iter()
                         .map(|s| format!("{:?}", s))
@@ -91,7 +98,7 @@ impl ValidationReport {
                         .join(","),
                     None => "".to_string(),
                 };
-                site_displays.push(site_display);
+                sites_displays.push(sites_display);
             }
 
             max_package_width = cmp::max(max_package_width, pkg_display.len());
@@ -136,5 +143,31 @@ impl ValidationReport {
         let stdout = io::stdout();
         let handle = stdout.lock();
         self.to_writer(handle, ' ').unwrap();
+    }
+
+    pub(crate) fn to_validation_digest() -> ValidationDigest {
+        let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
+        records.sort_by_key(|item| &item.package);
+
+        digests: Vec<(Option<String>, Option<String>, Option<Vec<String>>) = Vec::new();
+        for item in &records {
+            let pkg_display = match &item.package {
+                Some(package) => Some(format!("{}", package)),
+                None => None,
+            };
+            let dep_display = match &item.dep_spec {
+                Some(dep_spec) => Some(format!("{}", dep_spec)),
+                None => None,
+            };
+            let sites_display = match &item.sites {
+                Some(sites) => Some(sites
+                    .iter()
+                    .map(|s| format!("{:?}", s))
+                    .collect::<Vec<_>>())
+                None => None,
+            };
+            digests.push((pkg_display, dep_display, sites_display));
+
+        }
     }
 }
