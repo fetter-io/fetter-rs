@@ -69,7 +69,7 @@ fn url_trim(mut input: String) -> String {
 }
 
 // Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
     pub(crate) key: String,

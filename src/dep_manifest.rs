@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
@@ -112,6 +113,20 @@ impl DepManifest {
 
     pub(crate) fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
         self.dep_specs.get(key)
+    }
+
+    // Return all DepSpec in this DepManifest that are not in observed.
+    pub(crate) fn get_dep_spec_difference(
+        &self,
+        observed: &HashSet<&String>,
+    ) -> Vec<&String> {
+        // iterating over keys, collect those that are not in observed
+        let dep_specs: Vec<&String> = self
+            .dep_specs
+            .keys()
+            .filter(|key| !observed.contains(key))
+            .collect();
+        dep_specs
     }
 
     /// Given a writer, write out all dependency specs

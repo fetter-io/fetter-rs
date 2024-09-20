@@ -247,7 +247,7 @@ where
                 dm,
                 ValidationFlags {
                     permit_superset,
-                    permit_subset : true,
+                    permit_subset: true,
                     report_sites,
                 },
             );

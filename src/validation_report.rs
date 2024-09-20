@@ -15,16 +15,16 @@ pub(crate) struct ValidationFlags {
     pub(crate) report_sites: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct ValidationRecord {
-    package: Package,
+    package: Option<Package>,
     dep_spec: Option<DepSpec>,
     sites: Option<Vec<PathBuf>>,
 }
 
 impl ValidationRecord {
     pub(crate) fn new(
-        package: Package,
+        package: Option<Package>,
         dep_spec: Option<DepSpec>,
         sites: Option<Vec<PathBuf>>,
     ) -> Self {
@@ -51,7 +51,7 @@ impl ValidationReport {
     pub(crate) fn get_package_strings(&self) -> Vec<String> {
         self.records
             .iter()
-            .map(|record| record.package.to_string())
+            .filter_map(|record| record.package.as_ref().map(ToString::to_string))
             .collect()
     }
 
@@ -63,13 +63,19 @@ impl ValidationReport {
         let mut max_package_width = 0;
         let mut max_dep_spec_width = 0;
 
-        let dep_missing = '-';
+        let dep_missing = "";
+        let pkg_missing = "";
 
         let mut records: Vec<&ValidationRecord> = self.records.iter().collect();
         records.sort_by_key(|item| &item.package);
 
         for item in &records {
-            let pkg_display = format!("{}", item.package);
+            // let pkg_display =format!("{}", item.package);
+
+            let pkg_display = match &item.package {
+                Some(package) => format!("{}", package),
+                None => pkg_missing.to_string(),
+            };
 
             let dep_display = match &item.dep_spec {
                 Some(dep_spec) => format!("{}", dep_spec),

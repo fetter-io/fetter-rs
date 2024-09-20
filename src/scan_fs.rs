@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -165,15 +166,19 @@ impl ScanFS {
         vf: ValidationFlags,
     ) -> ValidationReport {
         let mut records: Vec<ValidationRecord> = Vec::new();
+
+        let mut ds_keys_matched: HashSet<&String> = HashSet::new();
+
         // iterate over found packages in order for better reporting
         for package in self.get_packages() {
             let ds = dm.get_dep_spec(&package.key);
             // package is valid if ds exists and version is valid, or it does not exist and permit_superset is true
             let package_valid = match ds {
                 Some(ds) => {
+                    ds_keys_matched.insert(&ds.key);
                     ds.validate_version(&package.version) && ds.validate_url(&package)
                 }
-                None => vf.permit_superset,
+                None => vf.permit_superset, // we do not have a matching DepSpec
             };
             if !package_valid {
                 // sites might be None
@@ -181,8 +186,17 @@ impl ScanFS {
                     true => Some(self.package_to_sites.get(&package).unwrap().clone()),
                     false => None,
                 };
-                // ds might be None
-                records.push(ValidationRecord::new(package.clone(), ds.cloned(), sites));
+                // ds  is an Option type, might be None
+                records.push(ValidationRecord::new(Some(package.clone()), ds.cloned(), sites));
+            }
+        }
+        if !vf.permit_subset {
+            for key in dm.get_dep_spec_difference(&ds_keys_matched) {
+                records.push(ValidationRecord::new(
+                    None,
+                    dm.get_dep_spec(key).cloned(),
+                    None,
+                ));
             }
         }
         ValidationReport {
@@ -477,7 +491,7 @@ mod tests {
                 report_sites: false,
             },
         );
-        assert_eq!(vr.len(), 0);
+        assert_eq!(vr.len(), 1);
+        assert_eq!(vr.records[0], ValidationRecord::new(None, None, None));
     }
-
 }
