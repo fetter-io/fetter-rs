@@ -242,11 +242,12 @@ where
         }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let report_sites = false;
-            let permit_unspecified = !subset;
+            let permit_superset = !subset;
             let vr = sfs.to_validation_report(
                 dm,
                 ValidationFlags {
-                    permit_unspecified,
+                    permit_superset,
+                    permit_subset : true,
                     report_sites,
                 },
             );

@@ -163,19 +163,17 @@ impl ScanFS {
         &self,
         dm: DepManifest,
         vf: ValidationFlags,
-        // permit_unspecified: bool,
-        // report_sites: bool,
     ) -> ValidationReport {
         let mut records: Vec<ValidationRecord> = Vec::new();
         // iterate over found packages in order for better reporting
         for package in self.get_packages() {
             let ds = dm.get_dep_spec(&package.key);
-            // package is valid if ds exists and version is valid, or it does not exist and permit_unspecified is true
+            // package is valid if ds exists and version is valid, or it does not exist and permit_superset is true
             let package_valid = match ds {
                 Some(ds) => {
                     ds.validate_version(&package.version) && ds.validate_url(&package)
                 }
-                None => vf.permit_unspecified,
+                None => vf.permit_superset,
             };
             if !package_valid {
                 // sites might be None
@@ -283,7 +281,8 @@ mod tests {
         let invalid1 = sfs.to_validation_report(
             dm1,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -293,7 +292,8 @@ mod tests {
         let invalid2 = sfs.to_validation_report(
             dm2,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -340,7 +340,8 @@ mod tests {
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -364,7 +365,8 @@ mod tests {
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -389,7 +391,8 @@ mod tests {
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -415,7 +418,8 @@ mod tests {
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
-                permit_unspecified: true,
+                permit_superset: true,
+                permit_subset: false,
                 report_sites: false,
             },
         );
@@ -443,10 +447,37 @@ mod tests {
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
-                permit_unspecified: false,
+                permit_superset: false,
+                permit_subset: false,
                 report_sites: false,
             },
         );
         assert_eq!(vr.len(), 0);
     }
+    #[test]
+    fn test_validation_f() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        // hyphen / underscore are normalized
+        let dm = DepManifest::from_iter(
+            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+        )
+        .unwrap();
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: false,
+                report_sites: false,
+            },
+        );
+        assert_eq!(vr.len(), 0);
+    }
+
 }

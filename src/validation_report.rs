@@ -10,7 +10,8 @@ use crate::package::Package;
 
 #[derive(Debug)]
 pub(crate) struct ValidationFlags {
-    pub(crate) permit_unspecified: bool,
+    pub(crate) permit_superset: bool,
+    pub(crate) permit_subset: bool,
     pub(crate) report_sites: bool,
 }
 
