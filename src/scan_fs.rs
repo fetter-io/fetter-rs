@@ -340,7 +340,6 @@ mod tests {
         assert_eq!(sfs.len(), 7);
         // sfs.report();
         let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
-        println!("{:?}", dm);
         assert_eq!(dm.len(), 3);
     }
 
@@ -412,7 +411,7 @@ mod tests {
         )
         .unwrap();
 
-        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let sfs = ScanFS::from_exe_site_packages(exe.clone(), site, packages).unwrap();
         let vr = sfs.to_validation_report(
             dm,
             ValidationFlags {
@@ -420,7 +419,7 @@ mod tests {
                 permit_subset: false,
             },
         );
-
+        assert_eq!(sfs.exe_to_sites.get(&exe).unwrap()[0].strong_count(), 7);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
