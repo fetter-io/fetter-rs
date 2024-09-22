@@ -13,6 +13,7 @@ use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
+use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
@@ -28,7 +29,7 @@ pub(crate) enum Anchor {
 
 //------------------------------------------------------------------------------
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
-fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
+fn get_site_package_dirs(executable: &Path) -> Vec<PathShared> {
     return match Command::new(executable)
             .arg("-c")
             .arg("import site;print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())") // since Python 3.2
@@ -39,7 +40,7 @@ fn get_site_package_dirs(executable: &Path) -> Vec<PathBuf> {
                     .trim();
             paths_lines
                     .lines()
-                    .map(|line| PathBuf::from(line.trim()))
+                    .map(|line| PathShared::from_str(line.trim()))
                     .collect()
         }
         Err(e) => {
@@ -68,27 +69,27 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 pub(crate) struct ScanFS {
     // NOTE: these attributes used by reporters
     /// A mapping of exe path to site packages paths
-    pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
     /// A mapping of Package tp a site package paths
-    pub(crate) package_to_sites: HashMap<Package, Vec<PathBuf>>,
+    pub(crate) package_to_sites: HashMap<Package, Vec<PathShared>>,
 }
 
 impl ScanFS {
     fn from_exe_to_sites(
-        exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+        exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
     ) -> Result<Self, String> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
             .flat_map(|(_, site_packages)| {
                 site_packages.par_iter().map(|site_package_path| {
-                    let packages = get_packages(site_package_path);
+                    let packages = get_packages(site_package_path.as_path());
                     (site_package_path.clone(), packages)
                 })
             })
-            .collect::<HashMap<PathBuf, Vec<Package>>>();
+            .collect::<HashMap<PathShared, Vec<Package>>>();
 
-        let mut package_to_sites: HashMap<Package, Vec<PathBuf>> = HashMap::new();
+        let mut package_to_sites: HashMap<Package, Vec<PathShared>> = HashMap::new();
         for (site_package_path, packages) in site_to_packages.iter() {
             for package in packages {
                 package_to_sites
@@ -104,7 +105,7 @@ impl ScanFS {
     }
     // Given a Vec of PathBuf to executables, use them to collect site packages.
     pub(crate) fn from_exes(exes: Vec<PathBuf>) -> Result<Self, String> {
-        let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = exes
+        let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
                 let dirs = get_site_package_dirs(&exe);
@@ -115,7 +116,7 @@ impl ScanFS {
     }
     pub(crate) fn from_exe_scan() -> Result<Self, String> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
-        let exe_to_sites: HashMap<PathBuf, Vec<PathBuf>> = find_exe()
+        let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
             .map(|exe| {
                 let dirs = get_site_package_dirs(&exe);
@@ -132,14 +133,16 @@ impl ScanFS {
         packages: Vec<Package>,
     ) -> Result<Self, String> {
         let mut exe_to_sites = HashMap::new();
-        exe_to_sites.insert(exe.clone(), vec![site.clone()]);
+        let site_shared = PathShared::from_path_buf(site);
+
+        exe_to_sites.insert(exe.clone(), vec![site_shared.clone()]);
 
         let mut package_to_sites = HashMap::new();
         for package in packages {
             package_to_sites
                 .entry(package)
                 .or_insert_with(Vec::new)
-                .push(site.clone());
+                .push(site_shared.clone());
         }
         Ok(ScanFS {
             exe_to_sites,
@@ -184,7 +187,7 @@ impl ScanFS {
             };
             if !package_valid {
                 // sites might be None
-                let sites: Option<Vec<PathBuf>> = match vf.report_sites {
+                let sites: Option<Vec<PathShared>> = match vf.report_sites {
                     true => Some(self.package_to_sites.get(&package).unwrap().clone()),
                     false => None,
                 };
@@ -291,8 +294,11 @@ mod tests {
         let fp_p2 = fp_sp.join("foo-3.0.dist-info");
         fs::create_dir(&fp_p2).unwrap();
 
-        let mut exe_to_sites = HashMap::<PathBuf, Vec<PathBuf>>::new();
-        exe_to_sites.insert(fp_exe.clone(), vec![fp_sp]);
+        let mut exe_to_sites = HashMap::<PathBuf, Vec<PathShared>>::new();
+        exe_to_sites.insert(
+            fp_exe.clone(),
+            vec![PathShared::from_path_buf(fp_sp.to_path_buf())],
+        );
         let sfs = ScanFS::from_exe_to_sites(exe_to_sites).unwrap();
         assert_eq!(sfs.len(), 2);
 

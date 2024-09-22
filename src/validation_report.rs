@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
+use crate::path_shared::PathShared;
 
 //------------------------------------------------------------------------------
 #[derive(Debug)]
@@ -20,14 +21,14 @@ pub(crate) struct ValidationFlags {
 pub(crate) struct ValidationRecord {
     package: Option<Package>,
     dep_spec: Option<DepSpec>,
-    sites: Option<Vec<PathBuf>>,
+    sites: Option<Vec<PathShared>>,
 }
 
 impl ValidationRecord {
     pub(crate) fn new(
         package: Option<Package>,
         dep_spec: Option<DepSpec>,
-        sites: Option<Vec<PathBuf>>,
+        sites: Option<Vec<PathShared>>,
     ) -> Self {
         ValidationRecord {
             package,

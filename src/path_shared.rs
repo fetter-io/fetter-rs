@@ -2,30 +2,30 @@ use std::hash::{Hash, Hasher};
 use std::path::Display;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
-/// As a normal Rc-wrapped PathBuf cannot be a key in a mapping or set, we create this wrapped Rc PathBuf that implements hashability.
-#[derive(Clone)]
-struct PathShared(Rc<PathBuf>);
+/// As a normal Arc-wrapped PathBuf cannot be a key in a mapping or set, we create this wrapped Arc PathBuf that implements hashability. Cloning this type will increment the reference count.
+#[derive(Debug, Clone)]
+pub(crate) struct PathShared(Arc<PathBuf>);
 
 impl PathShared {
-    fn from_path_buf(path: PathBuf) -> Self {
-        PathShared(Rc::new(path))
+    pub(crate) fn from_path_buf(path: PathBuf) -> Self {
+        PathShared(Arc::new(path))
     }
 
-    fn from_str(path: &str) -> Self {
+    pub(crate) fn from_str(path: &str) -> Self {
         PathShared::from_path_buf(PathBuf::from(path))
     }
 
     fn strong_count(&self) -> usize {
-        Rc::strong_count(&self.0)
+        Arc::strong_count(&self.0)
     }
 
-    fn as_path(&self) -> &Path {
+    pub(crate) fn as_path(&self) -> &Path {
         self.0.as_path()
     }
 
-    fn display(&self) -> Display {
+    pub(crate) fn display(&self) -> Display {
         self.0.display()
     }
 }
@@ -52,8 +52,8 @@ mod tests {
 
     #[test]
     fn test_a() {
-        let path1 = PathShared(Rc::new(PathBuf::from("/home/user1")));
-        let path2 = PathShared(Rc::new(PathBuf::from("/home/user2")));
+        let path1 = PathShared(Arc::new(PathBuf::from("/home/user1")));
+        let path2 = PathShared(Arc::new(PathBuf::from("/home/user2")));
 
         let mut map = HashMap::new();
         map.insert(path1.clone(), "a");
