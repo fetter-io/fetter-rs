@@ -160,6 +160,7 @@ impl ScanFS {
     }
 
     /// The length of the scan is the number of unique packages.
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.package_to_sites.len()
     }

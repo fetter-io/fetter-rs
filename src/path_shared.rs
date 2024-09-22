@@ -17,6 +17,7 @@ impl PathShared {
         PathShared::from_path_buf(PathBuf::from(path))
     }
 
+    #[allow(dead_code)]
     fn strong_count(&self) -> usize {
         Arc::strong_count(&self.0)
     }

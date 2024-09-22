@@ -245,6 +245,7 @@ impl DepSpec {
         true
     }
 
+    #[allow(dead_code)]
     pub(crate) fn validate_package(&self, package: &Package) -> bool {
         self.key == package.key
             && self.validate_version(&package.version)
