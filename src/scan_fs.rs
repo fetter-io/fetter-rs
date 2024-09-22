@@ -396,7 +396,10 @@ mod tests {
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["flask-1.1.3","flask>2","Invalid",["/usr/lib/python3/site-packages"]]]"#);
+        assert_eq!(
+            json,
+            r#"[["flask-1.1.3","flask>2","Invalid",["/usr/lib/python3/site-packages"]]]"#
+        );
     }
     #[test]
     fn test_validation_c() {
@@ -524,7 +527,10 @@ mod tests {
         );
         assert_eq!(vr1.len(), 1);
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["static-frame-2.13.0",null,"Disallowed",["/usr/lib/python3/site-packages"]]]"#);
+        assert_eq!(
+            json,
+            r#"[["static-frame-2.13.0",null,"Disallowed",["/usr/lib/python3/site-packages"]]]"#
+        );
 
         let vr2 = sfs.to_validation_report(
             dm,

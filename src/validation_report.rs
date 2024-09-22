@@ -194,9 +194,12 @@ impl ValidationReport {
                 None => None,
             };
             let sites_display = match &item.sites {
-                Some(sites) => {
-                    Some(sites.iter().map(|s| format!("{}", s.display())).collect::<Vec<_>>())
-                }
+                Some(sites) => Some(
+                    sites
+                        .iter()
+                        .map(|s| format!("{}", s.display()))
+                        .collect::<Vec<_>>(),
+                ),
                 None => None,
             };
             let explain = match (&pkg_display, &dep_display) {
