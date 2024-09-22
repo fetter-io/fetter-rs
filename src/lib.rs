@@ -9,6 +9,7 @@ mod scan_report;
 mod util;
 mod validation_report;
 mod version_spec;
+mod path_shared;
 
 use std::process;
 
