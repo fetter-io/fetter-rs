@@ -66,8 +66,10 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 // The result of a file-system scan.
 pub(crate) struct ScanFS {
-    // NOTE: these are used by reporters
+    // NOTE: these attributes used by reporters
+    /// A mapping of exe path to site packages paths
     pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathBuf>>,
+    /// A mapping of Package tp a site package paths
     pub(crate) package_to_sites: HashMap<Package, Vec<PathBuf>>,
 }
 
