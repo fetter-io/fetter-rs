@@ -4,12 +4,12 @@ mod dep_spec;
 mod exe_search;
 mod package;
 mod package_durl;
+mod path_shared;
 mod scan_fs;
 mod scan_report;
 mod util;
 mod validation_report;
 mod version_spec;
-mod path_shared;
 
 use std::process;
 

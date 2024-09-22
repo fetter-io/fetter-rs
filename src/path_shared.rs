@@ -1,8 +1,8 @@
-use std::rc::Rc;
-use std::path::PathBuf;
-use std::path::Path;
-use std::path::Display;
 use std::hash::{Hash, Hasher};
+use std::path::Display;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 /// As a normal Rc-wrapped PathBuf cannot be a key in a mapping or set, we create this wrapped Rc PathBuf that implements hashability.
 #[derive(Clone)]
@@ -44,7 +44,6 @@ impl Hash for PathShared {
     }
 }
 
-
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -74,8 +73,6 @@ mod tests {
     fn test_b() {
         let path1 = PathShared::from_str("/home/user1");
         assert_eq!(format!("{}", path1.display()), "/home/user1");
-
-
     }
 
     #[test]
