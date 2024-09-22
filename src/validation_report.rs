@@ -63,10 +63,9 @@ pub type ValidationDigest =
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
-    pub(crate) flags: ValidationFlags,
 }
 
 impl ValidationReport {

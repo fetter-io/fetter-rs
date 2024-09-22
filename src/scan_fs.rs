@@ -210,10 +210,7 @@ impl ScanFS {
                 ));
             }
         }
-        ValidationReport {
-            records: records,
-            flags: vf,
-        }
+        ValidationReport { records: records }
     }
 
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
