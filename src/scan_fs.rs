@@ -187,10 +187,10 @@ impl ScanFS {
                 None => vf.permit_superset, // we do not have a matching DepSpec
             };
             if !package_valid {
-                // sites might be None
-                let sites: Option<Vec<PathShared>> = match vf.report_sites {
-                    true => Some(self.package_to_sites.get(&package).unwrap().clone()),
-                    false => None,
+                // package should always have defined sites
+                let sites = match self.package_to_sites.get(&package) {
+                    Some(sites) => Some(sites.clone()),
+                    None => None,
                 };
                 // ds  is an Option type, might be None
                 records.push(ValidationRecord::new(
@@ -201,6 +201,7 @@ impl ScanFS {
             }
         }
         if !vf.permit_subset {
+            // packages defined in DepSpec but not found
             for key in dm.get_dep_spec_difference(&ds_keys_matched) {
                 records.push(ValidationRecord::new(
                     None,
@@ -310,7 +311,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(invalid1.len(), 0);
@@ -321,7 +321,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(invalid2.len(), 1);
@@ -369,7 +368,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(vr.len(), 0);
@@ -394,12 +392,11 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["flask-1.1.3","flask>2","Invalid",null]]"#);
+        assert_eq!(json, r#"[["flask-1.1.3","flask>2","Invalid",["/usr/lib/python3/site-packages"]]]"#);
     }
     #[test]
     fn test_validation_c() {
@@ -421,14 +418,13 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3","Invalid",null],["numpy-1.19.3","numpy>2","Invalid",null],["requests-0.7.6","requests==0.7.1","Invalid",null]]"#
+            r#"[["flask-1.1.3","flask>2,<3","Invalid",["/usr/lib/python3/site-packages"]],["numpy-1.19.3","numpy>2","Invalid",["/usr/lib/python3/site-packages"]],["requests-0.7.6","requests==0.7.1","Invalid",["/usr/lib/python3/site-packages"]]]"#
         );
     }
 
@@ -450,13 +446,12 @@ mod tests {
             ValidationFlags {
                 permit_superset: true,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3","Invalid",null],["numpy-1.19.3","numpy>2","Invalid",null]]"#
+            r#"[["flask-1.1.3","flask>2,<3","Invalid",["/usr/lib/python3/site-packages"]],["numpy-1.19.3","numpy>2","Invalid",["/usr/lib/python3/site-packages"]]]"#
         );
     }
     #[test]
@@ -480,7 +475,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(vr.len(), 0);
@@ -505,7 +499,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(vr.len(), 1);
@@ -527,19 +520,17 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(vr1.len(), 1);
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[["static-frame-2.13.0",null,"Disallowed",null]]"#);
+        assert_eq!(json, r#"[["static-frame-2.13.0",null,"Disallowed",["/usr/lib/python3/site-packages"]]]"#);
 
         let vr2 = sfs.to_validation_report(
             dm,
             ValidationFlags {
                 permit_superset: true,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         assert_eq!(vr2.len(), 0);
@@ -564,7 +555,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: false,
-                report_sites: false,
             },
         );
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
@@ -575,7 +565,6 @@ mod tests {
             ValidationFlags {
                 permit_superset: false,
                 permit_subset: true,
-                report_sites: false,
             },
         );
         assert_eq!(vr2.len(), 0);

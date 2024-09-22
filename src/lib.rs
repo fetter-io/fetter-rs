@@ -249,7 +249,6 @@ where
             subcommands,
         }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
-            let report_sites = false;
             let permit_superset = *superset;
             let permit_subset = *subset;
             let vr = sfs.to_validation_report(
@@ -257,7 +256,6 @@ where
                 ValidationFlags {
                     permit_superset,
                     permit_subset,
-                    report_sites,
                 },
             );
             match subcommands {

@@ -14,7 +14,6 @@ use crate::path_shared::PathShared;
 pub(crate) struct ValidationFlags {
     pub(crate) permit_superset: bool,
     pub(crate) permit_subset: bool,
-    pub(crate) report_sites: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -117,17 +116,15 @@ impl ValidationReport {
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
-            if self.flags.report_sites {
-                let sites_display = match &item.sites {
-                    Some(sites) => sites
-                        .iter()
-                        .map(|s| format!("{:?}", s))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    None => "".to_string(),
-                };
-                sites_displays.push(sites_display);
-            }
+            let sites_display = match &item.sites {
+                Some(sites) => sites
+                    .iter()
+                    .map(|s| format!("{:?}", s))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                None => "".to_string(),
+            };
+            sites_displays.push(sites_display);
 
             max_package_width = cmp::max(max_package_width, pkg_display.len());
             max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());
@@ -198,7 +195,7 @@ impl ValidationReport {
             };
             let sites_display = match &item.sites {
                 Some(sites) => {
-                    Some(sites.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>())
+                    Some(sites.iter().map(|s| format!("{}", s.display())).collect::<Vec<_>>())
                 }
                 None => None,
             };
