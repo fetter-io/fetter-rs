@@ -32,7 +32,10 @@ impl Package {
         })
     }
     /// Create a Package from a dist_info string.
-    pub(crate) fn from_dist_info(input: &str, direct_url: Option<DirectURL>) -> Option<Self> {
+    pub(crate) fn from_dist_info(
+        input: &str,
+        direct_url: Option<DirectURL>,
+    ) -> Option<Self> {
         let trimmed_input = input.trim_end_matches(".dist-info");
         let parts: Vec<&str> = trimmed_input.split('-').collect();
         if parts.len() >= 2 {
@@ -105,7 +108,10 @@ mod tests {
 
     #[test]
     fn test_package_b() {
-        assert_eq!(Package::from_dist_info("matplotlib3.9.0.distin", None), None);
+        assert_eq!(
+            Package::from_dist_info("matplotlib3.9.0.distin", None),
+            None
+        );
     }
 
     #[test]
