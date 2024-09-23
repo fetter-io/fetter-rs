@@ -4,6 +4,7 @@ mod dep_spec;
 mod exe_search;
 mod package;
 mod package_durl;
+mod package_match;
 mod path_shared;
 mod scan_fs;
 mod scan_report;
