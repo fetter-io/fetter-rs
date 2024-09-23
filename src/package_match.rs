@@ -1,61 +1,65 @@
-// Simple glob-like matching, supporting * and ? wildcards.
-fn match_iter<I>(mut pattern_chars: I, mut input_chars: I, case_insensitive: bool) -> bool
-where
-    I: Iterator<Item = char> + Clone,
-{
-    while let Some(pat_char) = pattern_chars.next() {
-        let pat_char = if case_insensitive {
-            pat_char.to_ascii_lowercase()
+// Simple glob-like matching, supporting * and ? wildcards. Inputs are char iterators.
+fn match_str(pattern: &str, input: &str, case_insensitive: bool) -> bool {
+    // println!("match_str: pattern = {:?}, input = {:?}", pattern, input);
+
+    let mut p_chars = pattern.chars();
+    let mut i_chars = input.chars();
+
+    while let Some(p_char) = p_chars.next() {
+        let p_char = if case_insensitive {
+            p_char.to_ascii_lowercase()
         } else {
-            pat_char
+            p_char
         };
-        match pat_char {
+        match p_char {
             '*' => {
-                // advance pattern to last of any consecutive *
-                while let Some(&next_pat_char) = pattern_chars.clone().peekable().peek() {
-                    if next_pat_char != '*' {
-                        break;
+                // consume all contiguous '*', return if pattern ends with '*'
+                loop {
+                    match p_chars.clone().peekable().peek() {
+                        Some(&p_char_next) => {
+                            if p_char_next != '*' {
+                                break;
+                            }
+                            p_chars.next();
+                        }
+                        None => {
+                            return true;
+                        }
                     }
-                    pattern_chars.next();
                 }
-                // handle zero * matches in input
-                if match_iter(pattern_chars.clone(), input_chars.clone(), case_insensitive) {
-                    return true;
-                }
-                // drop one input character and compare the rest
-                while input_chars.next().is_some() {
-                    if match_iter(
-                        pattern_chars.clone(),
-                        input_chars.clone(),
-                        case_insensitive,
-                    ) {
+                let p_str = p_chars.as_str();
+                let i_str = i_chars.as_str();
+
+                // match zero characters or more characters in the i_str
+                for i in 0..i_str.len() {
+                    if match_str(p_str, &i_str[i..], case_insensitive) {
                         return true;
                     }
                 }
                 return false;
             }
             '?' => {
-                if input_chars.next().is_none() {
+                if i_chars.next().is_none() {
                     return false;
                 }
             }
-            '-' | '_' => match input_chars.next() {
-                Some(in_char) if in_char == '-' || in_char == '_' => continue,
+            '-' | '_' => match i_chars.next() {
+                Some(i_char) if i_char == '-' || i_char == '_' => continue,
                 _ => return false,
             },
             _ => {
-                let in_char = match input_chars.next() {
+                let i_char = match i_chars.next() {
                     Some(c) if case_insensitive => c.to_ascii_lowercase(),
                     Some(c) => c,
                     None => return false,
                 };
-                if pat_char != in_char {
+                if p_char != i_char {
                     return false;
                 }
             }
         }
     }
-    input_chars.next().is_none() // input exhausted
+    i_chars.next().is_none()
 }
 
 #[cfg(test)]
@@ -64,42 +68,77 @@ mod tests {
 
     #[test]
     fn test_match_a() {
-        assert!(match_iter("he?lo".chars(), "hello".chars(), false));
-        assert!(match_iter("*world".chars(), "hello world".chars(), false));
-        assert!(match_iter("he*o".chars(), "hello".chars(), false));
-        assert!(match_iter("he*o".chars(), "heo".chars(), false));
-        assert!(match_iter("he*o".chars(), "heasdfasdfero".chars(), false));
+        assert!(match_str("he?lo", "hello", false));
+        assert!(match_str("*world", "hello world", false));
+        assert!(match_str("he*o", "hello", false));
+        assert!(match_str("he*o", "heo", false));
+        assert!(match_str("he*o", "heasdfasdfero", false));
 
-        assert!(!match_iter("h?llo".chars(), "hella".chars(), false));
-        assert!(!match_iter("hell*o".chars(), "hellaaaaa".chars(), false));
+        assert!(!match_str("h?llo", "hella", false));
+        assert!(!match_str("hell*o", "hellaaaaa", false));
     }
 
     #[test]
     fn test_match_b() {
-        assert!(match_iter("He?lo".chars(), "hello".chars(), true));
-        assert!(match_iter("he*O".chars(), "heLLo".chars(), true));
+        assert!(match_str("He?lo", "hello", true));
+        assert!(match_str("he*O", "heLLo", true));
 
-        assert!(!match_iter("He*O".chars(), "hello".chars(), false));
+        assert!(!match_str("He*O", "hello", false));
     }
 
     #[test]
     fn test_match_c() {
-        assert!(match_iter("*".chars(), "anything".chars(), false));
-        assert!(match_iter("h*o".chars(), "hello".chars(), false));
-        assert!(match_iter("h?llo*".chars(), "hello world".chars(), false));
-        assert!(match_iter("he*l?d*".chars(), "he_______l?dworlt".chars(), false));
+        assert!(match_str("*", "anything", false));
+        assert!(match_str("h*o", "hello", false));
+        assert!(match_str("h?llo*", "hello world", false));
+        assert!(match_str("he*l?d*", "he_______l?dworlt", false));
 
-        assert!(!match_iter("he*l?d".chars(), "hello worlt".chars(), false));
+        assert!(!match_str("he*l?d", "hello worlt", false));
     }
 
     #[test]
     fn test_match_d() {
-        assert!(match_iter("he_lo".chars(), "he-lo".chars(), false));
-        assert!(match_iter("he-lo".chars(), "he_lo".chars(), false));
-        assert!(match_iter("he*-world".chars(), "heLLo_world".chars(), false));
-        assert!(match_iter("he*-wor?d".chars(), "heLLo_worxd".chars(), false));
-        assert!(match_iter("he*-wor*".chars(), "heLLo_worxd".chars(), false));
+        assert!(match_str("he_lo", "he-lo", false));
+        assert!(match_str("he-lo", "he_lo", false));
+        assert!(match_str("he*-world", "heLLo_world", false));
+        assert!(match_str("he*-wor?d", "heLLo_worxd", false));
+        assert!(match_str("he*-wor*", "heLLo_worxd", false));
 
-        assert!(!match_iter("he*-wor*q".chars(), "heLLo_worxd".chars(), false));
+        assert!(!match_str("he*-wor*q", "heLLo_worxd", false));
+    }
+
+    #[test]
+    fn test_match_e() {
+        assert!(match_str("H*o w*d", "hello world", true));
+        assert!(match_str("H*o  w*d", "hello  world", true));
+
+        assert!(!match_str("H*o w*d", "hello  world", true));
+    }
+
+    #[test]
+    fn test_match_f() {
+        assert!(match_str("???", "hld", true));
+        assert!(match_str("???*", "hld", true));
+        assert!(match_str("???*", "hldfoooo", true));
+        assert!(match_str("???*.png", "hldfoooo.png", true));
+
+        assert!(!match_str("???", "ld", true));
+        assert!(!match_str("???*.png", "hldfoooo.pn", true));
+        assert!(!match_str("???.png", "o.png", true));
+    }
+
+    #[test]
+    fn test_match_g() {
+        assert!(!match_str("???*.png", "x.png", true));
+    }
+
+    #[test]
+    fn test_match_h() {
+        assert!(match_str("-_-_??*.png", "----oo.png", true));
+        assert!(match_str("-_-_??*.png", "____oo.png", true));
+        assert!(match_str("-_-_??*.png", "____ooXXX.png", true));
+
+        assert!(!match_str("-_-_??*.png", "____o.png", true));
+        assert!(!match_str("-_-_??.png", "____ooo.png", true));
     }
 }
