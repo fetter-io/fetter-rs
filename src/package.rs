@@ -32,16 +32,17 @@ impl Package {
         })
     }
     /// Create a Package from a dist_info string.
-    pub(crate) fn from_dist_info(input: &str) -> Option<Self> {
-        if input.ends_with(".dist-info") {
-            let trimmed_input = input.trim_end_matches(".dist-info");
-            let parts: Vec<&str> = trimmed_input.split('-').collect();
-            if parts.len() >= 2 {
-                // NOTE: we expect that dist-info based names have already normalized hyphens to underscores, joingwith '-' may not be meaningful here
-                let name = parts[..parts.len() - 1].join("-");
-                let version = parts.last()?;
-                return Self::from_name_version_durl(&name, version, None);
-            }
+    pub(crate) fn from_dist_info(
+        input: &str,
+        direct_url: Option<DirectURL>,
+    ) -> Option<Self> {
+        let trimmed_input = input.trim_end_matches(".dist-info");
+        let parts: Vec<&str> = trimmed_input.split('-').collect();
+        if parts.len() >= 2 {
+            // NOTE: we expect that dist-info based names have already normalized hyphens to underscores, joingwith '-' may not be meaningful here
+            let name = parts[..parts.len() - 1].join("-");
+            let version = parts.last()?;
+            return Self::from_name_version_durl(&name, version, direct_url);
         }
         None
     }
@@ -55,13 +56,14 @@ impl Package {
             } else {
                 None
             };
-            let tfn = file_name.trim_end_matches(".dist-info");
-            let parts: Vec<&str> = tfn.split('-').collect();
-            if parts.len() >= 2 {
-                let name = parts[..parts.len() - 1].join("-");
-                let version = parts.last()?;
-                return Self::from_name_version_durl(&name, version, durl);
-            }
+            return Self::from_dist_info(file_name, durl);
+            // let tfn = file_name.trim_end_matches(".dist-info");
+            // let parts: Vec<&str> = tfn.split('-').collect();
+            // if parts.len() >= 2 {
+            //     let name = parts[..parts.len() - 1].join("-");
+            //     let version = parts.last()?;
+            //     return Self::from_name_version_durl(&name, version, durl);
+            // }
         }
         None
     }
@@ -99,21 +101,24 @@ mod tests {
 
     #[test]
     fn test_package_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None).unwrap();
         assert_eq!(p1.name, "matplotlib");
         assert_eq!(p1.version.to_string(), "3.9.0");
     }
 
     #[test]
     fn test_package_b() {
-        assert_eq!(Package::from_dist_info("matplotlib-3.9.0.dist-in"), None);
+        assert_eq!(
+            Package::from_dist_info("matplotlib3.9.0.distin", None),
+            None
+        );
     }
 
     #[test]
     fn test_package_c() {
-        let p1 = Package::from_dist_info("xarray-0.21.1.dist-info").unwrap();
-        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info").unwrap();
-        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("xarray-0.21.1.dist-info", None).unwrap();
+        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info", None).unwrap();
+        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info", None).unwrap();
 
         assert_eq!(p2 > p1, true);
         assert_eq!(p1 < p2, true);
@@ -122,7 +127,7 @@ mod tests {
     }
     #[test]
     fn test_package_to_string_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None).unwrap();
         assert_eq!(p1.to_string(), "matplotlib-3.9.0");
     }
     #[test]

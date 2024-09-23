@@ -7,27 +7,27 @@ use std::path::PathBuf;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
+use crate::path_shared::PathShared;
 
 //------------------------------------------------------------------------------
 #[derive(Debug)]
 pub(crate) struct ValidationFlags {
     pub(crate) permit_superset: bool,
     pub(crate) permit_subset: bool,
-    pub(crate) report_sites: bool,
 }
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ValidationRecord {
     package: Option<Package>,
     dep_spec: Option<DepSpec>,
-    sites: Option<Vec<PathBuf>>,
+    sites: Option<Vec<PathShared>>,
 }
 
 impl ValidationRecord {
     pub(crate) fn new(
         package: Option<Package>,
         dep_spec: Option<DepSpec>,
-        sites: Option<Vec<PathBuf>>,
+        sites: Option<Vec<PathShared>>,
     ) -> Self {
         ValidationRecord {
             package,
@@ -63,10 +63,9 @@ pub type ValidationDigest =
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
-    pub(crate) flags: ValidationFlags,
 }
 
 impl ValidationReport {
@@ -116,17 +115,15 @@ impl ValidationReport {
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
-            if self.flags.report_sites {
-                let sites_display = match &item.sites {
-                    Some(sites) => sites
-                        .iter()
-                        .map(|s| format!("{:?}", s))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    None => "".to_string(),
-                };
-                sites_displays.push(sites_display);
-            }
+            let sites_display = match &item.sites {
+                Some(sites) => sites
+                    .iter()
+                    .map(|s| format!("{:?}", s))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                None => "".to_string(),
+            };
+            sites_displays.push(sites_display);
 
             max_package_width = cmp::max(max_package_width, pkg_display.len());
             max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());
@@ -196,9 +193,12 @@ impl ValidationReport {
                 None => None,
             };
             let sites_display = match &item.sites {
-                Some(sites) => {
-                    Some(sites.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>())
-                }
+                Some(sites) => Some(
+                    sites
+                        .iter()
+                        .map(|s| format!("{}", s.display()))
+                        .collect::<Vec<_>>(),
+                ),
                 None => None,
             };
             let explain = match (&pkg_display, &dep_display) {

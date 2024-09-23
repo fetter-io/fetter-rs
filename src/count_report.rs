@@ -5,6 +5,7 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
+use crate::path_shared::PathShared;
 use crate::scan_fs::ScanFS;
 
 #[derive(Debug)]
@@ -27,7 +28,7 @@ pub struct CountReport {
 impl CountReport {
     pub(crate) fn from_scan_fs(scan_fs: &ScanFS) -> CountReport {
         // discover unique packages
-        let mut site_packages: HashSet<&PathBuf> = HashSet::new();
+        let mut site_packages: HashSet<&PathShared> = HashSet::new();
         for package in scan_fs.package_to_sites.keys() {
             if let Some(site_paths) = scan_fs.package_to_sites.get(&package) {
                 for path in site_paths {

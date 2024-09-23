@@ -139,10 +139,12 @@ impl DepManifest {
     }
 
     //--------------------------------------------------------------------------
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.dep_specs.len()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn validate(&self, package: &Package) -> bool {
         if let Some(dep_spec) = self.dep_specs.get(&package.key) {
             dep_spec.validate_version(&package.version) && dep_spec.validate_url(&package)
@@ -178,16 +180,16 @@ mod tests {
         let dm =
             DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
-        let p1 = Package::from_dist_info("pk2-2.0.dist-info").unwrap();
+        let p1 = Package::from_dist_info("pk2-2.0.dist-info", None).unwrap();
         assert_eq!(dm.validate(&p1), true);
 
-        let p2 = Package::from_dist_info("foo-2.0.dist-info").unwrap();
+        let p2 = Package::from_dist_info("foo-2.0.dist-info", None).unwrap();
         assert_eq!(dm.validate(&p2), false);
 
-        let p3 = Package::from_dist_info("pk1-0.2.5.dist-info").unwrap();
+        let p3 = Package::from_dist_info("pk1-0.2.5.dist-info", None).unwrap();
         assert_eq!(dm.validate(&p3), true);
 
-        let p3 = Package::from_dist_info("pk1-0.3.0.dist-info").unwrap();
+        let p3 = Package::from_dist_info("pk1-0.3.0.dist-info", None).unwrap();
         assert_eq!(dm.validate(&p3), false);
     }
 

@@ -6,15 +6,16 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::package::Package;
+use crate::path_shared::PathShared;
 
 #[derive(Debug)]
 pub(crate) struct ScanRecord {
     package: Package,
-    sites: Vec<PathBuf>,
+    sites: Vec<PathShared>,
 }
 
 impl ScanRecord {
-    pub(crate) fn new(package: Package, sites: Vec<PathBuf>) -> Self {
+    pub(crate) fn new(package: Package, sites: Vec<PathShared>) -> Self {
         ScanRecord { package, sites }
     }
 }
@@ -26,7 +27,7 @@ pub struct ScanReport {
 
 impl ScanReport {
     pub(crate) fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathBuf>>,
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
     ) -> Self {
         let mut records = Vec::new();
         for (package, sites) in package_to_sites {
