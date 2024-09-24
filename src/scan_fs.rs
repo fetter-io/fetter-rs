@@ -632,5 +632,4 @@ mod tests {
         let matched = sfs.search_by_match("*frame*", true);
         assert_eq!(matched, vec![packages[1].clone()]);
     }
-
 }
