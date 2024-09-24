@@ -142,7 +142,6 @@ enum ScanSubcommand {
     },
 }
 
-
 #[derive(Subcommand)]
 enum SearchSubcommand {
     /// Display search to the terminal.
@@ -244,7 +243,11 @@ where
                 let _ = sr.to_file(output, *delimiter);
             }
         },
-        Some(Commands::Search { subcommands, pattern, case }) => match subcommands {
+        Some(Commands::Search {
+            subcommands,
+            pattern,
+            case,
+        }) => match subcommands {
             SearchSubcommand::Display => {
                 let sr = sfs.to_search_report(&pattern, !case);
                 let _ = sr.to_stdout();

@@ -160,7 +160,8 @@ impl ScanFS {
         case_insensitive: bool,
     ) -> Vec<Package> {
         // take ownership of Package in the result of get_packages
-        let matched = self.get_packages()
+        let matched = self
+            .get_packages()
             .into_par_iter()
             .filter(|package| {
                 match_str(pattern, package.to_string().as_str(), case_insensitive)
@@ -602,4 +603,34 @@ mod tests {
         );
         assert_eq!(vr2.len(), 0);
     }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_search_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
+        let matched = sfs.search_by_match("*.3", true);
+        assert_eq!(matched, vec![packages[2].clone(), packages[0].clone()]);
+    }
+
+    #[test]
+    fn test_search_b() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
+        let matched = sfs.search_by_match("*frame*", true);
+        assert_eq!(matched, vec![packages[1].clone()]);
+    }
+
 }
