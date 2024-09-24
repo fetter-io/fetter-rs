@@ -37,6 +37,22 @@ impl ScanReport {
         ScanReport { records }
     }
 
+    // Alternative constructor when we want to report on a subset of all packages.
+    pub(crate) fn from_packages(
+        packages: &Vec<Package>,
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    ) -> Self {
+        let mut records = Vec::new();
+        for package in packages {
+            let sites = package_to_sites.get(package).unwrap();
+            let record = ScanRecord::new(package.clone(), sites.clone());
+            records.push(record);
+        }
+        ScanReport { records }
+    }
+
+    //--------------------------------------------------------------------------
+
     fn to_writer<W: Write>(
         &self,
         mut writer: W,

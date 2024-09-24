@@ -4,6 +4,7 @@ mod dep_spec;
 mod exe_search;
 mod package;
 mod package_durl;
+mod package_match;
 mod path_shared;
 mod scan_fs;
 mod scan_report;
@@ -48,6 +49,8 @@ Examples:
   fetter scan display
   fetter scan write -o /tmp/pkgscan.txt --delimiter '|'
 
+  fetter search --pattern pip* display
+
   fetter count display
 
   fetter --exe python3 derive -a lower write -o /tmp/bound_requirements.txt
@@ -75,6 +78,17 @@ enum Commands {
     Scan {
         #[command(subcommand)]
         subcommands: ScanSubcommand,
+    },
+    /// Search environment to report on installed packages.
+    Search {
+        #[arg(short, long)]
+        pattern: String,
+
+        #[arg(short, long)]
+        case: bool,
+
+        #[command(subcommand)]
+        subcommands: SearchSubcommand,
     },
     /// Count discovered executables and installed packages.
     Count {
@@ -120,6 +134,19 @@ enum ScanSubcommand {
     /// Display scan to the terminal.
     Display,
     /// Write a scan report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
+#[derive(Subcommand)]
+enum SearchSubcommand {
+    /// Display search to the terminal.
+    Display,
+    /// Write a search report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -213,6 +240,20 @@ where
             }
             ScanSubcommand::Write { output, delimiter } => {
                 let sr = sfs.to_scan_report();
+                let _ = sr.to_file(output, *delimiter);
+            }
+        },
+        Some(Commands::Search {
+            subcommands,
+            pattern,
+            case,
+        }) => match subcommands {
+            SearchSubcommand::Display => {
+                let sr = sfs.to_search_report(&pattern, !case);
+                let _ = sr.to_stdout();
+            }
+            SearchSubcommand::Write { output, delimiter } => {
+                let sr = sfs.to_search_report(&pattern, !case);
                 let _ = sr.to_file(output, *delimiter);
             }
         },
