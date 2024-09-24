@@ -1,5 +1,5 @@
 // Simple glob-like matching, supporting * and ? wildcards. Inputs are char iterators.
-fn match_str(pattern: &str, input: &str, case_insensitive: bool) -> bool {
+pub(crate) fn match_str(pattern: &str, input: &str, case_insensitive: bool) -> bool {
     // println!("match_str: pattern = {:?}, input = {:?}", pattern, input);
 
     let mut p_chars = pattern.chars();

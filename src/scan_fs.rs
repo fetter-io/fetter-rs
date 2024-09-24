@@ -13,6 +13,7 @@ use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
 use crate::package::Package;
+use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::validation_report::ValidationFlags;
@@ -151,7 +152,22 @@ impl ScanFS {
     }
 
     //--------------------------------------------------------------------------
-    // sorting
+    // searching
+
+    pub(crate) fn search_by_match(
+        &self,
+        pattern: &str,
+        case_insensitive: bool,
+    ) -> Vec<Package> {
+        // take ownership of Package in the result of get_packages
+        let matched = self.get_packages()
+            .into_par_iter()
+            .filter(|package| {
+                match_str(pattern, package.to_string().as_str(), case_insensitive)
+            })
+            .collect();
+        matched
+    }
 
     //--------------------------------------------------------------------------
 
@@ -167,6 +183,8 @@ impl ScanFS {
     pub(crate) fn len(&self) -> usize {
         self.package_to_sites.len()
     }
+
+    //--------------------------------------------------------------------------
 
     /// Validate this scan against the provided DepManifest.
     pub(crate) fn to_validation_report(
@@ -197,7 +215,7 @@ impl ScanFS {
                 };
                 // ds  is an Option type, might be None
                 records.push(ValidationRecord::new(
-                    Some(package.clone()),
+                    Some(package), // can take ownership of Package
                     ds.cloned(),
                     sites,
                 ));
@@ -265,6 +283,16 @@ impl ScanFS {
 
     pub(crate) fn to_count_report(&self) -> CountReport {
         CountReport::from_scan_fs(&self)
+    }
+
+    pub(crate) fn to_search_report(
+        &self,
+        pattern: &str,
+        case_insensitive: bool,
+    ) -> ScanReport {
+        let packages = self.search_by_match(pattern, case_insensitive);
+        // println!("packages: {:?}", packages);
+        ScanReport::from_packages(&packages, &self.package_to_sites)
     }
 }
 
