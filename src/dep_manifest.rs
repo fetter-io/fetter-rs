@@ -33,34 +33,40 @@ impl DepManifest {
         }
         Ok(DepManifest { dep_specs })
     }
+    // Create a DepManifest from a requirements.txt file, which might reference onther requirements.txt files.
     pub(crate) fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
-
-        let mut files: VecDeque<&PathBuf> = VecDeque::new();
-        files.push_back(file_path);
-        let mut specs: Vec<&str> = Vec::new();
+        let mut files: VecDeque<PathBuf> = VecDeque::new();
+        files.push_back(file_path.clone());
+        let mut dep_specs = HashMap::new();
 
         while files.len() > 0 {
-            let fp = files.pop_front();
-            let file =
-                File::open(fp).map_err(|e| format!("Failed to open file: {:?} {}", fp, e))?;
+            let fp = files.pop_front().unwrap();
+            let file = File::open(&fp)
+                .map_err(|e| format!("Failed to open file: {:?} {}", fp, e))?;
             let lines = io::BufReader::new(file).lines();
             for line in lines {
                 if let Ok(s) = line {
                     let t = s.trim();
-                    if !t.is_empty() && !t.starts_with('#') {
-                        if t.starts_with("-r ") {
-                            if let Ok(pb) = PathBuf::from_str(&t[3..]) {
-                                files.push_back(&pb);
-                            }
+                    if t.is_empty() || t.starts_with('#') {
+                        continue;
+                    }
+                    if t.starts_with("-r ") {
+                        files.push_back(file_path.parent().unwrap().join(&t[3..]));
+                    } else {
+                        let ds = DepSpec::from_string(&s)?;
+                        if dep_specs.contains_key(&ds.key) {
+                            return Err(format!(
+                                "Duplicate package key found: {}",
+                                ds.key
+                            ));
                         }
-                        else {
-                            specs.push(t);
-                        }
+                        dep_specs.insert(ds.key.clone(), ds);
                     }
                 }
             }
         }
-        DepManifest::from_iter(specs.iter())
+        Ok(DepManifest { dep_specs })
+
         // let file =
         //     File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         // let lines = io::BufReader::new(file).lines();
@@ -416,7 +422,7 @@ readme-renderer==43.0
 redshift-connector==2.1.1
 referencing==0.34.0
 regex==2024.4.16
--r requirement-a.txt
+-r requirements-a.txt
 "#;
         let fp2 = dir.path().join("requirements-b.txt");
         let mut f2 = File::create(&fp2).unwrap();
@@ -424,9 +430,7 @@ regex==2024.4.16
 
         let dm1 = DepManifest::from_requirements(&fp2).unwrap();
         assert_eq!(dm1.len(), 9);
-
     }
-
 
     //--------------------------------------------------------------------------
 
@@ -468,5 +472,4 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         assert!(dm1.get_dep_spec("foo").is_none());
     }
-
 }
