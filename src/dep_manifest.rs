@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -32,23 +34,50 @@ impl DepManifest {
         Ok(DepManifest { dep_specs })
     }
     pub(crate) fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
-        let file =
-            File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
-        let lines = io::BufReader::new(file).lines();
-        let filtered_lines = lines.filter_map(|line| {
-            match line {
-                Ok(s) => {
-                    let trimmed = s.trim();
-                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                        Some(s) // yield untrimmed string for
-                    } else {
-                        None
+
+        let mut files: VecDeque<&PathBuf> = VecDeque::new();
+        files.push_back(file_path);
+        let mut specs: Vec<&str> = Vec::new();
+
+        while files.len() > 0 {
+            let fp = files.pop_front();
+            let file =
+                File::open(fp).map_err(|e| format!("Failed to open file: {:?} {}", fp, e))?;
+            let lines = io::BufReader::new(file).lines();
+            for line in lines {
+                if let Ok(s) = line {
+                    let t = s.trim();
+                    if !t.is_empty() && !t.starts_with('#') {
+                        if t.starts_with("-r ") {
+                            if let Ok(pb) = PathBuf::from_str(&t[3..]) {
+                                files.push_back(&pb);
+                            }
+                        }
+                        else {
+                            specs.push(t);
+                        }
                     }
                 }
-                Err(_) => None, // Ignore lines that failed to read
             }
-        });
-        DepManifest::from_iter(filtered_lines)
+        }
+        DepManifest::from_iter(specs.iter())
+        // let file =
+        //     File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        // let lines = io::BufReader::new(file).lines();
+        // let filtered_lines = lines.filter_map(|line| {
+        //     match line {
+        //         Ok(s) => {
+        //             let trimmed = s.trim();
+        //             if !trimmed.is_empty() && !trimmed.starts_with('#') {
+        //                 Some(s) // yield untrimmed string for
+        //             } else {
+        //                 None
+        //             }
+        //         }
+        //         Err(_) => None, // Ignore lines that failed to read
+        //     }
+        // });
+        // DepManifest::from_iter(filtered_lines)
     }
     pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
@@ -369,6 +398,39 @@ regex==2024.4.16
     }
 
     #[test]
+    fn test_from_requirements_e() {
+        let content1 = r#"
+python-slugify==8.0.4
+pytz==2023.3
+pytzdata==2020.1
+pyyaml==6.0
+pyzmq==26.0.0
+"#;
+        let dir = tempdir().unwrap();
+        let fp1 = dir.path().join("requirements-a.txt");
+        let mut f1 = File::create(&fp1).unwrap();
+        write!(f1, "{}", content1).unwrap();
+
+        let content2 = r#"
+readme-renderer==43.0
+redshift-connector==2.1.1
+referencing==0.34.0
+regex==2024.4.16
+-r requirement-a.txt
+"#;
+        let fp2 = dir.path().join("requirements-b.txt");
+        let mut f2 = File::create(&fp2).unwrap();
+        write!(f2, "{}", content2).unwrap();
+
+        let dm1 = DepManifest::from_requirements(&fp2).unwrap();
+        assert_eq!(dm1.len(), 9);
+
+    }
+
+
+    //--------------------------------------------------------------------------
+
+    #[test]
     fn test_to_requirements_a() {
         let ds = vec![
             DepSpec::from_string("numpy==1.19.1").unwrap(),
@@ -406,4 +468,5 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         assert!(dm1.get_dep_spec("foo").is_none());
     }
+
 }
