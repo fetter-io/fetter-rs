@@ -110,11 +110,11 @@ enum Commands {
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
 
-        /// If the subset flag is set, observed packages can be a subset of the bound requirements.
+        /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
         #[arg(long)]
         subset: bool,
 
-        /// If the superset flag is set, observed packages can be a superset of the bound requirements.
+        /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
         #[arg(long)]
         superset: bool,
 
