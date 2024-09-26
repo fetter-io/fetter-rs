@@ -66,24 +66,6 @@ impl DepManifest {
             }
         }
         Ok(DepManifest { dep_specs })
-
-        // let file =
-        //     File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
-        // let lines = io::BufReader::new(file).lines();
-        // let filtered_lines = lines.filter_map(|line| {
-        //     match line {
-        //         Ok(s) => {
-        //             let trimmed = s.trim();
-        //             if !trimmed.is_empty() && !trimmed.starts_with('#') {
-        //                 Some(s) // yield untrimmed string for
-        //             } else {
-        //                 None
-        //             }
-        //         }
-        //         Err(_) => None, // Ignore lines that failed to read
-        //     }
-        // });
-        // DepManifest::from_iter(filtered_lines)
     }
     pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
