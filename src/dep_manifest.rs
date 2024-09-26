@@ -137,11 +137,12 @@ impl DepManifest {
         observed: &HashSet<&String>,
     ) -> Vec<&String> {
         // iterating over keys, collect those that are not in observed
-        let dep_specs: Vec<&String> = self
+        let mut dep_specs: Vec<&String> = self
             .dep_specs
             .keys()
             .filter(|key| !observed.contains(key))
             .collect();
+        dep_specs.sort();
         dep_specs
     }
 
@@ -431,6 +432,8 @@ regex==2024.4.16
         assert_eq!(dm2.len(), 3)
     }
 
+    //--------------------------------------------------------------------------
+
     #[test]
     fn test_get_dep_spec_a() {
         let ds = vec![
@@ -464,4 +467,25 @@ regex==2024.4.16
         let ds1 = dm1.get_dep_spec("cython").unwrap();
         assert_eq!(format!("{}", ds1), "Cython==3.0.11");
     }
+
+    //--------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_dep_spec_difference_a() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            DepSpec::from_string("static-frame>2.0,!=1.3").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let mut observed = HashSet::new();
+        let n1 = "static_frame".to_string();
+        observed.insert(&n1);
+
+        let post = dm1.get_dep_spec_difference(&observed);
+
+        assert_eq!(post, vec!["numpy", "requests"]);
+    }
+
+
 }
