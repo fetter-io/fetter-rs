@@ -74,11 +74,11 @@ impl DirectURL {
 
     // Given url from a DepSpec
     pub(crate) fn validate(&self, url: &String) -> bool {
-        // println!(
-        //     "package durl url origin:\n{}\ndepspec url:\n{}\n",
-        //     self.get_url_origin(),
-        //     *url
-        // );
+        println!(
+            "package durl url origin:\n{}\ndepspec url:\n{}\n",
+            self.get_url_origin(),
+            *url
+        );
         self.get_url_origin() == *url
     }
 }

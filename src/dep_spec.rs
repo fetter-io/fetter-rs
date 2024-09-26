@@ -214,6 +214,7 @@ impl DepSpec {
     //--------------------------------------------------------------------------
     pub(crate) fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
+        // println!("validate_version: self {:?} input {:?}", self.versions, version);
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             let valid = match op {
                 DepOperator::LessThan => version < spec_version,
@@ -234,6 +235,11 @@ impl DepSpec {
 
     pub(crate) fn validate_url(&self, package: &Package) -> bool {
         // if the DepSpec has a URL (the requirements specfied a URL) we have to validate that the installed package has a direct url.
+
+        println!(
+            "validate_url: self {:?} input {:?}",
+            self.url, package.direct_url
+        );
         if let Some(url) = &self.url {
             if let Some(durl) = &package.direct_url {
                 // compare this url to package.direct_url
