@@ -50,7 +50,7 @@ impl fmt::Display for ValidationExplain {
         let value = match self {
             ValidationExplain::Missing => "Missing", // package not found
             ValidationExplain::Disallowed => "Disallowed", // package found, not specified
-            ValidationExplain::Invalid => "Invalid",  // package found, not matched version
+            ValidationExplain::Invalid => "Invalid", // package found, not matched version
             ValidationExplain::Undefined => "Undefined",
         };
         write!(f, "{}", value)
