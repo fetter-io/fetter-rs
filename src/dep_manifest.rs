@@ -6,7 +6,6 @@ use std::io;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -66,24 +65,6 @@ impl DepManifest {
             }
         }
         Ok(DepManifest { dep_specs })
-
-        // let file =
-        //     File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
-        // let lines = io::BufReader::new(file).lines();
-        // let filtered_lines = lines.filter_map(|line| {
-        //     match line {
-        //         Ok(s) => {
-        //             let trimmed = s.trim();
-        //             if !trimmed.is_empty() && !trimmed.starts_with('#') {
-        //                 Some(s) // yield untrimmed string for
-        //             } else {
-        //                 None
-        //             }
-        //         }
-        //         Err(_) => None, // Ignore lines that failed to read
-        //     }
-        // });
-        // DepManifest::from_iter(filtered_lines)
     }
     pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
@@ -471,5 +452,16 @@ regex==2024.4.16
         ];
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         assert!(dm1.get_dep_spec("foo").is_none());
+    }
+
+    #[test]
+    fn test_get_dep_spec_c() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("Cython==3.0.11").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let ds1 = dm1.get_dep_spec("cython").unwrap();
+        assert_eq!(format!("{}", ds1), "Cython==3.0.11");
     }
 }
