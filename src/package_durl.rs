@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs::File;
 use std::path::PathBuf;
+use crate::util::url_strip_user;
 
 // see https://packaging.python.org/en/latest/specifications/direct-url/
 
@@ -72,14 +73,15 @@ impl DirectURL {
         }
     }
 
-    // Given url from a DepSpec
+    // Given url from a DepSpec, validate against this URL from a Package DirectURL. We strip the user in comparison from both sides as inconsistencies are found in how DirectURL records these.
     pub(crate) fn validate(&self, url: &String) -> bool {
         println!(
             "package durl url origin:\n{}\ndepspec url:\n{}\n",
             self.get_url_origin(),
             *url
         );
-        self.get_url_origin() == *url
+        let url_origin = self.get_url_origin();
+        url_strip_user(&url_origin) == url_strip_user(url)
     }
 }
 
