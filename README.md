@@ -10,6 +10,10 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
+### 0.6.0-dev
+
+`Package` keys are case insensitive.
+
 
 ### 0.5.0
 
