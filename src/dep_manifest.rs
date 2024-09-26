@@ -486,6 +486,4 @@ regex==2024.4.16
 
         assert_eq!(post, vec!["numpy", "requests"]);
     }
-
-
 }

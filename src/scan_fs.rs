@@ -224,6 +224,7 @@ impl ScanFS {
         }
         if !vf.permit_subset {
             // packages defined in DepSpec but not found
+            // NOTE: this is sorted, but not sorted with the other records
             for key in dm.get_dep_spec_difference(&ds_keys_matched) {
                 records.push(ValidationRecord::new(
                     None,
