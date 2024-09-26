@@ -235,11 +235,6 @@ impl DepSpec {
 
     pub(crate) fn validate_url(&self, package: &Package) -> bool {
         // if the DepSpec has a URL (the requirements specfied a URL) we have to validate that the installed package has a direct url.
-
-        println!(
-            "validate_url: self {:?} input {:?}",
-            self.url, package.direct_url
-        );
         if let Some(url) = &self.url {
             if let Some(durl) = &package.direct_url {
                 // compare this url to package.direct_url

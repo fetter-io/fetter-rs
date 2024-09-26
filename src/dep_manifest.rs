@@ -523,4 +523,28 @@ regex==2024.4.16
         // p1.get_url_origin() is git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
         assert_eq!(dm1.validate(&p1, false).0, true);
     }
+
+    #[test]
+    fn test_validate_b() {
+        // if we install as "packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407"
+        // in site packages we get packaging-24.2.dev0.dist-info
+        // and writes this in direct_url.json, without the user part of the url
+        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+
+        let json_str = r#"
+        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        "#;
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        let p1 =
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", Some(durl)).unwrap();
+
+        let ds1 = DepSpec::from_string("packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
+        let specs = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            ds1,
+        ];
+        let dm1 = DepManifest::from_dep_specs(&specs).unwrap();
+        assert_eq!(dm1.validate(&p1, false).0, true);
+    }
 }
