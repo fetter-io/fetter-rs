@@ -453,4 +453,15 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         assert!(dm1.get_dep_spec("foo").is_none());
     }
+
+    #[test]
+    fn test_get_dep_spec_c() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("Cython==3.0.11").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let ds1 = dm1.get_dep_spec("cython").unwrap();
+        assert_eq!(format!("{}", ds1), "Cython==3.0.11");
+    }
 }
