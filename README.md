@@ -10,6 +10,13 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
+### 0.7.0
+
+Validate display now shows paths properly.
+
+Updated validate json output to terminate line and flush buffer.
+
+
 ### 0.6.0
 
 Package and dependency keys are case insensitive.
