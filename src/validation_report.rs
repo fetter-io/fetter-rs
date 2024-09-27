@@ -89,15 +89,25 @@ impl ValidationReport {
             .collect()
     }
 
-    fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
+    fn to_writer<W: Write>(&self,
+            mut writer: W,
+            delimiter: char,
+            pad: bool,
+        ) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut explain_displays: Vec<String> = Vec::new();
         let mut sites_displays: Vec<String> = Vec::new();
 
-        let mut max_package_width = "Package".len();
-        let mut max_dep_spec_width = "Dependency".len();
-        let mut max_explain_width = "Explain".len();
+        let mut max_package_width = 0;
+        let mut max_dep_spec_width = 0;
+        let mut max_explain_width = 0;
+
+        if pad {
+            max_package_width = "Package".len();
+            max_dep_spec_width = "Dependency".len();
+            max_explain_width = "Explain".len();
+        }
 
         let dep_missing = "";
         let pkg_missing = "";
@@ -134,9 +144,11 @@ impl ValidationReport {
             };
             sites_displays.push(sites_display);
 
-            max_package_width = cmp::max(max_package_width, pkg_display.len());
-            max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());
-            max_explain_width = cmp::max(max_explain_width, explain_display.len());
+            if pad {
+                max_package_width = cmp::max(max_package_width, pkg_display.len());
+                max_dep_spec_width = cmp::max(max_dep_spec_width, dep_display.len());
+                max_explain_width = cmp::max(max_explain_width, explain_display.len());
+            }
 
             package_displays.push(pkg_display);
             dep_spec_displays.push(dep_display);
@@ -184,13 +196,13 @@ impl ValidationReport {
 
     pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter)
+        self.to_writer(file, delimiter, false)
     }
 
     pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ').unwrap();
+        self.to_writer(handle, ' ', true).unwrap();
     }
 
     pub(crate) fn to_validation_digest(&self) -> ValidationDigest {
@@ -234,3 +246,54 @@ impl ValidationReport {
         digests
     }
 }
+
+//------------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use crate::DepManifest;
+    use crate::ScanFS;
+    use std::io::BufRead;
+
+    #[test]
+    fn test_to_file_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.2", None).unwrap(),
+            Package::from_name_version_durl("packaging", "24.1", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        // hyphen / underscore are normalized
+        let dm = DepManifest::from_iter(
+            vec!["numpy==2.1.0", "flask>1,<2", "static_frame==2.1.0"].iter(),
+        )
+        .unwrap();
+        let vr1 = sfs.to_validation_report(
+            dm.clone(),
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: false,
+            },
+        );
+
+        let dir = tempdir().unwrap();
+        let fp = dir.path().join("valid.txt");
+        let _ = vr1.to_file(&fp, '|');
+
+        let file = File::open(&fp).unwrap();
+        let mut lines = io::BufReader::new(file).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "Package|Dependency|Explain|Sites");
+        assert_eq!(lines.next().unwrap().unwrap(), "numpy-1.19.3|numpy==2.1.0|Misdefined|/usr/lib/python3/site-packages");
+        assert_eq!(lines.next().unwrap().unwrap(), "packaging-24.1||Unrequired|/usr/lib/python3/site-packages");
+        assert_eq!(lines.next().unwrap().unwrap(), "static-frame-2.13.0|static_frame==2.1.0|Misdefined|/usr/lib/python3/site-packages");
+        assert!(lines.next().is_none());
+    }
+}
+
+
+

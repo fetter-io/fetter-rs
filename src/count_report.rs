@@ -116,8 +116,8 @@ mod tests {
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         let cr = CountReport::from_scan_fs(&sfs);
 
-        let fp_dir = tempdir().unwrap();
-        let fp = fp_dir.path().join("report.txt");
+        let dir = tempdir().unwrap();
+        let fp = dir.path().join("report.txt");
         let _ = cr.to_file(&fp, ',');
 
         let file = File::open(&fp).unwrap();
