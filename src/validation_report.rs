@@ -42,7 +42,7 @@ impl ValidationRecord {
 enum ValidationExplain {
     Missing,
     Unrequired,
-    Invalid,
+    Misdefined,
     Undefined,
 }
 
@@ -51,7 +51,7 @@ impl fmt::Display for ValidationExplain {
         let value = match self {
             ValidationExplain::Missing => "Missing", // package not found
             ValidationExplain::Unrequired => "Unrequired", // package found, not specified
-            ValidationExplain::Invalid => "Invalid", // package found, not matched version
+            ValidationExplain::Misdefined => "Misdefined", // package found, not matched version
             ValidationExplain::Undefined => "Undefined",
         };
         write!(f, "{}", value)
@@ -117,7 +117,7 @@ impl ValidationReport {
             };
 
             let explain_display = match (&item.package, &item.dep_spec) {
-                (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
+                (Some(_), Some(_)) => ValidationExplain::Misdefined.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
                 (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),
@@ -216,7 +216,7 @@ impl ValidationReport {
                 None => None,
             };
             let explain = match (&pkg_display, &dep_display) {
-                (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
+                (Some(_), Some(_)) => ValidationExplain::Misdefined.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
                 (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),

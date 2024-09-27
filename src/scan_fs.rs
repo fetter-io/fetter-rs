@@ -421,7 +421,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]
@@ -450,7 +450,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"requests-0.7.6","dependency":"requests==0.7.1","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"requests-0.7.6","dependency":"requests==0.7.1","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -477,7 +477,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]

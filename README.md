@@ -10,9 +10,19 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
-### 0.6.0-dev
+### 0.6.0
 
-`Package` keys are case insensitive.
+Package and dependency keys are case insensitive.
+
+Improved URL validation between dependency and package by removing user components.
+
+Improved validation JSON output to provided labelled objects.
+
+Improved valiation output to show sorted missing packages.
+
+Renamed validation explain values.
+
+Implemented support for nested requirements.txt.
 
 
 ### 0.5.0
