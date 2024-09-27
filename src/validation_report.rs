@@ -124,9 +124,10 @@ impl ValidationReport {
             };
 
             let sites_display = match &item.sites {
+                // we reduce this to a string for concise representation
                 Some(sites) => sites
                     .iter()
-                    .map(|s| format!("{:?}", s))
+                    .map(|s| format!("{}", s.display()))
                     .collect::<Vec<_>>()
                     .join(","),
                 None => "".to_string(),
@@ -207,6 +208,7 @@ impl ValidationReport {
                 None => None,
             };
             let sites_display = match &item.sites {
+                // we leave this as a Vec for JSON encoding as an array
                 Some(sites) => Some(
                     sites
                         .iter()
