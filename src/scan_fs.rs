@@ -421,7 +421,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2","Invalid",["/usr/lib/python3/site-packages"]]]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]
@@ -450,7 +450,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3","Invalid",["/usr/lib/python3/site-packages"]],["numpy-1.19.3","numpy>2","Invalid",["/usr/lib/python3/site-packages"]],["requests-0.7.6","requests==0.7.1","Invalid",["/usr/lib/python3/site-packages"]]]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"requests-0.7.6","dependency":"requests==0.7.1","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -477,7 +477,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["flask-1.1.3","flask>2,<3","Invalid",["/usr/lib/python3/site-packages"]],["numpy-1.19.3","numpy>2","Invalid",["/usr/lib/python3/site-packages"]]]"#
+            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Invalid","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]
@@ -529,7 +529,10 @@ mod tests {
         );
         assert_eq!(vr.len(), 1);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[[null,"flask>1,<2","Missing",null]]"#);
+        assert_eq!(
+            json,
+            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+        );
     }
     #[test]
     fn test_validation_g() {
@@ -552,7 +555,7 @@ mod tests {
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[["static-frame-2.13.0",null,"Disallowed",["/usr/lib/python3/site-packages"]]]"#
+            r#"[{"package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
 
         let vr2 = sfs.to_validation_report(
@@ -587,7 +590,10 @@ mod tests {
             },
         );
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[[null,"flask>1,<2","Missing",null]]"#);
+        assert_eq!(
+            json,
+            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+        );
 
         let vr2 = sfs.to_validation_report(
             dm,

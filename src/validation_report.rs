@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::fmt;
 use std::fs::File;
@@ -40,7 +41,7 @@ impl ValidationRecord {
 //------------------------------------------------------------------------------
 enum ValidationExplain {
     Missing,
-    Disallowed,
+    Unrequired,
     Invalid,
     Undefined,
 }
@@ -49,7 +50,7 @@ impl fmt::Display for ValidationExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             ValidationExplain::Missing => "Missing", // package not found
-            ValidationExplain::Disallowed => "Disallowed", // package found, not specified
+            ValidationExplain::Unrequired => "Unrequired", // package found, not specified
             ValidationExplain::Invalid => "Invalid", // package found, not matched version
             ValidationExplain::Undefined => "Undefined",
         };
@@ -57,13 +58,20 @@ impl fmt::Display for ValidationExplain {
     }
 }
 
-// A summary of validation results suitable for JSON serialziation to naive readers
-pub type ValidationDigest =
-    Vec<(Option<String>, Option<String>, String, Option<Vec<String>>)>;
+//------------------------------------------------------------------------------
+// A summary of validation results suitable for JSON serialziation to naive readers.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ValidationDigestRecord {
+    package: Option<String>,
+    dependency: Option<String>,
+    explain: String,
+    sites: Option<Vec<String>>,
+}
+
+pub(crate) type ValidationDigest = Vec<ValidationDigestRecord>;
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
-// #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
 }
@@ -111,7 +119,7 @@ impl ValidationReport {
             let explain_display = match (&item.package, &item.dep_spec) {
                 (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
-                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
@@ -133,32 +141,38 @@ impl ValidationReport {
             dep_spec_displays.push(dep_display);
             explain_displays.push(explain_display);
         }
-        // TODO: show sites
         writeln!(
             writer,
-            "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
+            "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}{}{}",
             "Package",
             delimiter,
             "Dependency",
             delimiter,
             "Explain",
+            delimiter,
+            "Sites",
             package_width = max_package_width,
             dep_spec_width = max_dep_spec_width,
             explain_width = max_explain_width,
         )?;
 
-        for (pkg_display, (dep_display, explain_display)) in package_displays
-            .iter()
-            .zip(dep_spec_displays.iter().zip(explain_displays))
+        for (pkg_display, (dep_display, (explain_display, sites_display))) in
+            package_displays.iter().zip(
+                dep_spec_displays
+                    .iter()
+                    .zip(explain_displays.iter().zip(sites_displays)),
+            )
         {
             writeln!(
                 writer,
-                "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
+                "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}{}{}",
                 pkg_display,
                 delimiter,
                 dep_display,
                 delimiter,
                 explain_display,
+                delimiter,
+                sites_display,
                 package_width = max_package_width,
                 dep_spec_width = max_dep_spec_width,
                 explain_width = max_explain_width,
@@ -204,11 +218,16 @@ impl ValidationReport {
             let explain = match (&pkg_display, &dep_display) {
                 (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
-                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
-            digests.push((pkg_display, dep_display, explain, sites_display));
+            digests.push(ValidationDigestRecord {
+                package: pkg_display,
+                dependency: dep_display,
+                explain: explain,
+                sites: sites_display,
+            });
         }
         digests
     }
