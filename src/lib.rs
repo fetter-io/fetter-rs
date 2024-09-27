@@ -304,7 +304,7 @@ where
                     vr.to_stdout();
                 }
                 ValidateSubcommand::JSON => {
-                    print!(
+                    println!(
                         "{}",
                         serde_json::to_string(&vr.to_validation_digest()).unwrap()
                     );
@@ -325,7 +325,7 @@ where
     }
 }
 
-//------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     // use super::*;
