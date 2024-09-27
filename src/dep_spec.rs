@@ -214,6 +214,7 @@ impl DepSpec {
     //--------------------------------------------------------------------------
     pub(crate) fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
+        // println!("validate_version: self {:?} input {:?}", self.versions, version);
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             let valid = match op {
                 DepOperator::LessThan => version < spec_version,

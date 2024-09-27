@@ -57,13 +57,6 @@ impl Package {
                 None
             };
             return Self::from_dist_info(file_name, durl);
-            // let tfn = file_name.trim_end_matches(".dist-info");
-            // let parts: Vec<&str> = tfn.split('-').collect();
-            // if parts.len() >= 2 {
-            //     let name = parts[..parts.len() - 1].join("-");
-            //     let version = parts.last()?;
-            //     return Self::from_name_version_durl(&name, version, durl);
-            // }
         }
         None
     }

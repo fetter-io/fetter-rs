@@ -17,6 +17,7 @@ pub(crate) struct DepManifest {
 }
 
 impl DepManifest {
+    #[allow(dead_code)]
     pub(crate) fn from_iter<I, S>(ds_iter: I) -> Result<Self, String>
     where
         I: IntoIterator<Item = S>,
@@ -127,6 +128,7 @@ impl DepManifest {
         keys
     }
 
+    // Return an optional DepSpec reference.
     pub(crate) fn get_dep_spec(&self, key: &str) -> Option<&DepSpec> {
         self.dep_specs.get(key)
     }
@@ -137,11 +139,12 @@ impl DepManifest {
         observed: &HashSet<&String>,
     ) -> Vec<&String> {
         // iterating over keys, collect those that are not in observed
-        let dep_specs: Vec<&String> = self
+        let mut dep_specs: Vec<&String> = self
             .dep_specs
             .keys()
             .filter(|key| !observed.contains(key))
             .collect();
+        dep_specs.sort();
         dep_specs
     }
 
@@ -160,12 +163,17 @@ impl DepManifest {
         self.dep_specs.len()
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn validate(&self, package: &Package) -> bool {
-        if let Some(dep_spec) = self.dep_specs.get(&package.key) {
-            dep_spec.validate_version(&package.version) && dep_spec.validate_url(&package)
+    pub(crate) fn validate(
+        &self,
+        package: &Package,
+        permit_superset: bool,
+    ) -> (bool, Option<&DepSpec>) {
+        if let Some(ds) = self.dep_specs.get(&package.key) {
+            let valid =
+                ds.validate_version(&package.version) && ds.validate_url(&package);
+            (valid, Some(ds))
         } else {
-            false
+            (permit_superset, None) // cannot get a dep spec
         }
     }
 
@@ -188,6 +196,7 @@ impl DepManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::package_durl::DirectURL;
     use std::io::Write;
     use tempfile::tempdir;
 
@@ -197,16 +206,16 @@ mod tests {
             DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info", None).unwrap();
-        assert_eq!(dm.validate(&p1), true);
+        assert_eq!(dm.validate(&p1, false).0, true);
 
         let p2 = Package::from_dist_info("foo-2.0.dist-info", None).unwrap();
-        assert_eq!(dm.validate(&p2), false);
+        assert_eq!(dm.validate(&p2, false).0, false);
 
         let p3 = Package::from_dist_info("pk1-0.2.5.dist-info", None).unwrap();
-        assert_eq!(dm.validate(&p3), true);
+        assert_eq!(dm.validate(&p3, false).0, true);
 
         let p3 = Package::from_dist_info("pk1-0.3.0.dist-info", None).unwrap();
-        assert_eq!(dm.validate(&p3), false);
+        assert_eq!(dm.validate(&p3, false).0, false);
     }
 
     //--------------------------------------------------------------------------
@@ -237,14 +246,14 @@ mod tests {
         assert_eq!(dep_manifest.len(), 2);
 
         let p1 = Package::from_name_version_durl("pk2", "2.1", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p1), true);
+        assert_eq!(dep_manifest.validate(&p1, false).0, true);
         let p2 = Package::from_name_version_durl("pk2", "0.1", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p2), false);
+        assert_eq!(dep_manifest.validate(&p2, false).0, false);
         let p3 = Package::from_name_version_durl("pk1", "0.2.2.999", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p3), true);
+        assert_eq!(dep_manifest.validate(&p3, false).0, true);
 
         let p4 = Package::from_name_version_durl("pk99", "0.2.2.999", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p4), false);
+        assert_eq!(dep_manifest.validate(&p4, false).0, false);
     }
 
     #[test]
@@ -277,13 +286,13 @@ tomlkit==0.12.4
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 7);
         let p1 = Package::from_name_version_durl("termcolor", "2.2.0", None).unwrap();
-        assert_eq!(dm1.validate(&p1), true);
+        assert_eq!(dm1.validate(&p1, false).0, true);
         let p2 = Package::from_name_version_durl("termcolor", "2.2.1", None).unwrap();
-        assert_eq!(dm1.validate(&p2), false);
+        assert_eq!(dm1.validate(&p2, false).0, false);
         let p3 = Package::from_name_version_durl("text-unicide", "1.3", None).unwrap();
-        assert_eq!(dm1.validate(&p3), false);
+        assert_eq!(dm1.validate(&p3, false).0, false);
         let p3 = Package::from_name_version_durl("text-unidecode", "1.3", None).unwrap();
-        assert_eq!(dm1.validate(&p3), true);
+        assert_eq!(dm1.validate(&p3, false).0, true);
     }
 
     #[test]
@@ -330,21 +339,21 @@ opentelemetry-semantic-conventions==0.45b0
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p1), true);
+        assert_eq!(dm1.validate(&p1, false).0, true);
         let p2 = Package::from_name_version_durl(
             "opentelemetry-exporter-otlp-proto-grpc",
             "1.24.1",
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p2), false);
+        assert_eq!(dm1.validate(&p2, false).0, false);
         let p3 = Package::from_name_version_durl(
             "opentelemetry-exporter-otlp-proto-gpc",
             "1.24.0",
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p3), false);
+        assert_eq!(dm1.validate(&p3, false).0, false);
     }
 
     #[test]
@@ -377,11 +386,11 @@ regex==2024.4.16
         let dm1 = DepManifest::from_requirements(&file_path).unwrap();
         assert_eq!(dm1.len(), 9);
         let p1 = Package::from_name_version_durl("regex", "2024.4.16", None).unwrap();
-        assert_eq!(dm1.validate(&p1), true);
+        assert_eq!(dm1.validate(&p1, false).0, true);
         let p2 = Package::from_name_version_durl("regex", "2024.04.16", None).unwrap();
-        assert_eq!(dm1.validate(&p2), true);
+        assert_eq!(dm1.validate(&p2, false).0, true);
         let p2 = Package::from_name_version_durl("regex", "2024.04.17", None).unwrap();
-        assert_eq!(dm1.validate(&p2), false);
+        assert_eq!(dm1.validate(&p2, false).0, false);
     }
 
     #[test]
@@ -431,6 +440,8 @@ regex==2024.4.16
         assert_eq!(dm2.len(), 3)
     }
 
+    //--------------------------------------------------------------------------
+
     #[test]
     fn test_get_dep_spec_a() {
         let ds = vec![
@@ -463,5 +474,77 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
         let ds1 = dm1.get_dep_spec("cython").unwrap();
         assert_eq!(format!("{}", ds1), "Cython==3.0.11");
+    }
+
+    //--------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_dep_spec_difference_a() {
+        let ds = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            DepSpec::from_string("static-frame>2.0,!=1.3").unwrap(),
+        ];
+        let dm1 = DepManifest::from_dep_specs(&ds).unwrap();
+        let mut observed = HashSet::new();
+        let n1 = "static_frame".to_string();
+        observed.insert(&n1);
+
+        let post = dm1.get_dep_spec_difference(&observed);
+
+        assert_eq!(post, vec!["numpy", "requests"]);
+    }
+
+    //--------------------------------------------------------------------------
+
+    #[test]
+    fn test_validate_a() {
+        // if we install as "packaging @ git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407"
+        // in site packages we get packaging-24.2.dev0.dist-info
+        // and writes this in direct_url.json
+        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+
+        let json_str = r#"
+        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        "#;
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        let p1 =
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", Some(durl)).unwrap();
+
+        let ds1 = DepSpec::from_string("packaging @ git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
+        let specs = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            ds1,
+        ];
+        let dm1 = DepManifest::from_dep_specs(&specs).unwrap();
+        // ds1 has no version information, while p1 does: meaning version passes
+        // ds1 has url of git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
+        // p1.get_url_origin() is git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
+        assert_eq!(dm1.validate(&p1, false).0, true);
+    }
+
+    #[test]
+    fn test_validate_b() {
+        // if we install as "packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407"
+        // in site packages we get packaging-24.2.dev0.dist-info
+        // and writes this in direct_url.json, without the user part of the url
+        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+
+        let json_str = r#"
+        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        "#;
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        let p1 =
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", Some(durl)).unwrap();
+
+        let ds1 = DepSpec::from_string("packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
+        let specs = vec![
+            DepSpec::from_string("numpy==1.19.1").unwrap(),
+            DepSpec::from_string("requests>=1.4").unwrap(),
+            ds1,
+        ];
+        let dm1 = DepManifest::from_dep_specs(&specs).unwrap();
+        assert_eq!(dm1.validate(&p1, false).0, true);
     }
 }

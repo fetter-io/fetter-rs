@@ -194,21 +194,15 @@ impl ScanFS {
         vf: ValidationFlags,
     ) -> ValidationReport {
         let mut records: Vec<ValidationRecord> = Vec::new();
-
         let mut ds_keys_matched: HashSet<&String> = HashSet::new();
 
         // iterate over found packages in order for better reporting
         for package in self.get_packages() {
-            let ds = dm.get_dep_spec(&package.key);
-            // package is valid if ds exists and version is valid, or it does not exist and permit_superset is true
-            let package_valid = match ds {
-                Some(ds) => {
-                    ds_keys_matched.insert(&ds.key);
-                    ds.validate_version(&package.version) && ds.validate_url(&package)
-                }
-                None => vf.permit_superset, // we do not have a matching DepSpec
-            };
-            if !package_valid {
+            let (valid, ds) = dm.validate(&package, vf.permit_superset);
+            if let Some(ds) = ds {
+                ds_keys_matched.insert(&ds.key);
+            }
+            if !valid {
                 // package should always have defined sites
                 let sites = match self.package_to_sites.get(&package) {
                     Some(sites) => Some(sites.clone()),
@@ -224,6 +218,7 @@ impl ScanFS {
         }
         if !vf.permit_subset {
             // packages defined in DepSpec but not found
+            // NOTE: this is sorted, but not sorted with the other records
             for key in dm.get_dep_spec_difference(&ds_keys_matched) {
                 records.push(ValidationRecord::new(
                     None,
@@ -232,7 +227,7 @@ impl ScanFS {
                 ));
             }
         }
-        ValidationReport { records: records }
+        ValidationReport { records }
     }
 
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
