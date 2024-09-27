@@ -89,11 +89,12 @@ impl ValidationReport {
             .collect()
     }
 
-    fn to_writer<W: Write>(&self,
-            mut writer: W,
-            delimiter: char,
-            pad: bool,
-        ) -> io::Result<()> {
+    fn to_writer<W: Write>(
+        &self,
+        mut writer: W,
+        delimiter: char,
+        pad: bool,
+    ) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut dep_spec_displays: Vec<String> = Vec::new();
         let mut explain_displays: Vec<String> = Vec::new();
@@ -251,10 +252,10 @@ impl ValidationReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::DepManifest;
     use crate::ScanFS;
     use std::io::BufRead;
+    use tempfile::tempdir;
 
     #[test]
     fn test_to_file_a() {
@@ -287,13 +288,19 @@ mod tests {
 
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
-        assert_eq!(lines.next().unwrap().unwrap(), "Package|Dependency|Explain|Sites");
-        assert_eq!(lines.next().unwrap().unwrap(), "numpy-1.19.3|numpy==2.1.0|Misdefined|/usr/lib/python3/site-packages");
-        assert_eq!(lines.next().unwrap().unwrap(), "packaging-24.1||Unrequired|/usr/lib/python3/site-packages");
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "Package|Dependency|Explain|Sites"
+        );
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "numpy-1.19.3|numpy==2.1.0|Misdefined|/usr/lib/python3/site-packages"
+        );
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "packaging-24.1||Unrequired|/usr/lib/python3/site-packages"
+        );
         assert_eq!(lines.next().unwrap().unwrap(), "static-frame-2.13.0|static_frame==2.1.0|Misdefined|/usr/lib/python3/site-packages");
         assert!(lines.next().is_none());
     }
 }
-
-
-

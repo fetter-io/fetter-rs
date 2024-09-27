@@ -38,47 +38,51 @@ impl CountReport {
         }
         let mut records: Vec<CountRecord> = Vec::new();
         records.push(CountRecord::new(
-            "executables".to_string(),
+            "Executables".to_string(),
             scan_fs.exe_to_sites.len(),
         ));
+        records.push(CountRecord::new("Sites".to_string(), site_packages.len()));
         records.push(CountRecord::new(
-            "package sites".to_string(),
-            site_packages.len(),
-        ));
-        records.push(CountRecord::new(
-            "packages".to_string(),
+            "Packages".to_string(),
             scan_fs.package_to_sites.len(),
         ));
         // CountReport::new(records)
         CountReport { records }
     }
 
-    fn to_writer<W: Write>(&self, mut writer: W, delimiter: char) -> io::Result<()> {
-        let mut package_displays: Vec<String> = Vec::new();
-        let mut max_package_width = 0;
+    fn to_writer<W: Write>(
+        &self,
+        mut writer: W,
+        delimiter: char,
+        pad: bool,
+    ) -> io::Result<()> {
+        let mut key_displays: Vec<String> = Vec::new();
+        let mut max_key_width = 0;
 
         for item in self.records.iter() {
-            let pkg_display = format!("{}", item.key);
-            max_package_width = cmp::max(max_package_width, pkg_display.len());
-            package_displays.push(pkg_display);
+            let key_display = format!("{}", item.key);
+            if pad {
+                max_key_width = cmp::max(max_key_width, key_display.len());
+            }
+            key_displays.push(key_display);
         }
         writeln!(
             writer,
-            "{:<package_width$}{}{}",
+            "{:<key_width$}{}{}",
             "", // no header for key
             delimiter,
             "Count",
-            package_width = max_package_width,
+            key_width = max_key_width,
         )?;
 
-        for (pkg_display, record) in package_displays.iter().zip(self.records.iter()) {
+        for (key_display, record) in key_displays.iter().zip(self.records.iter()) {
             writeln!(
                 writer,
-                "{:<package_width$}{}{}",
-                pkg_display,
+                "{:<key_width$}{}{}",
+                key_display,
                 delimiter,
                 record.value,
-                package_width = max_package_width,
+                key_width = max_key_width,
             )?;
         }
         Ok(())
@@ -86,13 +90,13 @@ impl CountReport {
 
     pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter)
+        self.to_writer(file, delimiter, false)
     }
 
     pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ').unwrap();
+        self.to_writer(handle, ' ', true).unwrap();
     }
 }
 
@@ -122,9 +126,9 @@ mod tests {
 
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
-        assert_eq!(lines.next().unwrap().unwrap(), "             ,Count");
-        assert_eq!(lines.next().unwrap().unwrap(), "executables  ,1");
-        assert_eq!(lines.next().unwrap().unwrap(), "package sites,1");
-        assert_eq!(lines.next().unwrap().unwrap(), "packages     ,3");
+        assert_eq!(lines.next().unwrap().unwrap(), ",Count");
+        assert_eq!(lines.next().unwrap().unwrap(), "Executables,1");
+        assert_eq!(lines.next().unwrap().unwrap(), "Sites,1");
+        assert_eq!(lines.next().unwrap().unwrap(), "Packages,3");
     }
 }
