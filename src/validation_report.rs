@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -57,9 +58,20 @@ impl fmt::Display for ValidationExplain {
     }
 }
 
-// A summary of validation results suitable for JSON serialziation to naive readers
-pub type ValidationDigest =
-    Vec<(Option<String>, Option<String>, String, Option<Vec<String>>)>;
+//------------------------------------------------------------------------------
+// A summary of validation results suitable for JSON serialziation to naive readers.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ValidationDigestRecord {
+    package: Option<String>,
+    dependency: Option<String>,
+    explain: String,
+    sites: Option<Vec<String>>,
+}
+
+// pub type ValidationDigest =
+//     Vec<(Option<String>, Option<String>, String, Option<Vec<String>>)>;
+
+pub(crate) type ValidationDigest = Vec<ValidationDigestRecord>;
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
@@ -208,7 +220,12 @@ impl ValidationReport {
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
-            digests.push((pkg_display, dep_display, explain, sites_display));
+            digests.push(ValidationDigestRecord {
+                package: pkg_display,
+                dependency: dep_display,
+                explain: explain,
+                sites: sites_display,
+            });
         }
         digests
     }
