@@ -534,7 +534,10 @@ mod tests {
         );
         assert_eq!(vr.len(), 1);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#);
+        assert_eq!(
+            json,
+            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+        );
     }
     #[test]
     fn test_validation_g() {
@@ -592,7 +595,10 @@ mod tests {
             },
         );
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#);
+        assert_eq!(
+            json,
+            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+        );
 
         let vr2 = sfs.to_validation_report(
             dm,

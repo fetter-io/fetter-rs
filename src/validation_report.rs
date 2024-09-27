@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
@@ -68,14 +68,10 @@ pub(crate) struct ValidationDigestRecord {
     sites: Option<Vec<String>>,
 }
 
-// pub type ValidationDigest =
-//     Vec<(Option<String>, Option<String>, String, Option<Vec<String>>)>;
-
 pub(crate) type ValidationDigest = Vec<ValidationDigestRecord>;
 
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
-// #[derive(Debug)]
 pub struct ValidationReport {
     pub(crate) records: Vec<ValidationRecord>,
 }
@@ -145,32 +141,38 @@ impl ValidationReport {
             dep_spec_displays.push(dep_display);
             explain_displays.push(explain_display);
         }
-        // TODO: show sites
         writeln!(
             writer,
-            "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
+            "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}{}{}",
             "Package",
             delimiter,
             "Dependency",
             delimiter,
             "Explain",
+            delimiter,
+            "Sites",
             package_width = max_package_width,
             dep_spec_width = max_dep_spec_width,
             explain_width = max_explain_width,
         )?;
 
-        for (pkg_display, (dep_display, explain_display)) in package_displays
-            .iter()
-            .zip(dep_spec_displays.iter().zip(explain_displays))
+        for (pkg_display, (dep_display, (explain_display, sites_display))) in
+            package_displays.iter().zip(
+                dep_spec_displays
+                    .iter()
+                    .zip(explain_displays.iter().zip(sites_displays)),
+            )
         {
             writeln!(
                 writer,
-                "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}",
+                "{:<package_width$}{}{:<dep_spec_width$}{}{:<explain_width$}{}{}",
                 pkg_display,
                 delimiter,
                 dep_display,
                 delimiter,
                 explain_display,
+                delimiter,
+                sites_display,
                 package_width = max_package_width,
                 dep_spec_width = max_dep_spec_width,
                 explain_width = max_explain_width,
