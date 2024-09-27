@@ -557,7 +557,7 @@ mod tests {
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"static-frame-2.13.0","dependency":null,"explain":"Disallowed","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
 
         let vr2 = sfs.to_validation_report(

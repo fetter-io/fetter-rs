@@ -41,7 +41,7 @@ impl ValidationRecord {
 //------------------------------------------------------------------------------
 enum ValidationExplain {
     Missing,
-    Disallowed,
+    Unrequired,
     Invalid,
     Undefined,
 }
@@ -50,7 +50,7 @@ impl fmt::Display for ValidationExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             ValidationExplain::Missing => "Missing", // package not found
-            ValidationExplain::Disallowed => "Disallowed", // package found, not specified
+            ValidationExplain::Unrequired => "Unrequired", // package found, not specified
             ValidationExplain::Invalid => "Invalid", // package found, not matched version
             ValidationExplain::Undefined => "Undefined",
         };
@@ -123,7 +123,7 @@ impl ValidationReport {
             let explain_display = match (&item.package, &item.dep_spec) {
                 (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
-                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
@@ -216,7 +216,7 @@ impl ValidationReport {
             let explain = match (&pkg_display, &dep_display) {
                 (Some(_), Some(_)) => ValidationExplain::Invalid.to_string(),
                 (None, Some(_)) => ValidationExplain::Missing.to_string(),
-                (Some(_), None) => ValidationExplain::Disallowed.to_string(),
+                (Some(_), None) => ValidationExplain::Unrequired.to_string(),
                 (None, None) => ValidationExplain::Undefined.to_string(),
             };
 
