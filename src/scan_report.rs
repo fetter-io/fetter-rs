@@ -58,6 +58,7 @@ impl ScanReport {
         mut writer: W,
         delimiter: char,
         repeat_package: bool,
+        pad: bool,
     ) -> io::Result<()> {
         let mut package_displays: Vec<String> = Vec::new();
         let mut max_package_width = 0;
@@ -67,7 +68,9 @@ impl ScanReport {
 
         for item in &records {
             let pkg_display = format!("{}", item.package);
-            max_package_width = cmp::max(max_package_width, pkg_display.len());
+            if pad {
+                max_package_width = cmp::max(max_package_width, pkg_display.len());
+            }
             package_displays.push(pkg_display);
         }
         writeln!(
@@ -100,14 +103,62 @@ impl ScanReport {
 
     pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, true)
+        self.to_writer(file, delimiter, true, false)
     }
 
     pub(crate) fn to_stdout(&self) {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, ' ', false).unwrap();
+        self.to_writer(handle, ' ', false, true).unwrap();
     }
 }
 
-// TODO: need tests
+//------------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ScanFS;
+    use std::io::BufRead;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_to_file_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
+            Package::from_name_version_durl("flask", "1.2", None).unwrap(),
+            Package::from_name_version_durl("packaging", "24.1", None).unwrap(),
+        ];
+        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+
+        let sr1 = sfs.to_scan_report();
+
+        let dir = tempdir().unwrap();
+        let fp = dir.path().join("scan.txt");
+        let _ = sr1.to_file(&fp, '|');
+
+        let file = File::open(&fp).unwrap();
+        let mut lines = io::BufReader::new(file).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "Package|Site");
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "flask-1.2|/usr/lib/python3/site-packages"
+        );
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "numpy-1.19.3|/usr/lib/python3/site-packages"
+        );
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "packaging-24.1|/usr/lib/python3/site-packages"
+        );
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "static-frame-2.13.0|/usr/lib/python3/site-packages"
+        );
+
+        assert!(lines.next().is_none());
+    }
+}
