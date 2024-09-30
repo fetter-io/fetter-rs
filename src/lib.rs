@@ -2,7 +2,7 @@ mod count_report;
 mod dep_manifest;
 mod dep_spec;
 mod exe_search;
-mod osv;
+mod osv_query;
 mod package;
 mod package_durl;
 mod package_match;
