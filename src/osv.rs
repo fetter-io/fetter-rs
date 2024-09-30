@@ -48,13 +48,6 @@ struct OSVResponse {
 
 //------------------------------------------------------------------------------
 
-// Function to create the batch query payload
-// fn create_query_batch(packages: &[OSVPackageQuery]) -> OSVQueryBatch {
-//     OSVQueryBatch {
-//         queries: packages.to_vec(),
-//     }
-// }
-
 // Function to send a single batch of queries to the OSV API
 fn query_osv_batch(packages: &[OSVPackageQuery]) -> Vec<Option<String>> {
     let url = "https://api.osv.dev/v1/querybatch";
