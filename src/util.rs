@@ -18,8 +18,7 @@ pub(crate) fn url_strip_user(url: &String) -> String {
         let pos_start = pos_protocol + 3;
         // get span to first @ if it exists
         if let Some(pos_span) = url[pos_start..].find('@') {
-            let pos_end = pos_start + pos_span + 1; // include @
-                                                    // within start and end, there should not be
+            let pos_end = pos_start + pos_span + 1;
             if url[pos_start..pos_end].find('/').is_none() {
                 return format!("{}{}", &url[..pos_start], &url[pos_end..]);
             }
