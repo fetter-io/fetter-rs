@@ -59,34 +59,56 @@ impl DirectURL {
     //--------------------------------------------------------------------------
 
     // Combine components to produce a URL string as used in a DepSpec
-    fn get_url_origin(&self) -> String {
-        // if we have vcs_info, need to put vcs+ in from and @commit id in the back
+    // fn get_url_origin(&self) -> String {
+    //     // if we have vcs_info, need to put vcs+ in from and @commit id in the back
+    //     if let Some(vcs_info) = &self.vcs_info {
+    //         // use requested_revision if defined, else commit_id
+    //         let target = match &vcs_info.requested_revision {
+    //             Some(requested_revision) => requested_revision,
+    //             None => &vcs_info.commit_id,
+    //         };
+    //         format!("{}+{}@{}", vcs_info.vcs, self.url, target)
+    //     } else {
+    //         self.url.clone()
+    //     }
+    // }
+
+    // pub(crate) fn validate(&self, url: &String) -> bool {
+    //     // println!(
+    //     //     "package durl url origin:\n{}\ndepspec url:\n{}\n",
+    //     //     self.get_url_origin(),
+    //     //     *url
+    //     // );
+    //     let url_origin = self.get_url_origin();
+    //     url_strip_user(&url_origin) == url_strip_user(url)
+    // }
+
+    // Given a URL from a DepSpec, validate against this URL from a Package's DirectURL. We strip the user in comparison from both sides as inconsistencies are found in how DirectURL records these.
+    pub(crate) fn validate(&self, url: &String) -> bool {
+        let url_dep_spec = url_strip_user(url);
+        let url_durl = url_strip_user(&self.url);
+
         if let Some(vcs_info) = &self.vcs_info {
             // use requested_revision if defined, else commit_id
-            let target = match &vcs_info.requested_revision {
-                Some(requested_revision) => requested_revision,
-                None => &vcs_info.commit_id,
-            };
-            format!("{}+{}@{}", vcs_info.vcs, self.url, target)
-        } else {
-            self.url.clone()
+            if let Some(requested_revision) = &vcs_info.requested_revision {
+                if format!("{}+{}@{}", vcs_info.vcs, url_durl, requested_revision)
+                    == url_dep_spec
+                {
+                    return true;
+                }
+            }
+            if format!("{}+{}@{}", vcs_info.vcs, url_durl, vcs_info.commit_id)
+                == url_dep_spec
+            {
+                return true;
+            }
+            return false;
         }
-    }
-
-    // Given url from a DepSpec, validate against this URL from a Package DirectURL. We strip the user in comparison from both sides as inconsistencies are found in how DirectURL records these.
-    pub(crate) fn validate(&self, url: &String) -> bool {
-        // println!(
-        //     "package durl url origin:\n{}\ndepspec url:\n{}\n",
-        //     self.get_url_origin(),
-        //     *url
-        // );
-        let url_origin = self.get_url_origin();
-        url_strip_user(&url_origin) == url_strip_user(url)
+        return url_durl == url_dep_spec;
     }
 }
 
 //------------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,7 +139,6 @@ mod tests {
         assert!(durl.vcs_info.as_ref().unwrap().requested_revision.is_none());
     }
 
-    // TODO: match against either ervision or commit ID
     #[test]
     fn test_durl_b() {
         // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
@@ -162,6 +183,7 @@ mod tests {
         assert_eq!("https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl", durl.url);
     }
 
+    //--------------------------------------------------------------------------
     #[test]
     fn test_durl_from_file_a() {
         let temp_dir = tempdir().unwrap();
@@ -175,7 +197,40 @@ mod tests {
         let durl = DirectURL::from_file(&fp_durl).unwrap();
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
     }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_validate_a() {
+        // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
+        let json_str = r#"
+        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+        "#;
+        let durl: DirectURL = serde_json::from_str(json_str).unwrap();
+        assert_eq!(
+            durl.validate(
+                &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.8".to_string()
+            ),
+            true
+        );
+        assert_eq!(
+            durl.validate(
+                &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.7".to_string()
+            ),
+            false
+        );
+        assert_eq!(
+            durl.validate(
+                &"git+ssh://github.com/uqfoundation/dill.git@0.3.8".to_string()
+            ),
+            true
+        );
+        assert_eq!(
+            durl.validate(&"git+ssh://github.com/uqfoundation/dill.git@a0a8e86976708d0436eec5c8f7d25329da727cb5".to_string()),
+            true
+        );
+        assert_eq!(
+            durl.validate(&"git+ssh://github.com/uqfoundation/dill.git@a0a8e86976708d0436e5c8f7d25329da727cb5".to_string()),
+            false
+        );
+    }
 }
-
-
-
