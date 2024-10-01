@@ -3,6 +3,16 @@ pub(crate) fn name_to_key(name: &String) -> String {
     name.to_lowercase().replace("-", "_")
 }
 
+/// Remove whitespace and a leading "@" if found. Note: this owns the passed String as this is appropriate for the context in which it is used.
+pub(crate) fn url_trim(mut input: String) -> String {
+    input = input.trim().to_string();
+    if input.starts_with('@') {
+        input.remove(0);
+        input = input.trim().to_string();
+    }
+    input
+}
+
 pub(crate) fn url_strip_user(url: &String) -> String {
     if let Some(pos_protocol) = url.find("://") {
         let pos_start = pos_protocol + 3;
