@@ -58,31 +58,6 @@ impl DirectURL {
 
     //--------------------------------------------------------------------------
 
-    // Combine components to produce a URL string as used in a DepSpec
-    // fn get_url_origin(&self) -> String {
-    //     // if we have vcs_info, need to put vcs+ in from and @commit id in the back
-    //     if let Some(vcs_info) = &self.vcs_info {
-    //         // use requested_revision if defined, else commit_id
-    //         let target = match &vcs_info.requested_revision {
-    //             Some(requested_revision) => requested_revision,
-    //             None => &vcs_info.commit_id,
-    //         };
-    //         format!("{}+{}@{}", vcs_info.vcs, self.url, target)
-    //     } else {
-    //         self.url.clone()
-    //     }
-    // }
-
-    // pub(crate) fn validate(&self, url: &String) -> bool {
-    //     // println!(
-    //     //     "package durl url origin:\n{}\ndepspec url:\n{}\n",
-    //     //     self.get_url_origin(),
-    //     //     *url
-    //     // );
-    //     let url_origin = self.get_url_origin();
-    //     url_strip_user(&url_origin) == url_strip_user(url)
-    // }
-
     // Given a URL from a DepSpec, validate against this URL from a Package's DirectURL. We strip the user in comparison from both sides as inconsistencies are found in how DirectURL records these.
     pub(crate) fn validate(&self, url: &String) -> bool {
         let url_dep_spec = url_strip_user(url);
