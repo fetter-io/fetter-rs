@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::package::Package;
 use crate::util::name_to_key;
-use crate::util::url_trim;
 use crate::util::url_strip_user;
+use crate::util::url_trim;
 use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
@@ -257,11 +257,9 @@ impl fmt::Display for DepSpec {
                 parts.push(format!("{}{}", op, ver));
             }
             write!(f, "{}{}", self.name, parts.join(","))
-        }
-        else if let Some(url) = &self.url {
+        } else if let Some(url) = &self.url {
             write!(f, "{} @ {}", self.name, url_strip_user(url))
-        }
-        else {
+        } else {
             write!(f, "{}", self.name)
         }
     }
@@ -326,21 +324,30 @@ mod tests {
             "foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx",
         )
         .unwrap();
-        assert_eq!(ds1.to_string(), "foo @ git+https://xx.com/xxxx/xxxx.git@xxxxxx");
+        assert_eq!(
+            ds1.to_string(),
+            "foo @ git+https://xx.com/xxxx/xxxx.git@xxxxxx"
+        );
     }
     #[test]
     fn test_dep_spec_h2() {
         let ds1 =
             DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec")
                 .unwrap();
-        assert_eq!(ds1.to_string(), "package-two @ git+https://github.com/owner/repo@41b95ec");
+        assert_eq!(
+            ds1.to_string(),
+            "package-two @ git+https://github.com/owner/repo@41b95ec"
+        );
     }
     #[test]
     fn test_dep_spec_h3() {
         let ds1 =
             DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main")
                 .unwrap();
-        assert_eq!(ds1.to_string(), "package-four @ git+ssh://example.com/owner/repo@main");
+        assert_eq!(
+            ds1.to_string(),
+            "package-four @ git+ssh://example.com/owner/repo@main"
+        );
     }
     #[test]
     fn test_dep_spec_h4() {
@@ -548,7 +555,10 @@ mod tests {
         let ds =
             DepSpec::from_string("SomeProject@git+https://git.repo/some_pkg.git@1.3.1")
                 .unwrap();
-        assert_eq!(ds.to_string(), "SomeProject @ git+https://git.repo/some_pkg.git@1.3.1");
+        assert_eq!(
+            ds.to_string(),
+            "SomeProject @ git+https://git.repo/some_pkg.git@1.3.1"
+        );
         assert_eq!(ds.url.unwrap(), "git+https://git.repo/some_pkg.git@1.3.1")
     }
     #[test]
@@ -646,7 +656,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(ds1.to_string(), "dill @ git+ssh://github.com/uqfoundation/dill.git@0.3.8"); // we get no version
+        assert_eq!(
+            ds1.to_string(),
+            "dill @ git+ssh://github.com/uqfoundation/dill.git@0.3.8"
+        ); // we get no version
         assert_eq!(
             ds1.url.clone().unwrap(),
             "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
