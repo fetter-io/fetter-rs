@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::package::Package;
 use crate::util::name_to_key;
+use crate::util::url_trim;
+use crate::util::url_strip_user;
 use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
@@ -61,16 +63,7 @@ impl fmt::Display for DepOperator {
     }
 }
 
-fn url_trim(mut input: String) -> String {
-    input = input.trim().to_string();
-    if input.starts_with('@') {
-        input.remove(0);
-        input = input.trim().to_string();
-    }
-    input
-}
-
-// Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0". At this time the parsing does is not complete and thus parsing errors are mostly ignored.
+// Dependency Specfication: A model of a specification of one or more versions, such as "numpy>1.18,<2.0".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DepSpec {
     pub(crate) name: String,
@@ -80,7 +73,7 @@ pub(crate) struct DepSpec {
     versions: Vec<VersionSpec>,
 }
 impl DepSpec {
-    // Given a URL to a whl file, parse the name and version and return a DepSpec
+    /// Given a URL to a whl file, parse the name and version and return a DepSpec
     fn from_whl(input: &str) -> Result<Self, String> {
         let input = input.trim();
         if input.starts_with("http://")
@@ -111,11 +104,11 @@ impl DepSpec {
         return Err("Invalid .whl".to_string());
     }
 
+    /// Given a string as found in a requirements.txt or similar, create a DepSpec.
     pub(crate) fn from_string(input: &str) -> Result<Self, String> {
         if let Ok(ds) = DepSpec::from_whl(input) {
             return Ok(ds);
         }
-
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
             .map_err(|e| format!("Parsing error: {}", e))?;
 
@@ -193,6 +186,7 @@ impl DepSpec {
             versions,
         })
     }
+    /// Create a DepSpec from a Package struct.
     pub(crate) fn from_package(
         package: &Package,
         operator: DepOperator,
@@ -257,10 +251,19 @@ impl DepSpec {
 impl fmt::Display for DepSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut parts = Vec::new();
-        for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
-            parts.push(format!("{}{}", op, ver));
+        // if we have versions, we do not need URL
+        if self.versions.len() > 0 {
+            for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
+                parts.push(format!("{}{}", op, ver));
+            }
+            write!(f, "{}{}", self.name, parts.join(","))
         }
-        write!(f, "{}{}", self.name, parts.join(","))
+        else if let Some(url) = &self.url {
+            write!(f, "{} @ {}", self.name, url_strip_user(url))
+        }
+        else {
+            write!(f, "{}", self.name)
+        }
     }
 }
 
@@ -323,21 +326,21 @@ mod tests {
             "foo @ git+https://xxxxxxxxxx:x-xx-xx@xx.com/xxxx/xxxx.git@xxxxxx",
         )
         .unwrap();
-        assert_eq!(ds1.to_string(), "foo");
+        assert_eq!(ds1.to_string(), "foo @ git+https://xx.com/xxxx/xxxx.git@xxxxxx");
     }
     #[test]
     fn test_dep_spec_h2() {
         let ds1 =
             DepSpec::from_string("package-two@git+https://github.com/owner/repo@41b95ec")
                 .unwrap();
-        assert_eq!(ds1.to_string(), "package-two");
+        assert_eq!(ds1.to_string(), "package-two @ git+https://github.com/owner/repo@41b95ec");
     }
     #[test]
     fn test_dep_spec_h3() {
         let ds1 =
             DepSpec::from_string("package-four @ git+ssh://example.com/owner/repo@main")
                 .unwrap();
-        assert_eq!(ds1.to_string(), "package-four");
+        assert_eq!(ds1.to_string(), "package-four @ git+ssh://example.com/owner/repo@main");
     }
     #[test]
     fn test_dep_spec_h4() {
@@ -353,7 +356,7 @@ mod tests {
     #[test]
     fn test_dep_spec_h5() {
         let ds1 = DepSpec::from_string("pip @ https://github.com/pypa/pip/archive/1.3.1.zip#sha1=da9234ee9982d4bbb3c72346a6de940a148ea686").unwrap();
-        assert_eq!(ds1.to_string(), "pip");
+        assert_eq!(ds1.to_string(), "pip @ https://github.com/pypa/pip/archive/1.3.1.zip#sha1=da9234ee9982d4bbb3c72346a6de940a148ea686");
     }
 
     //--------------------------------------------------------------------------
@@ -545,7 +548,7 @@ mod tests {
         let ds =
             DepSpec::from_string("SomeProject@git+https://git.repo/some_pkg.git@1.3.1")
                 .unwrap();
-        assert_eq!(ds.to_string(), "SomeProject");
+        assert_eq!(ds.to_string(), "SomeProject @ git+https://git.repo/some_pkg.git@1.3.1");
         assert_eq!(ds.url.unwrap(), "git+https://git.repo/some_pkg.git@1.3.1")
     }
     #[test]
@@ -617,7 +620,7 @@ mod tests {
         // this will use the currently defined version in setup.py in authoring the entry in site-packages
         let ds1 = DepSpec::from_string("static-frame @ git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e").unwrap();
 
-        assert_eq!(ds1.to_string(), "static-frame"); // we get no version
+        assert_eq!(ds1.to_string(), "static-frame @ git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e"); // we get no version
         assert_eq!(ds1.url.clone().unwrap(), "git+https://github.com/static-frame/static-frame.git@454d8d5446b71eceb57935b5ea9ba4efb051210e");
 
         // even without a version in the depspec, the observed package will have a version, which is why we need to check durl
@@ -643,7 +646,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(ds1.to_string(), "dill"); // we get no version
+        assert_eq!(ds1.to_string(), "dill @ git+ssh://github.com/uqfoundation/dill.git@0.3.8"); // we get no version
         assert_eq!(
             ds1.url.clone().unwrap(),
             "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
