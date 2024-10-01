@@ -520,7 +520,7 @@ regex==2024.4.16
         let dm1 = DepManifest::from_dep_specs(&specs).unwrap();
         // ds1 has no version information, while p1 does: meaning version passes
         // ds1 has url of git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
-        // p1.get_url_origin() is git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
+        // DirectURL: git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
         assert_eq!(dm1.validate(&p1, false).0, true);
     }
 
