@@ -117,6 +117,7 @@ mod tests {
         assert!(durl.vcs_info.as_ref().unwrap().requested_revision.is_none());
     }
 
+    // TODO: match against either ervision or commit ID
     #[test]
     fn test_durl_b() {
         // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
@@ -175,3 +176,6 @@ mod tests {
         assert_eq!("ssh://git@github.com/uqfoundation/dill.git", durl.url);
     }
 }
+
+
+
