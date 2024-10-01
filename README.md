@@ -10,6 +10,17 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
+### 0.8.0
+
+Package and DepSpec comparisons now remove user.
+
+Package and DepSpec comparisons now accept matching either on requested_revision or commit_id.
+
+URLs are now shown in DepSpec displays.
+
+Delimited file output no loner pads spaces.
+
+
 ### 0.7.0
 
 Validate display now shows paths properly.
