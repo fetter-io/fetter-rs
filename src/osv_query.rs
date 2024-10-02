@@ -48,8 +48,29 @@ struct OSVResponse {
 
 //------------------------------------------------------------------------------
 
+pub trait UreqClient {
+    fn post(&self, url: &str, body: &str) -> Result<String, Error>;
+}
+
+// Default implementation using `ureq`
+pub struct UreqClientLive;
+
+impl UreqClient for UreqClientLive {
+    fn post(&self, url: &str, body: &str) -> Result<String, Error> {
+        let response = ureq::post(url)
+            .set("Content-Type", "application/json")
+            .send_string(body)?;
+        Ok(response.into_string()?)
+    }
+}
+
+//------------------------------------------------------------------------------
+
 // Function to send a single batch of queries to the OSV API
-fn query_osv_batch(packages: &[OSVPackageQuery]) -> Vec<Option<String>> {
+fn query_osv_batch<U: UreqClient + std::marker::Sync>(
+    client: &U,
+    packages: &[OSVPackageQuery],
+) -> Vec<Option<Vec<String>>> {
     let url = "https://api.osv.dev/v1/querybatch";
 
     let batch_query = OSVQueryBatch {
@@ -58,15 +79,11 @@ fn query_osv_batch(packages: &[OSVPackageQuery]) -> Vec<Option<String>> {
     let body = serde_json::to_string(&batch_query).unwrap();
     println!("{:?}", body);
 
-    let response: Result<ureq::Response, Error> = ureq::post(url)
-        .set("Content-Type", "application/json") // Set content type explicitly
-        .send_string(&body); // Send the serialized JSON
-
+    let response: Result<String, Error> = client.post(url, &body);
     match response {
-        Ok(body) => {
-            let body_str = body.into_string().unwrap_or_default();
+        Ok(body_str) => {
+            // let body_str = body.into_string().unwrap_or_default();
             // println!("{:?}", body_str);
-
             let osv_res: OSVResponse = serde_json::from_str(&body_str).unwrap();
 
             osv_res
@@ -78,7 +95,6 @@ fn query_osv_batch(packages: &[OSVPackageQuery]) -> Vec<Option<String>> {
                             .iter()
                             .map(|v| v.id.clone())
                             .collect::<Vec<String>>()
-                            .join(", ")
                     })
                 })
                 .collect()
@@ -89,45 +105,62 @@ fn query_osv_batch(packages: &[OSVPackageQuery]) -> Vec<Option<String>> {
     }
 }
 
-fn query_osv(packages: Vec<OSVPackageQuery>) -> Vec<Option<String>> {
+fn query_osv<U: UreqClient + std::marker::Sync>(
+    client: &U,
+    packages: Vec<OSVPackageQuery>,
+) -> Vec<Option<Vec<String>>> {
     // par_chunks sends groups of 4 to batch query
-    let results: Vec<Option<String>> = packages
+    let results: Vec<Option<Vec<String>>> = packages
         .par_chunks(4)
-        .flat_map(|chunk| query_osv_batch(chunk))
+        .flat_map(|chunk| query_osv_batch(client, chunk))
         .collect();
     results
 }
 
 //--------------------------------------------------------------------------
 
-#[test]
-fn test_osv_querybatch_a() {
-    // Example input data
-    let packages = vec![
-        OSVPackageQuery {
-            package: OSVPackage {
-                name: "gradio".to_string(),
-                ecosystem: "PyPI".to_string(),
-            },
-            version: "4.0.0".to_string(),
-        },
-        OSVPackageQuery {
-            package: OSVPackage {
-                name: "mesop".to_string(),
-                ecosystem: "PyPI".to_string(),
-            },
-            version: "0.11.1".to_string(),
-        },
-    ];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let results: Vec<Option<String>> = query_osv(packages.clone());
+    pub struct UreqClientMock {
+        pub mock_response: String,
+    }
 
-    // Print results
-    for (result, pkg) in results.iter().zip(packages.iter()) {
-        match result {
-            Some(vuln_id) => println!("Found vulnerability: {:?} {}", pkg, vuln_id),
-            None => println!("No vulnerability: {:?}", pkg),
+    impl UreqClient for UreqClientMock {
+        fn post(&self, _url: &str, _body: &str) -> Result<String, Error> {
+            Ok(self.mock_response.clone())
         }
+    }
+
+    #[test]
+    fn test_osv_querybatch_a() {
+        let client_mock = UreqClientMock {
+            mock_response : "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-34rf-p3r3-58x2\",\"modified\":\"2024-05-06T14:46:47.572046Z\"},{\"id\":\"GHSA-3f95-mxq2-2f63\",\"modified\":\"2024-04-10T22:19:39.095481Z\"},{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]},{\"vulns\":[{\"id\":\"GHSA-pmv9-3xqp-8w42\",\"modified\":\"2024-09-18T19:36:03.377591Z\"}]}]}".to_string(),
+        };
+
+        let packages = vec![
+            OSVPackageQuery {
+                package: OSVPackage {
+                    name: "gradio".to_string(),
+                    ecosystem: "PyPI".to_string(),
+                },
+                version: "4.0.0".to_string(),
+            },
+            OSVPackageQuery {
+                package: OSVPackage {
+                    name: "mesop".to_string(),
+                    ecosystem: "PyPI".to_string(),
+                },
+                version: "0.11.1".to_string(),
+            },
+        ];
+
+        let results = query_osv(&client_mock, packages.clone());
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], Some(vec!["GHSA-34rf-p3r3-58x2".to_string(), "GHSA-3f95-mxq2-2f63".to_string(), "GHSA-48cq-79qq-6f7x".to_string()]));
+        assert_eq!(results[1], Some(vec!["GHSA-pmv9-3xqp-8w42".to_string()]));
     }
 }
 
