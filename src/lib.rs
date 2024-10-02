@@ -12,6 +12,7 @@ mod scan_report;
 mod util;
 mod validation_report;
 mod version_spec;
+mod request_client;
 
 use std::process;
 

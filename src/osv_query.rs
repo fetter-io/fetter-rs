@@ -1,7 +1,9 @@
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use ureq::Error;
-// use std::collections::HashMap;
+use ureq;
+
+// use crate::package::Package;
+// use crate::request_client::UreqClientLive;
 
 //------------------------------------------------------------------------------
 // see https://google.github.io/osv.dev/post-v1-querybatch/
@@ -46,23 +48,6 @@ struct OSVResponse {
     results: Vec<OSVQueryResult>,
 }
 
-//------------------------------------------------------------------------------
-
-pub trait UreqClient {
-    fn post(&self, url: &str, body: &str) -> Result<String, Error>;
-}
-
-// Default implementation using `ureq`
-pub struct UreqClientLive;
-
-impl UreqClient for UreqClientLive {
-    fn post(&self, url: &str, body: &str) -> Result<String, Error> {
-        let response = ureq::post(url)
-            .set("Content-Type", "application/json")
-            .send_string(body)?;
-        Ok(response.into_string()?)
-    }
-}
 
 //------------------------------------------------------------------------------
 
@@ -79,7 +64,7 @@ fn query_osv_batch<U: UreqClient + std::marker::Sync>(
     let body = serde_json::to_string(&batch_query).unwrap();
     println!("{:?}", body);
 
-    let response: Result<String, Error> = client.post(url, &body);
+    let response: Result<String, ureq::Error> = client.post(url, &body);
     match response {
         Ok(body_str) => {
             // let body_str = body.into_string().unwrap_or_default();
@@ -123,15 +108,7 @@ fn query_osv<U: UreqClient + std::marker::Sync>(
 mod tests {
     use super::*;
 
-    pub struct UreqClientMock {
-        pub mock_response: String,
-    }
-
-    impl UreqClient for UreqClientMock {
-        fn post(&self, _url: &str, _body: &str) -> Result<String, Error> {
-            Ok(self.mock_response.clone())
-        }
-    }
+    use crate::ureq_client::UreqClientMock;
 
     #[test]
     fn test_osv_querybatch_a() {
