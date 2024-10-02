@@ -1,13 +1,10 @@
-
 use ureq;
 
-//------------------------------------------------------------------------------
-
 pub trait UreqClient {
+    /// A post request to the given URL with the provided JSON body.
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
 }
 
-// Default implementation using `ureq`
 pub struct UreqClientLive;
 
 impl UreqClient for UreqClientLive {
@@ -19,8 +16,6 @@ impl UreqClient for UreqClientLive {
     }
 }
 
-
-
 pub struct UreqClientMock {
     pub mock_response: String,
 }
@@ -30,4 +25,3 @@ impl UreqClient for UreqClientMock {
         Ok(self.mock_response.clone())
     }
 }
-

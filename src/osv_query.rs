@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use ureq;
 
 // use crate::package::Package;
-// use crate::request_client::UreqClientLive;
+use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
 // see https://google.github.io/osv.dev/post-v1-querybatch/
@@ -47,7 +47,6 @@ struct OSVQueryResult {
 struct OSVResponse {
     results: Vec<OSVQueryResult>,
 }
-
 
 //------------------------------------------------------------------------------
 
@@ -109,12 +108,14 @@ mod tests {
     use super::*;
 
     use crate::ureq_client::UreqClientMock;
+    // use crate::ureq_client::UreqClientLive;
 
     #[test]
     fn test_osv_querybatch_a() {
-        let client_mock = UreqClientMock {
+        let client = UreqClientMock {
             mock_response : "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-34rf-p3r3-58x2\",\"modified\":\"2024-05-06T14:46:47.572046Z\"},{\"id\":\"GHSA-3f95-mxq2-2f63\",\"modified\":\"2024-04-10T22:19:39.095481Z\"},{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]},{\"vulns\":[{\"id\":\"GHSA-pmv9-3xqp-8w42\",\"modified\":\"2024-09-18T19:36:03.377591Z\"}]}]}".to_string(),
         };
+        // let client = UreqClientLive;
 
         let packages = vec![
             OSVPackageQuery {
@@ -133,10 +134,17 @@ mod tests {
             },
         ];
 
-        let results = query_osv(&client_mock, packages.clone());
+        let results = query_osv(&client, packages.clone());
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0], Some(vec!["GHSA-34rf-p3r3-58x2".to_string(), "GHSA-3f95-mxq2-2f63".to_string(), "GHSA-48cq-79qq-6f7x".to_string()]));
+        assert_eq!(
+            results[0],
+            Some(vec![
+                "GHSA-34rf-p3r3-58x2".to_string(),
+                "GHSA-3f95-mxq2-2f63".to_string(),
+                "GHSA-48cq-79qq-6f7x".to_string()
+            ])
+        );
         assert_eq!(results[1], Some(vec!["GHSA-pmv9-3xqp-8w42".to_string()]));
     }
 }

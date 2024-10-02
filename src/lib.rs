@@ -9,10 +9,10 @@ mod package_match;
 mod path_shared;
 mod scan_fs;
 mod scan_report;
+mod ureq_client;
 mod util;
 mod validation_report;
 mod version_spec;
-mod request_client;
 
 use std::process;
 
