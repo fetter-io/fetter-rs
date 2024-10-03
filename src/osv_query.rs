@@ -152,4 +152,3 @@ mod tests {
         assert_eq!(results[1], Some(vec!["GHSA-pmv9-3xqp-8w42".to_string()]));
     }
 }
-

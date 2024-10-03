@@ -7,6 +7,7 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
+use crate::audit_report::AuditReport;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
@@ -19,8 +20,6 @@ use crate::scan_report::ScanReport;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
-use crate::osv_query::query_osv;
-use crate::ureq_client::UreqClientLive;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -233,10 +232,9 @@ impl ScanFS {
         ValidationReport { records }
     }
 
-    pub(crate) fn to_vuln_report(&self) {
+    pub(crate) fn to_audit_report(&self) -> AuditReport {
         let packages = self.get_packages();
-        let vulns = query_osv(&UreqClientLive, &packages);
-        println!("{:?}", vulns);
+        AuditReport::from_packages(&packages)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.

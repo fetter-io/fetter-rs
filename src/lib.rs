@@ -1,3 +1,4 @@
+mod audit_report;
 mod count_report;
 mod dep_manifest;
 mod dep_spec;
@@ -302,7 +303,7 @@ where
                     let _ = dm.to_requirements(output);
                 }
             }
-        },
+        }
         Some(Commands::Validate {
             bound,
             subset,
@@ -336,23 +337,22 @@ where
                     process::exit(if vr.len() > 0 { *code } else { 0 });
                 }
             }
-        },
-        Some(Commands::Audit {
-            subcommands,
-        }) => {
+        }
+        Some(Commands::Audit { subcommands }) => {
+            let ar = sfs.to_audit_report();
             match subcommands {
                 AuditSubcommand::Display => {
-                    sfs.to_vuln_report();
+                    ar.to_stdout();
                 }
                 AuditSubcommand::Write { output, delimiter } => {
-                    sfs.to_vuln_report();
+                    let _ = ar.to_file(output, *delimiter);
                 }
             }
-        },
+        }
         Some(Commands::Purge { bound }) => {
             let _dm = get_dep_manifest(bound);
             println!("purge");
-        },
+        }
         None => {}
     }
 }
