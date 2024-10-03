@@ -73,7 +73,7 @@ fn query_osv_batch<U: UreqClient + std::marker::Sync>(
         queries: packages.to_vec(),
     };
     let body = serde_json::to_string(&batch_query).unwrap();
-    println!("{:?}", body);
+    // println!("{:?}", body);
 
     let response: Result<String, ureq::Error> = client.post(url, &body);
     match response {
@@ -153,7 +153,3 @@ mod tests {
     }
 }
 
-// NOTE: this works
-// cat <<EOF | curl -d @- "https://api.osv.dev/v1/querybatch"
-// {"queries":[{"package":{"name":"gradio","ecosystem":"PyPI"},"version":"4.0.0"},{"package":{"name":"mesop","ecosystem":"PyPI"},"version":"0.11.1"}]}
-// EOF
