@@ -19,6 +19,8 @@ use crate::scan_report::ScanReport;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
+use crate::osv_query::query_osv;
+use crate::ureq_client::UreqClientLive;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -231,6 +233,13 @@ impl ScanFS {
         ValidationReport { records }
     }
 
+    pub(crate) fn to_vuln_report(&self) {
+        let packages = self.get_packages();
+        let vulns = query_osv(&UreqClientLive, &packages);
+        println!("{:?}", vulns);
+    }
+
+    /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 

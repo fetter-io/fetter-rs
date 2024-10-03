@@ -101,7 +101,7 @@ fn query_osv_batch<U: UreqClient + std::marker::Sync>(
     }
 }
 
-fn query_osv<U: UreqClient + std::marker::Sync>(
+pub(crate) fn query_osv<U: UreqClient + std::marker::Sync>(
     client: &U,
     packages: &Vec<Package>,
 ) -> Vec<Option<Vec<String>>> {

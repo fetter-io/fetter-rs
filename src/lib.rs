@@ -123,6 +123,11 @@ enum Commands {
         #[command(subcommand)]
         subcommands: ValidateSubcommand,
     },
+    /// Search for vulnerabilities on observed packages.
+    Audit {
+        #[command(subcommand)]
+        subcommands: AuditSubcommand,
+    },
     /// Purge packages that fail validation
     Purge {
         /// File path from which to read bound requirements.
@@ -198,6 +203,19 @@ enum ValidateSubcommand {
     Exit {
         #[arg(short, long, default_value = "3")]
         code: i32,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditSubcommand {
+    /// Display validation to the terminal.
+    Display,
+    /// Print a JSON representation of validation results.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
     },
 }
 //------------------------------------------------------------------------------
@@ -284,7 +302,7 @@ where
                     let _ = dm.to_requirements(output);
                 }
             }
-        }
+        },
         Some(Commands::Validate {
             bound,
             subset,
@@ -318,11 +336,23 @@ where
                     process::exit(if vr.len() > 0 { *code } else { 0 });
                 }
             }
-        }
+        },
+        Some(Commands::Audit {
+            subcommands,
+        }) => {
+            match subcommands {
+                AuditSubcommand::Display => {
+                    sfs.to_vuln_report();
+                }
+                AuditSubcommand::Write { output, delimiter } => {
+                    sfs.to_vuln_report();
+                }
+            }
+        },
         Some(Commands::Purge { bound }) => {
             let _dm = get_dep_manifest(bound);
             println!("purge");
-        }
+        },
         None => {}
     }
 }
