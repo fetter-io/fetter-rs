@@ -1,9 +1,4 @@
-use std::cmp;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::PathBuf;
 
 use crate::package::Package;
 use crate::path_shared::PathShared;
@@ -83,7 +78,10 @@ impl Tableable<ScanRecord> for ScanReport {
 mod tests {
     use super::*;
     use crate::ScanFS;
+    use std::fs::File;
+    use std::io;
     use std::io::BufRead;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
