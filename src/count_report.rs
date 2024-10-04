@@ -68,10 +68,10 @@ mod tests {
     use super::*;
     use crate::package::Package;
     use std::fs::File;
+    use std::io;
     use std::io::BufRead;
     use std::path::PathBuf;
     use tempfile::tempdir;
-    use std::io;
 
     #[test]
     fn test_from_scan_fs() {

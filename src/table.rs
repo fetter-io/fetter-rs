@@ -18,6 +18,7 @@ fn to_writer_delimited<W: Write>(
     Ok(())
 }
 
+/// Wite a table to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
 fn to_table_writer<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<String>,
