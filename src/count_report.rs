@@ -51,27 +51,6 @@ impl CountReport {
         ));
         CountReport { records }
     }
-
-    // fn to_writer<W: Write>(
-    //     &self,
-    //     mut writer: W,
-    //     delimiter: Option<&str>,
-    // ) -> io::Result<()> {
-    //     let headers = vec!["".to_string(), "Count".to_string()];
-    //     let _ = to_table_writer(&mut writer, &headers, &self.records, delimiter);
-    //     Ok(())
-    // }
-
-    // pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-    //     let file = File::create(file_path)?;
-    //     self.to_writer(file, Some(&delimiter.to_string()))
-    // }
-
-    // pub(crate) fn to_stdout(&self) {
-    //     let stdout = io::stdout();
-    //     let handle = stdout.lock();
-    //     self.to_writer(handle, None).unwrap();
-    // }
 }
 
 impl Tableable<CountRecord> for CountReport {
@@ -92,6 +71,7 @@ mod tests {
     use std::io::BufRead;
     use std::path::PathBuf;
     use tempfile::tempdir;
+    use std::io;
 
     #[test]
     fn test_from_scan_fs() {
