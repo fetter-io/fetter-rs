@@ -3,9 +3,9 @@ use std::io;
 use std::io::{Error, Write};
 use std::path::PathBuf;
 
-/// Return a representative row presentation, as strings, for this struct. Note that the number of rows need not be equal to the number of struct fields.
+/// Return a representative row presentation, as strings, for this struct. Note that the number of rows need not be equal to the number of struct fields. Multiple rows are returned.
 pub(crate) trait Rowable {
-    fn to_row(&self) -> Vec<String>;
+    fn to_row(&self) -> Vec<Vec<String>>;
 }
 
 fn to_writer_delimited<W: Write>(
@@ -22,17 +22,19 @@ fn to_writer_delimited<W: Write>(
 fn to_table_writer<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<String>,
-    table: &Vec<T>,
+    records: &Vec<T>,
     delimiter: Option<&str>,
 ) -> Result<(), Error> {
-    if table.is_empty() || headers.is_empty() {
+    if records.is_empty() || headers.is_empty() {
         return Ok(());
     }
     match delimiter {
         Some(delim) => {
             to_writer_delimited(writer, &headers, delim)?;
-            for row in table {
-                to_writer_delimited(writer, &row.to_row(), delim)?;
+            for record in records {
+                for row in record.to_row() {
+                    to_writer_delimited(writer, &row, delim)?;
+                }
             }
         }
         None => {
@@ -42,12 +44,13 @@ fn to_table_writer<W: Write, T: Rowable>(
                 column_widths[i] = header.len();
             }
             let mut rows = Vec::new();
-            for row in table {
-                let values = row.to_row();
-                for (i, value) in values.iter().enumerate() {
-                    column_widths[i] = column_widths[i].max(value.len());
+            for record in records {
+                for values in record.to_row() {
+                    for (i, value) in values.iter().enumerate() {
+                        column_widths[i] = column_widths[i].max(value.len());
+                    }
+                    rows.push(values);
                 }
-                rows.push(values);
             }
             // header
             for (i, header) in headers.into_iter().enumerate() {

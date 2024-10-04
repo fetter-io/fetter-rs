@@ -18,8 +18,8 @@ impl CountRecord {
 }
 
 impl Rowable for CountRecord {
-    fn to_row(&self) -> Vec<String> {
-        vec![self.key.clone(), self.value.to_string()]
+    fn to_row(&self) -> Vec<Vec<String>> {
+        vec![vec![self.key.clone(), self.value.to_string()]]
     }
 }
 
