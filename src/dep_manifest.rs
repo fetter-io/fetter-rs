@@ -51,7 +51,10 @@ impl DepManifest {
                         continue;
                     }
                     if t.starts_with("-r ") {
-                        files.push_back(file_path.parent().unwrap().join(&t[3..]));
+                        files.push_back(file_path.parent().unwrap().join(&t[3..].trim()));
+                    } else if t.starts_with("--requirement ") {
+                        files
+                            .push_back(file_path.parent().unwrap().join(&t[14..].trim()));
                     } else {
                         let ds = DepSpec::from_string(&s)?;
                         if dep_specs.contains_key(&ds.key) {
@@ -422,6 +425,41 @@ regex==2024.4.16
         assert_eq!(dm1.len(), 9);
     }
 
+    #[test]
+    fn test_from_requirements_f() {
+        let content1 = r#"
+python-slugify==8.0.4
+pytz==2023.3
+pytzdata==2020.1
+pyyaml==6.0
+pyzmq==26.0.0
+"#;
+        let dir = tempdir().unwrap();
+        let fp1 = dir.path().join("requirements-a.txt");
+        let mut f1 = File::create(&fp1).unwrap();
+        write!(f1, "{}", content1).unwrap();
+
+        let content2 = r#"
+readme-renderer==43.0
+redshift-connector==2.1.1
+--requirement  requirements-a.txt
+"#;
+        let fp2 = dir.path().join("requirements-b.txt");
+        let mut f2 = File::create(&fp2).unwrap();
+        write!(f2, "{}", content2).unwrap();
+
+        let content3 = r#"
+referencing==0.34.0
+regex==2024.4.16
+--requirement    requirements-b.txt
+"#;
+        let fp3 = dir.path().join("requirements-c.txt");
+        let mut f3 = File::create(&fp3).unwrap();
+        write!(f3, "{}", content3).unwrap();
+
+        let dm1 = DepManifest::from_requirements(&fp3).unwrap();
+        assert_eq!(dm1.len(), 9);
+    }
     //--------------------------------------------------------------------------
 
     #[test]
