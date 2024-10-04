@@ -4,7 +4,7 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::osv_query::query_osv;
+use crate::osv_query::query_osv_batches;
 use crate::package::Package;
 use crate::ureq_client::UreqClientLive;
 
@@ -21,7 +21,8 @@ pub struct AuditReport {
 
 impl AuditReport {
     pub(crate) fn from_packages(packages: &Vec<Package>) -> Self {
-        let vulns: Vec<Option<Vec<String>>> = query_osv(&UreqClientLive, packages);
+        let vulns: Vec<Option<Vec<String>>> =
+            query_osv_batches(&UreqClientLive, packages);
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
             let vulns = match vuln_ids {

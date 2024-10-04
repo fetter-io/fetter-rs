@@ -1,9 +1,10 @@
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
-// use std::sync::Mutex;
 use std::fmt;
-use ureq;
+// use ureq;
+
+use crate::ureq_client::UreqClient;
 
 #[derive(Debug, Deserialize)]
 struct OSVVulnReference {
@@ -88,7 +89,6 @@ impl OSVSeverities {
 
 impl fmt::Display for OSVSeverities {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // NOTE: might only show the highest CVSS version (CVSS_V3, CVSS_V4)
         write!(
             f,
             "{}",
@@ -110,43 +110,32 @@ struct OSVVulnInfo {
     // affected: Vec<OSVAffected>, // surprised this is an array of affected
 }
 
-fn query_osv_vuln(vuln_id: &str) -> Option<OSVVulnInfo> {
+fn query_osv_vuln<U: UreqClient + std::marker::Sync>(
+    client: &U,
+    vuln_id: &str,
+) -> Option<OSVVulnInfo> {
     let url = format!("https://api.osv.dev/v1/vulns/{}", vuln_id);
 
-    match ureq::get(&url).call() {
-        Ok(response) => {
-            if let Ok(body_str) = response.into_string() {
-                // println!("body_str: {:?}", body_str);
-                let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
-                Some(osv_vuln)
-            } else {
-                None
-            }
+    match client.get(&url) {
+        Ok(body_str) => {
+            let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
+            Some(osv_vuln)
         }
         Err(_) => None,
     }
 }
 
-// fn query_osv_vulns(vuln_ids: Vec<String>) -> HashMap<String, Option<OSVVulnInfo>> {
-//     // let results = Mutex::new(HashMap::new());
-
-//     // vuln_ids.par_iter().for_each(|vuln_id| {
-//     //     let info = query_osv_vuln(vuln_id);
-//     //     let mut results = results.lock().unwrap();
-//     //     results.insert(vuln_id.clone(), info);
-//     // });
-
-//     // results.into_inner().unwrap()
-// }
-
-fn query_osv_vulns(vuln_ids: Vec<String>) -> HashMap<String, OSVVulnInfo> {
+fn query_osv_vulns<U: UreqClient + std::marker::Sync>(
+    client: &U,
+    vuln_ids: Vec<String>,
+) -> HashMap<String, OSVVulnInfo> {
     let results: Vec<(String, OSVVulnInfo)> = vuln_ids
         .par_iter()
-        .filter_map(|vuln_id| query_osv_vuln(vuln_id).map(|info| (vuln_id.clone(), info)))
+        .filter_map(|vuln_id| {
+            query_osv_vuln(client, vuln_id).map(|info| (vuln_id.clone(), info))
+        })
         .collect();
-
-    // Convert the Vec to a HashMap after multi-threading
-    results.into_iter().collect()
+    results.into_iter().collect() // to HashMap
 }
 
 //--------------------------------------------------------------------------
@@ -155,8 +144,8 @@ fn query_osv_vulns(vuln_ids: Vec<String>) -> HashMap<String, OSVVulnInfo> {
 mod tests {
     use super::*;
 
-    use crate::ureq_client::UreqClientMock;
-    // use crate::ureq_client::UreqClientLive;
+    // use crate::ureq_client::UreqClientMock;
+    use crate::ureq_client::UreqClientLive;
 
     #[test]
     fn test_vuln_a() {
@@ -166,12 +155,11 @@ mod tests {
             // add more ids here
         ];
 
-        let result_map = query_osv_vulns(vuln_ids);
+        let result_map = query_osv_vulns(&UreqClientLive, vuln_ids);
 
         for (vuln_id, vuln) in result_map {
             println!("Vuln: {}", vuln_id);
             println!("Summary: {:?}", vuln.summary);
-            // println!("Details: {:?}", vuln.details);
             println!("References: {}", vuln.references.get_prime());
             println!("Severity: {}", vuln.severity.get_prime());
             println!();
