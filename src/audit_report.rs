@@ -25,6 +25,7 @@ impl AuditReport {
             query_osv_batches(&UreqClientLive, packages);
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
+            // TODO: look up all vuln_ids with query_osv_vulns
             let vulns = match vuln_ids {
                 Some(v) => v.join(", "),
                 None => "".to_string(),
