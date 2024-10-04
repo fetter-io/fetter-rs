@@ -41,7 +41,6 @@ fn to_table_writer<W: Write, T: Rowable>(
             for (i, header) in headers.iter().enumerate() {
                 column_widths[i] = header.len();
             }
-
             let mut rows = Vec::new();
             for row in table {
                 let values = row.to_row();
@@ -55,13 +54,11 @@ fn to_table_writer<W: Write, T: Rowable>(
                 write!(writer, "{:<width$} ", header, width = column_widths[i])?;
             }
             writeln!(writer)?;
-
             // separator
             for width in &column_widths {
                 write!(writer, "{:-<width$} ", "-", width = width)?;
             }
             writeln!(writer)?;
-
             // body
             for values in rows {
                 for (i, value) in values.into_iter().enumerate() {
@@ -75,9 +72,7 @@ fn to_table_writer<W: Write, T: Rowable>(
 }
 
 pub(crate) trait Tableable<T: Rowable> {
-    // fn to_writer<W: Write>(&self, writer: W, delimiter: Option<&str>) -> io::Result<()>;
     fn get_header(&self) -> Vec<String>;
-
     fn get_records(&self) -> &Vec<T>;
 
     fn to_writer<W: Write>(
