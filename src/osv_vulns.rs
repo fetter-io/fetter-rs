@@ -18,9 +18,21 @@ impl fmt::Display for OSVVulnReference {
 }
 
 #[derive(Debug, Deserialize)]
-struct OSVVulnReferences(Vec<OSVVulnReference>);
+struct OSVReferences(Vec<OSVVulnReference>);
 
-impl fmt::Display for OSVVulnReferences {
+impl OSVReferences {
+    /// Return a primary value for this collection.
+    fn get_prime(&self) -> String {
+        for s in self.0.iter() {
+            if s.r#type == "ADVISORY" {
+                return s.url.clone();
+            }
+        }
+        return self.0[0].url.clone(); // just get the first
+    }
+}
+
+impl fmt::Display for OSVReferences {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NOTE: might only show ADVISORY if defined
         write!(
@@ -63,6 +75,17 @@ impl fmt::Display for OSVSeverity {
 #[derive(Debug, Deserialize)]
 struct OSVSeverities(Vec<OSVSeverity>);
 
+impl OSVSeverities {
+    fn get_prime(&self) -> String {
+        for s in self.0.iter() {
+            if s.r#type.starts_with("CVSS_") {
+                return s.score.clone();
+            }
+        }
+        return self.0[0].score.clone(); // just get the first
+    }
+}
+
 impl fmt::Display for OSVSeverities {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NOTE: might only show the highest CVSS version (CVSS_V3, CVSS_V4)
@@ -81,10 +104,10 @@ impl fmt::Display for OSVSeverities {
 #[derive(Debug, Deserialize)]
 struct OSVVulnInfo {
     summary: String,
-    // details: String,
-    references: OSVVulnReferences,
-    // affected: Vec<OSVAffected>, // surprised this is an array of affected
+    references: OSVReferences,
     severity: OSVSeverities,
+    // details: String,
+    // affected: Vec<OSVAffected>, // surprised this is an array of affected
 }
 
 fn query_osv_vuln(vuln_id: &str) -> Option<OSVVulnInfo> {
@@ -146,26 +169,11 @@ mod tests {
         let result_map = query_osv_vulns(vuln_ids);
 
         for (vuln_id, vuln) in result_map {
-            println!("Vuln ID: {}", vuln_id);
-
+            println!("Vuln: {}", vuln_id);
             println!("Summary: {:?}", vuln.summary);
             // println!("Details: {:?}", vuln.details);
-            println!("References: {}", vuln.references);
-            // println!("Affected: {:?}", vuln.affected);
-            println!("Severity: {}", vuln.severity);
-
-            // match info {
-            //     Some(vuln) => {
-            //         println!("Summary: {:?}", vuln.summary);
-            //         // println!("Details: {:?}", vuln.details);
-            //         println!("References: {:?}", vuln.references);
-            //         // println!("Affected: {:?}", vuln.affected);
-            //         println!("Severity: {:?}", vuln.severity);
-            //     }
-            //     None => {
-            //         println!("No data found for this vulnerability.");
-            //     }
-            // }
+            println!("References: {}", vuln.references.get_prime());
+            println!("Severity: {}", vuln.severity.get_prime());
             println!();
         }
     }
