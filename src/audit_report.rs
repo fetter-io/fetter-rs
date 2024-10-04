@@ -19,6 +19,7 @@ pub struct AuditReport {
     records: Vec<AuditRecord>,
 }
 
+/// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB
 impl AuditReport {
     pub(crate) fn from_packages(packages: &Vec<Package>) -> Self {
         let vulns: Vec<Option<Vec<String>>> =
