@@ -8,6 +8,7 @@ mod package_match;
 mod path_shared;
 mod scan_fs;
 mod scan_report;
+mod table;
 mod util;
 mod validation_report;
 mod version_spec;
@@ -22,6 +23,7 @@ use validation_report::ValidationFlags;
 use crate::dep_manifest::DepManifest;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
+use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
 // utility enums

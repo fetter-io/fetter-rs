@@ -1,14 +1,11 @@
-use std::cmp;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::PathBuf;
 
 use crate::path_shared::PathShared;
 use crate::scan_fs::ScanFS;
+use crate::table::Rowable;
+use crate::table::Tableable;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct CountRecord {
     key: String,
     value: usize,
@@ -17,6 +14,12 @@ pub(crate) struct CountRecord {
 impl CountRecord {
     pub(crate) fn new(key: String, value: usize) -> Self {
         CountRecord { key, value }
+    }
+}
+
+impl Rowable for CountRecord {
+    fn to_row(&self) -> Vec<String> {
+        vec![self.key.clone(), self.value.to_string()]
     }
 }
 
@@ -46,57 +49,37 @@ impl CountReport {
             "Packages".to_string(),
             scan_fs.package_to_sites.len(),
         ));
-        // CountReport::new(records)
         CountReport { records }
     }
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: char,
-        pad: bool,
-    ) -> io::Result<()> {
-        let mut key_displays: Vec<String> = Vec::new();
-        let mut max_key_width = 0;
+    // fn to_writer<W: Write>(
+    //     &self,
+    //     mut writer: W,
+    //     delimiter: Option<&str>,
+    // ) -> io::Result<()> {
+    //     let headers = vec!["".to_string(), "Count".to_string()];
+    //     let _ = to_table_writer(&mut writer, &headers, &self.records, delimiter);
+    //     Ok(())
+    // }
 
-        for item in self.records.iter() {
-            let key_display = format!("{}", item.key);
-            if pad {
-                max_key_width = cmp::max(max_key_width, key_display.len());
-            }
-            key_displays.push(key_display);
-        }
-        writeln!(
-            writer,
-            "{:<key_width$}{}{}",
-            "", // no header for key
-            delimiter,
-            "Count",
-            key_width = max_key_width,
-        )?;
+    // pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
+    //     let file = File::create(file_path)?;
+    //     self.to_writer(file, Some(&delimiter.to_string()))
+    // }
 
-        for (key_display, record) in key_displays.iter().zip(self.records.iter()) {
-            writeln!(
-                writer,
-                "{:<key_width$}{}{}",
-                key_display,
-                delimiter,
-                record.value,
-                key_width = max_key_width,
-            )?;
-        }
-        Ok(())
+    // pub(crate) fn to_stdout(&self) {
+    //     let stdout = io::stdout();
+    //     let handle = stdout.lock();
+    //     self.to_writer(handle, None).unwrap();
+    // }
+}
+
+impl Tableable<CountRecord> for CountReport {
+    fn get_header(&self) -> Vec<String> {
+        vec!["".to_string(), "Count".to_string()]
     }
-
-    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, false)
-    }
-
-    pub(crate) fn to_stdout(&self) {
-        let stdout = io::stdout();
-        let handle = stdout.lock();
-        self.to_writer(handle, ' ', true).unwrap();
+    fn get_records(&self) -> &Vec<CountRecord> {
+        &self.records
     }
 }
 
@@ -105,7 +88,9 @@ impl CountReport {
 mod tests {
     use super::*;
     use crate::package::Package;
+    use std::fs::File;
     use std::io::BufRead;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
