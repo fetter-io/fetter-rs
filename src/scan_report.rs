@@ -18,7 +18,7 @@ impl ScanRecord {
 }
 
 impl Rowable for ScanRecord {
-    fn to_row(&self) -> Vec<Vec<String>> {
+    fn to_rows(&self) -> Vec<Vec<String>> {
         let mut records = Vec::new();
         for path in &self.sites {
             records.push(vec![

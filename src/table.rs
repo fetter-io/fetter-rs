@@ -3,9 +3,9 @@ use std::io;
 use std::io::{Error, Write};
 use std::path::PathBuf;
 
-/// Return a representative row presentation, as strings, for this struct. Note that the number of rows need not be equal to the number of struct fields. Multiple rows are returned.
+/// Translate one struct into one or more rows (Vec<String>). Note that the number of resultant columns not be equal to the number of struct fields.
 pub(crate) trait Rowable {
-    fn to_row(&self) -> Vec<Vec<String>>;
+    fn to_rows(&self) -> Vec<Vec<String>>;
 }
 
 fn to_writer_delimited<W: Write>(
@@ -18,7 +18,7 @@ fn to_writer_delimited<W: Write>(
     Ok(())
 }
 
-/// Wite a table to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
+/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
 fn to_table_writer<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<String>,
@@ -32,24 +32,24 @@ fn to_table_writer<W: Write, T: Rowable>(
         Some(delim) => {
             to_writer_delimited(writer, &headers, delim)?;
             for record in records {
-                for row in record.to_row() {
+                for row in record.to_rows() {
                     to_writer_delimited(writer, &row, delim)?;
                 }
             }
         }
         None => {
-            let num_columns = headers.len();
-            let mut column_widths = vec![0; num_columns];
+            // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
+            let mut column_widths = vec![0; headers.len()];
             for (i, header) in headers.iter().enumerate() {
                 column_widths[i] = header.len();
             }
             let mut rows = Vec::new();
             for record in records {
-                for values in record.to_row() {
-                    for (i, value) in values.iter().enumerate() {
-                        column_widths[i] = column_widths[i].max(value.len());
+                for row in record.to_rows() {
+                    for (i, element) in row.iter().enumerate() {
+                        column_widths[i] = column_widths[i].max(element.len());
                     }
-                    rows.push(values);
+                    rows.push(row);
                 }
             }
             // header
@@ -63,9 +63,9 @@ fn to_table_writer<W: Write, T: Rowable>(
             }
             writeln!(writer)?;
             // body
-            for values in rows {
-                for (i, value) in values.into_iter().enumerate() {
-                    write!(writer, "{:<width$} ", value, width = column_widths[i])?;
+            for row in rows {
+                for (i, element) in row.into_iter().enumerate() {
+                    write!(writer, "{:<width$} ", element, width = column_widths[i])?;
                 }
                 writeln!(writer)?;
             }
