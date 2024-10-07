@@ -54,6 +54,15 @@ impl ValidationRecord {
             sites,
         }
     }
+
+    fn explain(&self) -> ValidationExplain {
+        match (&self.package, &self.dep_spec) {
+            (Some(_), Some(_)) => ValidationExplain::Misdefined,
+            (None, Some(_)) => ValidationExplain::Missing,
+            (Some(_), None) => ValidationExplain::Unrequired,
+            (None, None) => ValidationExplain::Undefined,
+        }
+    }
 }
 
 impl Rowable for ValidationRecord {
@@ -70,12 +79,6 @@ impl Rowable for ValidationRecord {
             Some(dep_spec) => dep_spec.to_string(),
             None => dep_missing.to_string(),
         };
-        let explain_display = match (&self.package, &self.dep_spec) {
-            (Some(_), Some(_)) => ValidationExplain::Misdefined.to_string(),
-            (None, Some(_)) => ValidationExplain::Missing.to_string(),
-            (Some(_), None) => ValidationExplain::Unrequired.to_string(),
-            (None, None) => ValidationExplain::Undefined.to_string(),
-        };
         // we reduce this to a string for concise representation
         let sites_display = match &self.sites {
             Some(sites) => sites
@@ -88,7 +91,7 @@ impl Rowable for ValidationRecord {
         return vec![vec![
             pkg_display,
             dep_display,
-            explain_display,
+            self.explain().to_string(),
             sites_display,
         ]];
     }
@@ -130,16 +133,16 @@ impl ValidationReport {
         records.sort_by_key(|item| &item.package);
 
         let mut digests: ValidationDigest = Vec::new();
-        for item in &records {
-            let pkg_display = match &item.package {
+        for record in &records {
+            let pkg_display = match &record.package {
                 Some(package) => Some(format!("{}", package)),
                 None => None,
             };
-            let dep_display = match &item.dep_spec {
+            let dep_display = match &record.dep_spec {
                 Some(dep_spec) => Some(format!("{}", dep_spec)),
                 None => None,
             };
-            let sites_display = match &item.sites {
+            let sites = match &record.sites {
                 // we leave this as a Vec for JSON encoding as an array
                 Some(sites) => Some(
                     sites
@@ -149,18 +152,11 @@ impl ValidationReport {
                 ),
                 None => None,
             };
-            let explain = match (&pkg_display, &dep_display) {
-                (Some(_), Some(_)) => ValidationExplain::Misdefined.to_string(),
-                (None, Some(_)) => ValidationExplain::Missing.to_string(),
-                (Some(_), None) => ValidationExplain::Unrequired.to_string(),
-                (None, None) => ValidationExplain::Undefined.to_string(),
-            };
-
             digests.push(ValidationDigestRecord {
                 package: pkg_display,
                 dependency: dep_display,
-                explain: explain,
-                sites: sites_display,
+                explain: record.explain().to_string(),
+                sites: sites,
             });
         }
         digests
