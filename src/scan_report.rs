@@ -19,14 +19,15 @@ impl ScanRecord {
 
 impl Rowable for ScanRecord {
     fn to_rows(&self) -> Vec<Vec<String>> {
-        let mut records = Vec::new();
+        let mut rows = Vec::new();
+        // TODO: when displaying, want remove repeated instances of package
         for path in &self.sites {
-            records.push(vec![
+            rows.push(vec![
                 self.package.to_string(),
                 format!("{}", path.display()),
             ]);
         }
-        records
+        rows
     }
 }
 

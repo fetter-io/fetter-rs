@@ -303,7 +303,7 @@ where
             );
             match subcommands {
                 ValidateSubcommand::Display => {
-                    vr.to_stdout();
+                    let _ = vr.to_stdout();
                 }
                 ValidateSubcommand::JSON => {
                     println!(
