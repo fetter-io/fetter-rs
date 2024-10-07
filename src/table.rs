@@ -3,9 +3,16 @@ use std::io;
 use std::io::{Error, Write};
 use std::path::PathBuf;
 
+#[derive(PartialEq)]
+pub(crate) enum RowableContext {
+    Delimited,
+    TTY,
+    // Undefined, // not delimited or tty
+}
+
 /// Translate one struct into one or more rows (Vec<String>). Note that the number of resultant columns not be equal to the number of struct fields.
 pub(crate) trait Rowable {
-    fn to_rows(&self) -> Vec<Vec<String>>;
+    fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>>;
 }
 
 fn to_writer_delimited<W: Write>(
@@ -24,6 +31,7 @@ fn to_table_writer<W: Write, T: Rowable>(
     headers: Vec<String>,
     records: &Vec<T>,
     delimiter: Option<&str>,
+    context: RowableContext,
 ) -> Result<(), Error> {
     if records.is_empty() || headers.is_empty() {
         return Ok(());
@@ -32,7 +40,7 @@ fn to_table_writer<W: Write, T: Rowable>(
         Some(delim) => {
             to_writer_delimited(writer, &headers, delim)?;
             for record in records {
-                for row in record.to_rows() {
+                for row in record.to_rows(&context) {
                     to_writer_delimited(writer, &row, delim)?;
                 }
             }
@@ -45,7 +53,7 @@ fn to_table_writer<W: Write, T: Rowable>(
             }
             let mut rows = Vec::new();
             for record in records {
-                for row in record.to_rows() {
+                for row in record.to_rows(&context) {
                     for (i, element) in row.iter().enumerate() {
                         column_widths[i] = column_widths[i].max(element.len());
                     }
@@ -58,10 +66,10 @@ fn to_table_writer<W: Write, T: Rowable>(
             }
             writeln!(writer)?;
             // separator
-            for width in &column_widths {
-                write!(writer, "{:-<width$} ", "-", width = width)?;
-            }
-            writeln!(writer)?;
+            // for width in &column_widths {
+            //     write!(writer, "{:_<width$} ", "_", width = width)?;
+            // }
+            // writeln!(writer)?;
             // body
             for row in rows {
                 for (i, element) in row.into_iter().enumerate() {
@@ -82,24 +90,31 @@ pub(crate) trait Tableable<T: Rowable> {
         &self,
         mut writer: W,
         delimiter: Option<&str>,
+        context: RowableContext,
     ) -> io::Result<()> {
         let _ = to_table_writer(
             &mut writer,
             self.get_header(),
             self.get_records(),
             delimiter,
+            context,
         );
         Ok(())
     }
 
     fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
         let file = File::create(file_path)?;
-        self.to_writer(file, Some(&delimiter.to_string()))
+        self.to_writer(
+            file,
+            Some(&delimiter.to_string()),
+            RowableContext::Delimited,
+        )
     }
 
     fn to_stdout(&self) -> io::Result<()> {
         let stdout = io::stdout();
         let handle = stdout.lock();
-        self.to_writer(handle, None)
+        // TODO: check if we are a TTY
+        self.to_writer(handle, None, RowableContext::TTY)
     }
 }

@@ -6,6 +6,7 @@ use crate::dep_spec::DepSpec;
 use crate::package::Package;
 use crate::path_shared::PathShared;
 use crate::table::Rowable;
+use crate::table::RowableContext;
 use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
@@ -66,7 +67,7 @@ impl ValidationRecord {
 }
 
 impl Rowable for ValidationRecord {
-    fn to_rows(&self) -> Vec<Vec<String>> {
+    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
         // these could be different or configurable
         let dep_missing = "";
         let pkg_missing = "";

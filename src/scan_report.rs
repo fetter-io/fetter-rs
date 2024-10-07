@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::package::Package;
 use crate::path_shared::PathShared;
 use crate::table::Rowable;
+use crate::table::RowableContext;
 use crate::table::Tableable;
 
 #[derive(Debug, Clone)]
@@ -18,14 +19,16 @@ impl ScanRecord {
 }
 
 impl Rowable for ScanRecord {
-    fn to_rows(&self) -> Vec<Vec<String>> {
-        let mut rows = Vec::new();
-        // TODO: when displaying, want remove repeated instances of package
-        for path in &self.sites {
-            rows.push(vec![
-                self.package.to_string(),
-                format!("{}", path.display()),
-            ]);
+    fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        let pkg_display = self.package.to_string();
+        for (i, path) in self.sites.iter().enumerate() {
+            let p = if i > 0 && *context == RowableContext::TTY {
+                "".to_string()
+            } else {
+                pkg_display.clone()
+            };
+            rows.push(vec![p, path.display().to_string()]);
         }
         rows
     }

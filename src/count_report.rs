@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::path_shared::PathShared;
 use crate::scan_fs::ScanFS;
 use crate::table::Rowable;
+use crate::table::RowableContext;
 use crate::table::Tableable;
 
 #[derive(Debug, Clone)]
@@ -18,7 +19,7 @@ impl CountRecord {
 }
 
 impl Rowable for CountRecord {
-    fn to_rows(&self) -> Vec<Vec<String>> {
+    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
         vec![vec![self.key.clone(), self.value.to_string()]]
     }
 }
