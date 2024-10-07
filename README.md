@@ -10,6 +10,11 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
+### 0.9.0
+
+Support `--requirement` in requirements files.
+
+
 ### 0.8.0
 
 Package and DepSpec comparisons now remove user.
@@ -18,7 +23,7 @@ Package and DepSpec comparisons now accept matching either on requested_revision
 
 URLs are now shown in DepSpec displays.
 
-Delimited file output no loner pads spaces.
+Delimited file output no longer pads spaces.
 
 
 ### 0.7.0

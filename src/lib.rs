@@ -11,6 +11,7 @@ mod package_match;
 mod path_shared;
 mod scan_fs;
 mod scan_report;
+mod table;
 mod ureq_client;
 mod util;
 mod validation_report;
@@ -26,6 +27,7 @@ use validation_report::ValidationFlags;
 use crate::dep_manifest::DepManifest;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
+use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -323,7 +325,7 @@ where
             );
             match subcommands {
                 ValidateSubcommand::Display => {
-                    vr.to_stdout();
+                    let _ = vr.to_stdout();
                 }
                 ValidateSubcommand::JSON => {
                     println!(
