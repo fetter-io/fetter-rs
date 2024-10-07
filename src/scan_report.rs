@@ -1,14 +1,12 @@
-use std::cmp;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::PathBuf;
 
 use crate::package::Package;
 use crate::path_shared::PathShared;
+use crate::table::Rowable;
+use crate::table::RowableContext;
+use crate::table::Tableable;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct ScanRecord {
     package: Package,
     sites: Vec<PathShared>,
@@ -17,6 +15,22 @@ pub(crate) struct ScanRecord {
 impl ScanRecord {
     pub(crate) fn new(package: Package, sites: Vec<PathShared>) -> Self {
         ScanRecord { package, sites }
+    }
+}
+
+impl Rowable for ScanRecord {
+    fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        let pkg_display = self.package.to_string();
+        for (i, path) in self.sites.iter().enumerate() {
+            let p = if i > 0 && *context == RowableContext::TTY {
+                "".to_string()
+            } else {
+                pkg_display.clone()
+            };
+            rows.push(vec![p, path.display().to_string()]);
+        }
+        rows
     }
 }
 
@@ -34,6 +48,7 @@ impl ScanReport {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
+        records.sort_by_key(|item| item.package.clone());
         ScanReport { records }
     }
 
@@ -48,68 +63,17 @@ impl ScanReport {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
+        records.sort_by_key(|item| item.package.clone());
         ScanReport { records }
     }
+}
 
-    //--------------------------------------------------------------------------
-
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: char,
-        repeat_package: bool,
-        pad: bool,
-    ) -> io::Result<()> {
-        let mut package_displays: Vec<String> = Vec::new();
-        let mut max_package_width = 0;
-
-        let mut records: Vec<&ScanRecord> = self.records.iter().collect();
-        records.sort_by_key(|item| &item.package);
-
-        for item in &records {
-            let pkg_display = format!("{}", item.package);
-            if pad {
-                max_package_width = cmp::max(max_package_width, pkg_display.len());
-            }
-            package_displays.push(pkg_display);
-        }
-        writeln!(
-            writer,
-            "{:<package_width$}{}{}",
-            "Package",
-            delimiter,
-            "Site",
-            package_width = max_package_width,
-        )?;
-
-        for (pkg_display, record) in package_displays.iter().zip(records.iter()) {
-            for (index, site) in record.sites.iter().enumerate() {
-                writeln!(
-                    writer,
-                    "{:<package_width$}{}{}",
-                    if index == 0 || repeat_package {
-                        pkg_display
-                    } else {
-                        ""
-                    },
-                    delimiter,
-                    site.display(),
-                    package_width = max_package_width,
-                )?;
-            }
-        }
-        Ok(())
+impl Tableable<ScanRecord> for ScanReport {
+    fn get_header(&self) -> Vec<String> {
+        vec!["Package".to_string(), "Site".to_string()]
     }
-
-    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, true, false)
-    }
-
-    pub(crate) fn to_stdout(&self) {
-        let stdout = io::stdout();
-        let handle = stdout.lock();
-        self.to_writer(handle, ' ', false, true).unwrap();
+    fn get_records(&self) -> &Vec<ScanRecord> {
+        &self.records
     }
 }
 
@@ -118,7 +82,10 @@ impl ScanReport {
 mod tests {
     use super::*;
     use crate::ScanFS;
+    use std::fs::File;
+    use std::io;
     use std::io::BufRead;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -141,6 +108,7 @@ mod tests {
 
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
+
         assert_eq!(lines.next().unwrap().unwrap(), "Package|Site");
         assert_eq!(
             lines.next().unwrap().unwrap(),
@@ -158,7 +126,6 @@ mod tests {
             lines.next().unwrap().unwrap(),
             "static-frame-2.13.0|/usr/lib/python3/site-packages"
         );
-
         assert!(lines.next().is_none());
     }
 }
