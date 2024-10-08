@@ -44,14 +44,12 @@ fn get_site_package_dirs(executable: &Path, force_usite: bool) -> Vec<PathShared
             for (i, line) in lines.enumerate() {
                 if i == 0 {
                     usite_enabled = line.trim() == "True";
-                    // println!("usite enabled: {:?}", usite_enabled);
                 } else {
                     paths.push(PathShared::from_str(line.trim()));
                 }
             }
             if !force_usite && !usite_enabled {
                 let _p = paths.pop();
-                println!("removing usite: {:?}", _p);
             }
             paths
         }
