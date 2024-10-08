@@ -108,10 +108,10 @@ impl fmt::Display for OSVSeverities {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
-struct OSVVulnInfo {
+pub(crate) struct OSVVulnInfo {
     summary: String,
     references: OSVReferences,
-    severity: OSVSeverities,
+    severity: Option<OSVSeverities>,
     // details: String,
     // affected: Vec<OSVAffected>, // surprised this is an array of affected
 }
@@ -136,9 +136,9 @@ fn query_osv_vuln<U: UreqClient + std::marker::Sync>(
     }
 }
 
-fn query_osv_vulns<U: UreqClient + std::marker::Sync>(
+pub(crate) fn query_osv_vulns<U: UreqClient + std::marker::Sync>(
     client: &U,
-    vuln_ids: Vec<String>,
+    vuln_ids: &Vec<String>,
 ) -> HashMap<String, OSVVulnInfo> {
     let results: Vec<(String, OSVVulnInfo)> = vuln_ids
         .par_iter()
@@ -166,7 +166,7 @@ mod tests {
             "GHSA-pmv9-3xqp-8w42".to_string(),
         ];
 
-        let result_map = query_osv_vulns(&UreqClientLive, vuln_ids);
+        let result_map = query_osv_vulns(&UreqClientLive, &vuln_ids);
 
         for (vuln_id, vuln) in result_map {
             println!("Vuln: {}", vuln_id);
@@ -189,7 +189,7 @@ mod tests {
             mock_post: None,
         };
 
-        let result_map = query_osv_vulns(&client, vuln_ids);
+        let result_map = query_osv_vulns(&client, &vuln_ids);
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();

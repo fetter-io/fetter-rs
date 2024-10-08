@@ -352,7 +352,7 @@ where
             let ar = sfs.to_audit_report();
             match subcommands {
                 AuditSubcommand::Display => {
-                    ar.to_stdout();
+                    let _ = ar.to_stdout();
                 }
                 AuditSubcommand::Write { output, delimiter } => {
                     let _ = ar.to_file(output, *delimiter);

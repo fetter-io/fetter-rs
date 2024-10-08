@@ -1,19 +1,43 @@
-use std::cmp;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::PathBuf;
+use std::collections::HashMap;
 
 use crate::osv_query::query_osv_batches;
-use crate::package::Package;
-use crate::ureq_client::UreqClientLive;
+use crate::osv_vulns::query_osv_vulns;
 
+use crate::osv_vulns::OSVVulnInfo;
+use crate::package::Package;
+use crate::table::Rowable;
+use crate::table::RowableContext;
+use crate::table::Tableable;
+use crate::ureq_client::UreqClientLive;
+//------------------------------------------------------------------------------
 #[derive(Debug)]
 pub(crate) struct AuditRecord {
     package: Package,
-    vulns: String,
+    vuln_ids: Vec<String>,
+    vuln_infos: HashMap<String, OSVVulnInfo>,
 }
 
+// impl AuditRecord {
+//     pub(crate) fn new(key: String, value: usize) -> Self {
+//         AuditRecord { key, value }
+//     }
+// }
+
+impl Rowable for AuditRecord {
+    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+        let mut rows = Vec::new();
+        for (i, vuln_id) in self.vuln_ids.iter().enumerate() {
+            if i == 0 {
+                rows.push(vec![self.package.to_string(), vuln_id.clone()])
+            } else {
+                rows.push(vec!["".to_string(), vuln_id.clone()])
+            }
+        }
+        rows
+    }
+}
+
+//------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct AuditReport {
     records: Vec<AuditRecord>,
@@ -22,71 +46,31 @@ pub struct AuditReport {
 /// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB
 impl AuditReport {
     pub(crate) fn from_packages(packages: &Vec<Package>) -> Self {
-        let vulns: Vec<Option<Vec<String>>> =
-            query_osv_batches(&UreqClientLive, packages);
+        let client = UreqClientLive;
+        let vulns: Vec<Option<Vec<String>>> = query_osv_batches(&client, packages);
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
-            // TODO: look up all vuln_ids with query_osv_vulns
-            let vulns = match vuln_ids {
-                Some(v) => v.join(", "),
-                None => "".to_string(),
-            };
-            let record = AuditRecord {
-                package: package.clone(),
-                vulns: vulns,
-            };
-            records.push(record);
+            if let Some(vuln_ids) = vuln_ids {
+                let vuln_infos: HashMap<String, OSVVulnInfo> =
+                    query_osv_vulns(&client, vuln_ids);
+
+                let record = AuditRecord {
+                    package: package.clone(),
+                    vuln_ids: vuln_ids.clone(),
+                    vuln_infos: vuln_infos, // move
+                };
+                records.push(record);
+            }
         }
         AuditReport { records }
     }
+}
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: char,
-        pad: bool,
-    ) -> io::Result<()> {
-        let mut package_displays: Vec<String> = Vec::new();
-        let mut max_package_width = 0;
-
-        for item in &self.records {
-            let package_display = format!("{}", item.package);
-            if pad {
-                max_package_width = cmp::max(max_package_width, package_display.len());
-            }
-            package_displays.push(package_display);
-        }
-        writeln!(
-            writer,
-            "{:<key_width$}{}{}",
-            "Package",
-            delimiter,
-            "Vulnerabilities",
-            key_width = max_package_width,
-        )?;
-
-        for (package_display, record) in package_displays.iter().zip(self.records.iter())
-        {
-            writeln!(
-                writer,
-                "{:<package_width$}{}{}",
-                package_display,
-                delimiter,
-                record.vulns,
-                package_width = max_package_width,
-            )?;
-        }
-        Ok(())
+impl Tableable<AuditRecord> for AuditReport {
+    fn get_header(&self) -> Vec<String> {
+        vec!["Package".to_string(), "Vulnerabilities".to_string()]
     }
-
-    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let file = File::create(file_path)?;
-        self.to_writer(file, delimiter, false)
-    }
-
-    pub(crate) fn to_stdout(&self) {
-        let stdout = io::stdout();
-        let handle = stdout.lock();
-        self.to_writer(handle, ' ', true).unwrap();
+    fn get_records(&self) -> &Vec<AuditRecord> {
+        &self.records
     }
 }
