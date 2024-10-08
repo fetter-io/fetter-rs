@@ -29,8 +29,8 @@ pub(crate) enum Anchor {
 }
 
 //------------------------------------------------------------------------------
-/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `usite_defeatable` is true, we use ENABLE_USER_SITE to determine if we should include it; otherwise we always include usite. To force inclusion of usite, `usite_defeatable` should be false.
-fn get_site_package_dirs(executable: &Path, usite_defeatable: bool) -> Vec<PathShared> {
+/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `force_usite` is false, we use ENABLE_USER_SITE to determine if we should include the user site packages; if `force_usite` is true, we always include usite.
+fn get_site_package_dirs(executable: &Path, force_usite: bool) -> Vec<PathShared> {
     let py = "import site;print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
     return match Command::new(executable).arg("-c").arg(py).output() {
         Ok(output) => {
@@ -49,7 +49,7 @@ fn get_site_package_dirs(executable: &Path, usite_defeatable: bool) -> Vec<PathS
                     paths.push(PathShared::from_str(line.trim()));
                 }
             }
-            if usite_defeatable && !usite_enabled {
+            if !force_usite && !usite_enabled {
                 let _p = paths.pop();
                 println!("removing usite: {:?}", _p);
             }
@@ -116,22 +116,25 @@ impl ScanFS {
         })
     }
     // Given a Vec of PathBuf to executables, use them to collect site packages.
-    pub(crate) fn from_exes(exes: Vec<PathBuf>) -> Result<Self, String> {
+    pub(crate) fn from_exes(
+        exes: Vec<PathBuf>,
+        force_usite: bool,
+    ) -> Result<Self, String> {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, false);
+                let dirs = get_site_package_dirs(&exe, force_usite);
                 (exe, dirs)
             })
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
-    pub(crate) fn from_exe_scan() -> Result<Self, String> {
+    pub(crate) fn from_exe_scan(force_usite: bool) -> Result<Self, String> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, false);
+                let dirs = get_site_package_dirs(&exe, force_usite);
                 (exe, dirs)
             })
             .collect();
@@ -314,9 +317,9 @@ mod tests {
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths1 = get_site_package_dirs(p1, false);
+        let paths1 = get_site_package_dirs(p1, true);
         assert_eq!(paths1.len() > 0, true);
-        let paths2 = get_site_package_dirs(p1, true);
+        let paths2 = get_site_package_dirs(p1, false);
         assert!(paths1.len() >= paths2.len());
     }
     #[test]
