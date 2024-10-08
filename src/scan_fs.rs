@@ -30,31 +30,26 @@ pub(crate) enum Anchor {
 
 //------------------------------------------------------------------------------
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
-fn get_site_package_dirs(executable: &Path,
-        usite_defeatable: bool,
-        ) -> Vec<PathShared> {
+fn get_site_package_dirs(executable: &Path, usite_defeatable: bool) -> Vec<PathShared> {
     let py = "import site;print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
-    return match Command::new(executable)
-            .arg("-c")
-            .arg(py)
-            .output() {
+    return match Command::new(executable).arg("-c").arg(py).output() {
         Ok(output) => {
-            let lines = std::str::from_utf8(&output.stdout)
-                    .expect("Failed to convert to UTF-8")
-                    .trim().lines();
             let mut paths = Vec::new();
             let mut usite_enabled = false;
-            println!("usite enabled: {:?}", usite_enabled);
 
+            let lines = std::str::from_utf8(&output.stdout)
+                .expect("Failed to convert to UTF-8")
+                .trim()
+                .lines();
             for (i, line) in lines.enumerate() {
                 if i == 0 {
                     usite_enabled = line.trim() == "True";
-                }
-                else {
+                    // println!("usite enabled: {:?}", usite_enabled);
+                } else {
                     paths.push(PathShared::from_str(line.trim()));
                 }
             }
-            // if usite_defeatable is true, we us the usite_eanbled to determine if we include it; otherwise we always include usite
+            // if usite_defeatable is true, we use usite_enabled to determine if we include it; otherwise we always include usite
             if usite_defeatable && !usite_enabled {
                 let _p = paths.pop();
                 println!("removing usite: {:?}", _p);
