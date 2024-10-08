@@ -6,6 +6,7 @@ use std::fmt;
 
 use crate::ureq_client::UreqClient;
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 struct OSVVulnReference {
     url: String,
@@ -18,6 +19,7 @@ impl fmt::Display for OSVVulnReference {
     }
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 struct OSVReferences(Vec<OSVVulnReference>);
 
@@ -61,6 +63,7 @@ impl fmt::Display for OSVReferences {
 //     // database_specific
 // }
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 struct OSVSeverity {
     r#type: String,
@@ -73,11 +76,13 @@ impl fmt::Display for OSVSeverity {
     }
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 struct OSVSeverities(Vec<OSVSeverity>);
 
 impl OSVSeverities {
     fn get_prime(&self) -> String {
+        // want to find the highest cvss...
         for s in self.0.iter() {
             if s.r#type.starts_with("CVSS_") {
                 return s.score.clone();
@@ -101,6 +106,7 @@ impl fmt::Display for OSVSeverities {
     }
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 struct OSVVulnInfo {
     summary: String,
@@ -108,6 +114,11 @@ struct OSVVulnInfo {
     severity: OSVSeverities,
     // details: String,
     // affected: Vec<OSVAffected>, // surprised this is an array of affected
+}
+
+//------------------------------------------------------------------------------
+fn get_osv_url(vuln_id: &str) -> String {
+    format!("https://osv.dev/vulnerability/{}", vuln_id)
 }
 
 fn query_osv_vuln<U: UreqClient + std::marker::Sync>(
@@ -194,8 +205,3 @@ mod tests {
         );
     }
 }
-
-// NOTE: can construct URLS to OSV site like this: https://osv.dev/vulnerability/GHSA-pmv9-3xqp-8w42
-
-// sample response:
-//
