@@ -29,7 +29,7 @@ pub(crate) enum Anchor {
 }
 
 //------------------------------------------------------------------------------
-/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `usite_defeatable` is true, we use ENABLE_USER_SITE to determine if we should include it; otherwise we always include usite.
+/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `usite_defeatable` is true, we use ENABLE_USER_SITE to determine if we should include it; otherwise we always include usite. To force inclusion of usite, `usite_defeatable` should be false.
 fn get_site_package_dirs(executable: &Path, usite_defeatable: bool) -> Vec<PathShared> {
     let py = "import site;print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
     return match Command::new(executable).arg("-c").arg(py).output() {
