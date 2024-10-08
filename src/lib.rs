@@ -74,6 +74,10 @@ struct Cli {
     #[arg(short, long, value_name = "FILES", required = false)]
     exe: Option<Vec<PathBuf>>,
 
+    /// Force inclusion of the user site-packages, even if it is not activated. If not set, user site packages will only be included if the interpreter has been configured to use it.
+    #[arg(long, required = false)]
+    user_site: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -225,11 +229,14 @@ enum AuditSubcommand {
 //------------------------------------------------------------------------------
 
 // Get a ScanFS, optionally using exe_paths if provided
-fn get_scan(exe_paths: Option<Vec<PathBuf>>) -> Result<ScanFS, String> {
+fn get_scan(
+    exe_paths: Option<Vec<PathBuf>>,
+    force_usite: bool,
+) -> Result<ScanFS, String> {
     if let Some(exe_paths) = exe_paths {
-        ScanFS::from_exes(exe_paths)
+        ScanFS::from_exes(exe_paths, force_usite)
     } else {
-        ScanFS::from_exe_scan()
+        ScanFS::from_exe_scan(force_usite)
     }
 }
 
@@ -250,11 +257,11 @@ where
     let cli = Cli::parse_from(args);
 
     if cli.command.is_none() {
-        println!("For more information, try '--help'.");
+        println!("No command provided. For more information, try '--help'.");
         return;
     }
     // we always do a scan; we might cache this
-    let sfs = get_scan(cli.exe).unwrap(); // handle error
+    let sfs = get_scan(cli.exe, cli.user_site).unwrap(); // handle error
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
