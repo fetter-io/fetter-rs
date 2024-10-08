@@ -81,7 +81,6 @@ fn query_osv_batch<U: UreqClient + std::marker::Sync>(
             // let body_str = body.into_string().unwrap_or_default();
             // println!("{:?}", body_str);
             let osv_res: OSVResponse = serde_json::from_str(&body_str).unwrap();
-
             osv_res
                 .results
                 .iter()
