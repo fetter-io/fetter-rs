@@ -30,19 +30,36 @@ pub(crate) enum Anchor {
 
 //------------------------------------------------------------------------------
 /// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux.
-fn get_site_package_dirs(executable: &Path) -> Vec<PathShared> {
+fn get_site_package_dirs(executable: &Path,
+        usite_defeatable: bool,
+        ) -> Vec<PathShared> {
+    let py = "import site;print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
     return match Command::new(executable)
             .arg("-c")
-            .arg("import site;print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())") // since Python 3.2
+            .arg(py)
             .output() {
         Ok(output) => {
-            let paths_lines = std::str::from_utf8(&output.stdout)
+            let lines = std::str::from_utf8(&output.stdout)
                     .expect("Failed to convert to UTF-8")
-                    .trim();
-            paths_lines
-                    .lines()
-                    .map(|line| PathShared::from_str(line.trim()))
-                    .collect()
+                    .trim().lines();
+            let mut paths = Vec::new();
+            let mut usite_enabled = false;
+            println!("usite enabled: {:?}", usite_enabled);
+
+            for (i, line) in lines.enumerate() {
+                if i == 0 {
+                    usite_enabled = line.trim() == "True";
+                }
+                else {
+                    paths.push(PathShared::from_str(line.trim()));
+                }
+            }
+            // if usite_defeatable is true, we us the usite_eanbled to determine if we include it; otherwise we always include usite
+            if usite_defeatable && !usite_enabled {
+                let _p = paths.pop();
+                println!("removing usite: {:?}", _p);
+            }
+            paths
         }
         Err(e) => {
             eprintln!("Failed to execute command: {}", e); // log this
@@ -109,7 +126,7 @@ impl ScanFS {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe);
+                let dirs = get_site_package_dirs(&exe, false);
                 (exe, dirs)
             })
             .collect();
@@ -120,7 +137,7 @@ impl ScanFS {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe);
+                let dirs = get_site_package_dirs(&exe, false);
                 (exe, dirs)
             })
             .collect();
@@ -303,8 +320,10 @@ mod tests {
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths = get_site_package_dirs(p1);
-        assert_eq!(paths.len() > 0, true)
+        let paths1 = get_site_package_dirs(p1, false);
+        assert_eq!(paths1.len() > 0, true);
+        let paths2 = get_site_package_dirs(p1, true);
+        assert!(paths1.len() >= paths2.len());
     }
     #[test]
     fn test_from_exe_to_sites_a() {
