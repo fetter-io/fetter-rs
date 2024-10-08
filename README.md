@@ -10,6 +10,14 @@ System-wide Python package discovery and allow listing.
 
 ## What is New in Fetter
 
+
+### 0.10.0
+
+Added `--user-site` flag to force inclusion of user site packages; otherwise, user site packages are only included if `ENABLE_USER_SITE` is set.
+
+Reimplemented display and delimited table outputs to use a generic trait implementation.
+
+
 ### 0.9.0
 
 Support `--requirement` in requirements files.
