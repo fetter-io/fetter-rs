@@ -111,7 +111,7 @@ pub(crate) struct OSVVulnInfo {
     pub(crate) references: OSVReferences,
     pub(crate) severity: Option<OSVSeverities>,
     // details: String,
-    // affected: Vec<OSVAffected>, // surprised this is an array of affected
+    // affected: Vec<OSVAffected>,
 }
 
 impl OSVVulnInfo {
@@ -121,7 +121,6 @@ impl OSVVulnInfo {
 }
 
 //------------------------------------------------------------------------------
-
 
 fn query_osv_vuln<U: UreqClient + std::marker::Sync>(
     client: &U,
