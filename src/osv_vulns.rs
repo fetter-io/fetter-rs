@@ -2,6 +2,8 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
+use std::collections::VecDeque;
+
 // use std::ops::Deref;
 // use ureq;
 
@@ -91,11 +93,22 @@ impl OSVSeverities {
     pub(crate) fn get_prime(&self) -> String {
         // want to find the highest cvss...
         for s in self.0.iter() {
-            if s.r#type.starts_with("CVSS_") {
-                return s.score.clone();
+            println!("{:?}", s.r#type);
+        }
+        let mut priority: VecDeque<&String> = VecDeque::new();
+        for s in self.0.iter() {
+            if s.r#type == "CVSS_V4" {
+                priority.push_front(&s.score);
+            }
+            else if s.r#type == "CVSS_V3" {
+                priority.push_back(&s.score);
             }
         }
-        return self.0[0].score.clone(); // just get the first
+        if let Some(item) = priority.pop_front() {
+            item.clone()
+        } else {
+            self.0[0].score.clone() // get first
+        }
     }
 }
 
