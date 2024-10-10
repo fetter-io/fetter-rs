@@ -150,16 +150,10 @@ mod tests {
             mock_get : Some(mock_get.to_string()),
         };
 
-        // let exe = PathBuf::from("/usr/bin/python3");
-        // let site = PathBuf::from("/usr/lib/python3/site-packages");
         let packages =
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
-        // let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
-        // let packages = self.get_packages();
         let ar = AuditReport::from_packages(&client, &packages);
-
-        // let ar = sfs.to_audit_report();
 
         let dir = tempdir().unwrap();
         let fp = dir.path().join("report.txt");

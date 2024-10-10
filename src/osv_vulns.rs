@@ -54,7 +54,7 @@ impl fmt::Display for OSVReferences {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Ord, Eq, PartialEq, PartialOrd)]
 struct OSVSeverity {
     r#type: String,
     score: String,
