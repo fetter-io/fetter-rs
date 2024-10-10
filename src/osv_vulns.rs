@@ -2,13 +2,14 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
+// use std::ops::Deref;
 // use ureq;
 
 use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
-struct OSVVulnReference {
+pub(crate) struct OSVVulnReference {
     url: String,
     r#type: String,
 }
@@ -21,11 +22,11 @@ impl fmt::Display for OSVVulnReference {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
-struct OSVReferences(Vec<OSVVulnReference>);
+pub(crate) struct OSVReferences(Vec<OSVVulnReference>);
 
 impl OSVReferences {
     /// Return a primary value for this collection.
-    fn get_prime(&self) -> String {
+    pub(crate) fn get_prime(&self) -> String {
         for s in self.0.iter() {
             if s.r#type == "ADVISORY" {
                 return s.url.clone();
@@ -34,7 +35,13 @@ impl OSVReferences {
         return self.0[0].url.clone(); // just get the first
     }
 }
+// impl Deref for OSVReferences {
+//     type Target = Vec<OSVVulnReference>;
 
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
 impl fmt::Display for OSVReferences {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NOTE: might only show ADVISORY if defined
@@ -78,10 +85,10 @@ impl fmt::Display for OSVSeverity {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
-struct OSVSeverities(Vec<OSVSeverity>);
+pub(crate) struct OSVSeverities(Vec<OSVSeverity>);
 
 impl OSVSeverities {
-    fn get_prime(&self) -> String {
+    pub(crate) fn get_prime(&self) -> String {
         // want to find the highest cvss...
         for s in self.0.iter() {
             if s.r#type.starts_with("CVSS_") {
@@ -109,15 +116,15 @@ impl fmt::Display for OSVSeverities {
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 pub(crate) struct OSVVulnInfo {
-    summary: String,
-    references: OSVReferences,
-    severity: Option<OSVSeverities>,
+    pub(crate) summary: String,
+    pub(crate) references: OSVReferences,
+    pub(crate) severity: Option<OSVSeverities>,
     // details: String,
     // affected: Vec<OSVAffected>, // surprised this is an array of affected
 }
 
 //------------------------------------------------------------------------------
-fn get_osv_url(vuln_id: &str) -> String {
+pub(crate) fn get_osv_url(vuln_id: &str) -> String {
     format!("https://osv.dev/vulnerability/{}", vuln_id)
 }
 

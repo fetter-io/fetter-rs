@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 
+use crate::osv_vulns::get_osv_url;
 use crate::osv_vulns::OSVVulnInfo;
 use crate::package::Package;
 use crate::table::Rowable;
@@ -27,10 +28,45 @@ impl Rowable for AuditRecord {
     fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
         let mut rows = Vec::new();
         for (i, vuln_id) in self.vuln_ids.iter().enumerate() {
-            if i == 0 {
-                rows.push(vec![self.package.to_string(), vuln_id.clone()])
+            let p = if i == 0 {
+                self.package.to_string()
             } else {
-                rows.push(vec!["".to_string(), vuln_id.clone()])
+                "".to_string()
+            };
+            rows.push(vec![
+                p.clone(),
+                vuln_id.clone(), // only on first row
+                "URL".to_string(),
+                get_osv_url(vuln_id),
+            ]);
+            if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
+                rows.push(vec![
+                    "".to_string(),
+                    "".to_string(),
+                    "Summary".to_string(),
+                    vuln_info.summary.chars().take(60).collect(), // TEMP!
+                ]);
+                // for reference in vuln_info.references.iter() {
+                //     rows.push(vec![
+                //         "".to_string(),
+                //         "".to_string(),
+                //         "Reference".to_string(),
+                //         reference.to_string(),
+                // ])}
+                rows.push(vec![
+                    "".to_string(),
+                    "".to_string(),
+                    "Reference".to_string(),
+                    vuln_info.references.get_prime(),
+                ]);
+                if let Some(severity) = &vuln_info.severity {
+                    rows.push(vec![
+                        "".to_string(),
+                        "".to_string(),
+                        "Severity".to_string(),
+                        severity.get_prime(),
+                    ]);
+                }
             }
         }
         rows
@@ -68,7 +104,12 @@ impl AuditReport {
 
 impl Tableable<AuditRecord> for AuditReport {
     fn get_header(&self) -> Vec<String> {
-        vec!["Package".to_string(), "Vulnerabilities".to_string()]
+        vec![
+            "Package".to_string(),
+            "Vulnerabilities".to_string(),
+            "Attribute".to_string(),
+            "Value".to_string(),
+        ]
     }
     fn get_records(&self) -> &Vec<AuditRecord> {
         &self.records
