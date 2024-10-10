@@ -219,9 +219,9 @@ mod tests {
             vuln.references.get_prime(),
             "https://nvd.nist.gov/vuln/detail/CVE-2024-1727"
         );
-        // assert_eq!(
-        //     vuln.severity.unwrap().get_prime(),
-        //     "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
-        // );
+        assert_eq!(
+            vuln.severity.as_ref().unwrap().get_prime(),
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
+        );
     }
 }
