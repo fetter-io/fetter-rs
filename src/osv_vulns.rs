@@ -92,9 +92,6 @@ pub(crate) struct OSVSeverities(Vec<OSVSeverity>);
 impl OSVSeverities {
     pub(crate) fn get_prime(&self) -> String {
         // want to find the highest cvss...
-        for s in self.0.iter() {
-            println!("{:?}", s.r#type);
-        }
         let mut priority: VecDeque<&String> = VecDeque::new();
         for s in self.0.iter() {
             if s.r#type == "CVSS_V4" {
