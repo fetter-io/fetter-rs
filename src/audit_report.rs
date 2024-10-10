@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 
-use crate::osv_vulns::get_osv_url;
 use crate::osv_vulns::OSVVulnInfo;
 use crate::package::Package;
 use crate::table::Rowable;
@@ -41,14 +40,14 @@ impl Rowable for AuditRecord {
                     vuln_id.clone()
                 }
             };
-            rows.push(vec![
-                package_display(),
-                vuln_id.clone(),
-                "URL".to_string(),
-                get_osv_url(vuln_id),
-            ]);
 
             if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
+                rows.push(vec![
+                    package_display(),
+                    vuln_id.clone(),
+                    "URL".to_string(),
+                    vuln_info.get_url(),
+                ]);
                 if let Some(summary) = &vuln_info.summary {
                     rows.push(vec![
                         package_display(),

@@ -37,13 +37,7 @@ impl OSVReferences {
         return self.0[0].url.clone(); // just get the first
     }
 }
-// impl Deref for OSVReferences {
-//     type Target = Vec<OSVVulnReference>;
 
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
 impl fmt::Display for OSVReferences {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NOTE: might only show ADVISORY if defined
@@ -58,19 +52,6 @@ impl fmt::Display for OSVReferences {
         )
     }
 }
-
-// #[derive(Debug, Deserialize)]
-// struct OSVEcoSpecific {
-//     severity: String,
-// }
-
-// #[derive(Debug, Deserialize)]
-// struct OSVAffected {
-//     ecosystem_specific: Option<OSVEcoSpecific>,
-//     // package
-//     // ranges
-//     // database_specific
-// }
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
@@ -125,6 +106,7 @@ impl fmt::Display for OSVSeverities {
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 pub(crate) struct OSVVulnInfo {
+    pub(crate) id: String,
     pub(crate) summary: Option<String>,
     pub(crate) references: OSVReferences,
     pub(crate) severity: Option<OSVSeverities>,
@@ -132,10 +114,14 @@ pub(crate) struct OSVVulnInfo {
     // affected: Vec<OSVAffected>, // surprised this is an array of affected
 }
 
-//------------------------------------------------------------------------------
-pub(crate) fn get_osv_url(vuln_id: &str) -> String {
-    format!("https://osv.dev/vulnerability/{}", vuln_id)
+impl OSVVulnInfo {
+    pub(crate) fn get_url(&self) -> String {
+        format!("https://osv.dev/vulnerability/{}", self.id)
+    }
 }
+
+//------------------------------------------------------------------------------
+
 
 fn query_osv_vuln<U: UreqClient + std::marker::Sync>(
     client: &U,
