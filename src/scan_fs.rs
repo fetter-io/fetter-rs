@@ -17,6 +17,7 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
+use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
@@ -246,7 +247,7 @@ impl ScanFS {
 
     pub(crate) fn to_audit_report(&self) -> AuditReport {
         let packages = self.get_packages();
-        AuditReport::from_packages(&packages)
+        AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
