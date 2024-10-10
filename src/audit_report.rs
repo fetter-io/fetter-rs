@@ -18,12 +18,6 @@ pub(crate) struct AuditRecord {
     vuln_infos: HashMap<String, OSVVulnInfo>,
 }
 
-// impl AuditRecord {
-//     pub(crate) fn new(key: String, value: usize) -> Self {
-//         AuditRecord { key, value }
-//     }
-// }
-
 impl Rowable for AuditRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let is_tty = *context == RowableContext::TTY;
@@ -81,72 +75,6 @@ impl Rowable for AuditRecord {
 
         rows
     }
-
-    // fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
-    //     let is_tty = *context == RowableContext::TTY;
-
-    //     let mut rows = Vec::new();
-    //     for (i, vuln_id) in self.vuln_ids.iter().enumerate() {
-    //         let p = if i == 0 || !is_tty {
-    //             self.package.to_string()
-    //         } else {
-    //             "".to_string()
-    //         };
-    //         rows.push(vec![
-    //             p.clone(),
-    //             vuln_id.clone(), // only on first row
-    //             "URL".to_string(),
-    //             get_osv_url(vuln_id),
-    //         ]);
-    //         if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
-    //             rows.push(vec![
-    //                 if is_tty {
-    //                     "".to_string()
-    //                 } else {
-    //                     self.package.to_string()
-    //                 },
-    //                 if is_tty {
-    //                     "".to_string()
-    //                 } else {
-    //                     vuln_id.clone()
-    //                 },
-    //                 "Summary".to_string(),
-    //                 vuln_info.summary.chars().take(60).collect(), // TEMP!
-    //             ]);
-    //             rows.push(vec![
-    //                 if is_tty {
-    //                     "".to_string()
-    //                 } else {
-    //                     self.package.to_string()
-    //                 },
-    //                 if is_tty {
-    //                     "".to_string()
-    //                 } else {
-    //                     vuln_id.clone()
-    //                 },
-    //                 "Reference".to_string(),
-    //                 vuln_info.references.get_prime(),
-    //             ]);
-    //             if let Some(severity) = &vuln_info.severity {
-    //                 rows.push(vec![
-    //                     if is_tty {
-    //                         "".to_string()
-    //                     } else {
-    //                         self.package.to_string()
-    //                     },
-    //                     if is_tty {
-    //                         "".to_string()
-    //                     } else {
-    //                         vuln_id.clone()
-    //                     },
-    //                     "Severity".to_string(),
-    //                     severity.get_prime(),
-    //                 ]);
-    //             }
-    //         }
-    //     }
-    //     rows
-    // }
 }
 
 //------------------------------------------------------------------------------
