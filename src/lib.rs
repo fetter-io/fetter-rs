@@ -1,7 +1,10 @@
+mod audit_report;
 mod count_report;
 mod dep_manifest;
 mod dep_spec;
 mod exe_search;
+mod osv_query;
+mod osv_vulns;
 mod package;
 mod package_durl;
 mod package_match;
@@ -9,6 +12,7 @@ mod path_shared;
 mod scan_fs;
 mod scan_report;
 mod table;
+mod ureq_client;
 mod util;
 mod validation_report;
 mod version_spec;
@@ -127,6 +131,11 @@ enum Commands {
         #[command(subcommand)]
         subcommands: ValidateSubcommand,
     },
+    /// Search for vulnerabilities on observed packages.
+    Audit {
+        #[command(subcommand)]
+        subcommands: AuditSubcommand,
+    },
     /// Purge packages that fail validation
     Purge {
         /// File path from which to read bound requirements.
@@ -202,6 +211,19 @@ enum ValidateSubcommand {
     Exit {
         #[arg(short, long, default_value = "3")]
         code: i32,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditSubcommand {
+    /// Display validation to the terminal.
+    Display,
+    /// Print a JSON representation of validation results.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
     },
 }
 //------------------------------------------------------------------------------
@@ -323,6 +345,17 @@ where
                 }
                 ValidateSubcommand::Exit { code } => {
                     process::exit(if vr.len() > 0 { *code } else { 0 });
+                }
+            }
+        }
+        Some(Commands::Audit { subcommands }) => {
+            let ar = sfs.to_audit_report();
+            match subcommands {
+                AuditSubcommand::Display => {
+                    let _ = ar.to_stdout();
+                }
+                AuditSubcommand::Write { output, delimiter } => {
+                    let _ = ar.to_file(output, *delimiter);
                 }
             }
         }

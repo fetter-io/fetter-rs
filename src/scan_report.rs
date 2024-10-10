@@ -22,8 +22,10 @@ impl Rowable for ScanRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let mut rows: Vec<Vec<String>> = Vec::new();
         let pkg_display = self.package.to_string();
+        let is_tty = *context == RowableContext::TTY;
+
         for (i, path) in self.sites.iter().enumerate() {
-            let p = if i > 0 && *context == RowableContext::TTY {
+            let p = if i > 0 && is_tty {
                 "".to_string()
             } else {
                 pkg_display.clone()

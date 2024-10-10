@@ -7,6 +7,7 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
+use crate::audit_report::AuditReport;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
@@ -16,6 +17,7 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
+use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
@@ -243,6 +245,12 @@ impl ScanFS {
         ValidationReport { records }
     }
 
+    pub(crate) fn to_audit_report(&self) -> AuditReport {
+        let packages = self.get_packages();
+        AuditReport::from_packages(&UreqClientLive, &packages)
+    }
+
+    /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 

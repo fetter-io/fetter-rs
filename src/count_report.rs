@@ -6,6 +6,7 @@ use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub(crate) struct CountRecord {
     key: String,
@@ -24,6 +25,7 @@ impl Rowable for CountRecord {
     }
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug)]
 pub struct CountReport {
     records: Vec<CountRecord>,
