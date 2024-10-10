@@ -1,8 +1,8 @@
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt;
 use std::collections::VecDeque;
+use std::fmt;
 
 // use std::ops::Deref;
 // use ureq;
@@ -99,8 +99,7 @@ impl OSVSeverities {
         for s in self.0.iter() {
             if s.r#type == "CVSS_V4" {
                 priority.push_front(&s.score);
-            }
-            else if s.r#type == "CVSS_V3" {
+            } else if s.r#type == "CVSS_V3" {
                 priority.push_back(&s.score);
             }
         }
