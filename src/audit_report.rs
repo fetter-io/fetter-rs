@@ -25,7 +25,9 @@ pub(crate) struct AuditRecord {
 // }
 
 impl Rowable for AuditRecord {
-    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+    fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
+        let is_tty = *context == RowableContext::TTY;
+
         let mut rows = Vec::new();
         for (i, vuln_id) in self.vuln_ids.iter().enumerate() {
             let p = if i == 0 {
@@ -46,13 +48,6 @@ impl Rowable for AuditRecord {
                     "Summary".to_string(),
                     vuln_info.summary.chars().take(60).collect(), // TEMP!
                 ]);
-                // for reference in vuln_info.references.iter() {
-                //     rows.push(vec![
-                //         "".to_string(),
-                //         "".to_string(),
-                //         "Reference".to_string(),
-                //         reference.to_string(),
-                // ])}
                 rows.push(vec![
                     "".to_string(),
                     "".to_string(),
