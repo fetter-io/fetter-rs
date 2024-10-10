@@ -125,7 +125,7 @@ impl fmt::Display for OSVSeverities {
 //------------------------------------------------------------------------------
 #[derive(Debug, Deserialize)]
 pub(crate) struct OSVVulnInfo {
-    pub(crate) summary: String,
+    pub(crate) summary: Option<String>,
     pub(crate) references: OSVReferences,
     pub(crate) severity: Option<OSVSeverities>,
     // details: String,
@@ -210,7 +210,7 @@ mod tests {
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();
         assert_eq!(vuln_id, "GHSA-48cq-79qq-6f7x");
-        assert_eq!(vuln.summary, "Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files");
+        assert_eq!(vuln.summary.as_ref().unwrap(), "Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files");
         assert_eq!(
             vuln.references.get_prime(),
             "https://nvd.nist.gov/vuln/detail/CVE-2024-1727"

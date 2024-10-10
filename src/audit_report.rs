@@ -48,13 +48,14 @@ impl Rowable for AuditRecord {
             ]);
 
             if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
-                rows.push(vec![
-                    package_display(),
-                    vuln_display(),
-                    "Summary".to_string(),
-                    vuln_info.summary.chars().take(60).collect(), // TEMP!
-                ]);
-
+                if let Some(summary) = &vuln_info.summary {
+                    rows.push(vec![
+                        package_display(),
+                        vuln_display(),
+                        "Summary".to_string(),
+                        summary.chars().take(60).collect(), // TEMP!
+                    ]);
+                }
                 rows.push(vec![
                     package_display(),
                     vuln_display(),
