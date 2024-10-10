@@ -182,8 +182,8 @@ impl Tableable<ValidationRecord> for ValidationReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DepManifest;
-    use crate::ScanFS;
+    use crate::dep_manifest::DepManifest;
+    use crate::scan_fs::ScanFS;
     use std::fs::File;
     use std::io;
     use std::io::BufRead;

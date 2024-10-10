@@ -83,7 +83,7 @@ impl Tableable<ScanRecord> for ScanReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ScanFS;
+    use crate::scan_fs::ScanFS;
     use std::fs::File;
     use std::io;
     use std::io::BufRead;
