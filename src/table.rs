@@ -33,12 +33,9 @@ struct WidthFormat {
     width: usize,
 }
 
-
 fn optimize_widths(widths_max: &Vec<usize>, w_gutter: usize) -> Vec<WidthFormat> {
-
     // total characters needed; we add a gutter after all columns, even the last one
-    let w_total: usize =
-    widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
+    let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
 
     // TODO: check if this is a termial, otherwise do standard widths
     let (w_terminal, _) = terminal::size().unwrap();
