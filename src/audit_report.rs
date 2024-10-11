@@ -53,11 +53,7 @@ impl Rowable for AuditRecord {
                         package_display(),
                         vuln_display(),
                         "Summary".to_string(),
-                        if is_tty {
-                            summary.chars().take(60).collect() // TEMP char truncation
-                        } else {
-                            summary.clone()
-                        },
+                        summary.clone(),
                     ]);
                 }
                 rows.push(vec![

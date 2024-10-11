@@ -1,3 +1,5 @@
+use crossterm::terminal;
+
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
@@ -25,6 +27,62 @@ fn to_writer_delimited<W: Write>(
     Ok(())
 }
 
+#[derive(Debug)]
+struct WidthFormat {
+    width_pad: usize,
+    width: usize,
+}
+
+
+fn optimize_widths(widths_max: &Vec<usize>, w_gutter: usize) -> Vec<WidthFormat> {
+
+    // total characters needed; we add a gutter after all columns, even the last one
+    let w_total: usize =
+    widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
+
+    // TODO: check if this is a termial, otherwise do standard widths
+    let (w_terminal, _) = terminal::size().unwrap();
+    println!("width: {:?}", w_terminal);
+
+    if w_total <= w_terminal.into() {
+        return widths_max
+            .iter()
+            .map(|e| WidthFormat {
+                width: *e,
+                width_pad: *e + w_gutter,
+            })
+            .collect();
+    }
+
+    let w_excess: f64 = (w_total - w_terminal as usize) as f64; // width to trim
+
+    let mut widths = Vec::new();
+    for width in widths_max.iter() {
+        let proportion = *width as f64 / w_total as f64;
+        let reduction = (proportion * w_excess as f64).floor() as usize;
+        println!("w_excess: {:?}", w_excess);
+        println!("proportion: {:?}", proportion);
+        println!("reduction: {:?}", reduction);
+
+        let w_field = (*width - reduction).max(3);
+        widths.push(WidthFormat {
+            width: w_field - w_gutter,
+            width_pad: w_field,
+        });
+    }
+    println!("widths_max: {:?}", widths_max);
+    println!("widths: {:?}", widths);
+    widths
+}
+
+fn prepare_field(value: &String, widths: &WidthFormat) -> String {
+    if value.len() <= widths.width {
+        format!("{:<w$}", value, w = widths.width_pad)
+    } else {
+        format!("{:<w$}", &value[..widths.width], w = widths.width_pad)
+    }
+}
+
 /// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
 fn to_table_writer<W: Write, T: Rowable>(
     writer: &mut W,
@@ -47,33 +105,29 @@ fn to_table_writer<W: Write, T: Rowable>(
         }
         None => {
             // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
-            let mut column_widths = vec![0; headers.len()];
+            let mut widths_max = vec![0; headers.len()];
             for (i, header) in headers.iter().enumerate() {
-                column_widths[i] = header.len();
+                widths_max[i] = header.len();
             }
             let mut rows = Vec::new();
             for record in records {
                 for row in record.to_rows(&context) {
                     for (i, element) in row.iter().enumerate() {
-                        column_widths[i] = column_widths[i].max(element.len());
+                        widths_max[i] = widths_max[i].max(element.len());
                     }
                     rows.push(row);
                 }
             }
+            let widths = optimize_widths(&widths_max, 2);
             // header
             for (i, header) in headers.into_iter().enumerate() {
-                write!(writer, "{:<width$} ", header, width = column_widths[i])?;
+                write!(writer, "{}", prepare_field(&header, &widths[i]),)?;
             }
             writeln!(writer)?;
-            // separator
-            // for width in &column_widths {
-            //     write!(writer, "{:_<width$} ", "_", width = width)?;
-            // }
-            // writeln!(writer)?;
             // body
             for row in rows {
                 for (i, element) in row.into_iter().enumerate() {
-                    write!(writer, "{:<width$} ", element, width = column_widths[i])?;
+                    write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
                 }
                 writeln!(writer)?;
             }
