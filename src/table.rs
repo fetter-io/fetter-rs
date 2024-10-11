@@ -30,53 +30,60 @@ fn to_writer_delimited<W: Write>(
 #[derive(Debug)]
 struct WidthFormat {
     width_pad: usize,
-    width: usize,
+    width_chars: usize,
 }
 
 fn optimize_widths(widths_max: &Vec<usize>, w_gutter: usize) -> Vec<WidthFormat> {
     // total characters needed; we add a gutter after all columns, even the last one
     let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
 
-    // TODO: check if this is a termial, otherwise do standard widths
-    let (w_terminal, _) = terminal::size().unwrap();
-    println!("width: {:?}", w_terminal);
+    let w_terminal = match terminal::size() {
+        Ok((w, _)) => w,
+        _ => 0,
+    };
 
-    if w_total <= w_terminal.into() {
+    if w_terminal == 0 || w_total <= w_terminal.into() {
         return widths_max
             .iter()
             .map(|e| WidthFormat {
-                width: *e,
+                width_chars: *e,
                 width_pad: *e + w_gutter,
             })
             .collect();
     }
 
+    // proportional reduction from all
     let w_excess: f64 = (w_total - w_terminal as usize) as f64; // width to trim
-
     let mut widths = Vec::new();
     for width in widths_max.iter() {
         let proportion = *width as f64 / w_total as f64;
-        let reduction = (proportion * w_excess as f64).floor() as usize;
-        println!("w_excess: {:?}", w_excess);
-        println!("proportion: {:?}", proportion);
-        println!("reduction: {:?}", reduction);
-
+        let reduction = (proportion * w_excess) as usize;
+        // println!("w_terminal {:?} width: {:?} w_excess {:?} proportion: {:?} reduction: {:?}", w_terminal, width, w_excess, proportion, reduction);
         let w_field = (*width - reduction).max(3);
         widths.push(WidthFormat {
-            width: w_field - w_gutter,
+            width_chars: w_field - w_gutter,
             width_pad: w_field,
         });
     }
-    println!("widths_max: {:?}", widths_max);
-    println!("widths: {:?}", widths);
+
+    // println!("widths_max: {:?}", widths_max);
+    // println!("widths: {:?}", widths);
     widths
 }
 
 fn prepare_field(value: &String, widths: &WidthFormat) -> String {
-    if value.len() <= widths.width {
+    if value.len() <= widths.width_chars {
         format!("{:<w$}", value, w = widths.width_pad)
     } else {
-        format!("{:<w$}", &value[..widths.width], w = widths.width_pad)
+        if widths.width_chars > 3 && (value.len() - widths.width_chars) > 3 {
+            format!(
+                "{:<w$}",
+                format!("{}...", &value[..(widths.width_chars - 3)]),
+                w = widths.width_pad
+            )
+        } else {
+            format!("{:<w$}", &value[..widths.width_chars], w = widths.width_pad)
+        }
     }
 }
 
