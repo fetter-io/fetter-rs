@@ -5,6 +5,7 @@ use std::fmt;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 use crate::path_shared::PathShared;
+use crate::table::HeaderFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
@@ -165,12 +166,12 @@ impl ValidationReport {
 }
 
 impl Tableable<ValidationRecord> for ValidationReport {
-    fn get_header(&self) -> Vec<String> {
+    fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            "Package".to_string(),
-            "Dependency".to_string(),
-            "Explain".to_string(),
-            "Sites".to_string(),
+            HeaderFormat::new("Package".to_string(), false),
+            HeaderFormat::new("Dependency".to_string(), false),
+            HeaderFormat::new("Explain".to_string(), false),
+            HeaderFormat::new("Sites".to_string(), true),
         ]
     }
     fn get_records(&self) -> &Vec<ValidationRecord> {
