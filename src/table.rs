@@ -1,9 +1,28 @@
 use crossterm::terminal;
-
+use crossterm::{
+    execute,
+    style::{Attribute, Color, Print, SetAttribute, SetForegroundColor},
+};
+use crossterm::tty::IsTty;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
 use std::path::PathBuf;
+
+fn write_color<W: Write + IsTty>(writer: &mut W, r: u8, g: u8, b: u8, message: &str) {
+    if writer.is_tty() {
+        execute!(
+            writer,
+            SetForegroundColor(Color::Rgb { r, g, b }),
+            // SetAttribute(Attribute::Bold),
+            Print(message),
+            SetAttribute(Attribute::Reset)
+        )
+        .unwrap();
+    } else {
+        writeln!(writer, "{}", message).unwrap();
+    }
+}
 
 #[derive(PartialEq)]
 pub(crate) enum RowableContext {
