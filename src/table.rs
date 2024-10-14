@@ -1,9 +1,9 @@
 use crossterm::terminal;
+use crossterm::tty::IsTty;
 use crossterm::{
     execute,
     style::{Attribute, Color, Print, SetAttribute, SetForegroundColor},
 };
-use crossterm::tty::IsTty;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
@@ -129,59 +129,65 @@ fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     }
 }
 
-/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
-fn to_table_writer<W: Write, T: Rowable>(
+fn to_table_delimited<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<HeaderFormat>,
     records: &Vec<T>,
-    delimiter: Option<&str>,
-    context: RowableContext,
+    delimiter: &str,
+) -> Result<(), Error> {
+    if records.is_empty() || headers.is_empty() {
+        return Ok(());
+    }
+    let header_labels: Vec<String> = headers.iter().map(|hf| hf.header.clone()).collect();
+
+    to_writer_delimited(writer, &header_labels, delimiter)?;
+    for record in records {
+        for row in record.to_rows(&RowableContext::Delimited) {
+            to_writer_delimited(writer, &row, delimiter)?;
+        }
+    }
+    Ok(())
+}
+
+/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
+fn to_table_display<W: Write + std::os::fd::AsRawFd, T: Rowable>(
+    writer: &mut W,
+    headers: Vec<HeaderFormat>,
+    records: &Vec<T>,
 ) -> Result<(), Error> {
     if records.is_empty() || headers.is_empty() {
         return Ok(());
     }
     let header_labels: Vec<String> = headers.iter().map(|hf| hf.header.clone()).collect();
     let ellipsisable: Vec<bool> = headers.iter().map(|hf| hf.ellipsisable).collect();
-
-    match delimiter {
-        Some(delim) => {
-            to_writer_delimited(writer, &header_labels, delim)?;
-            for record in records {
-                for row in record.to_rows(&context) {
-                    to_writer_delimited(writer, &row, delim)?;
-                }
+    // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
+    let mut widths_max = vec![0; headers.len()];
+    for (i, header) in header_labels.iter().enumerate() {
+        widths_max[i] = header.len();
+    }
+    let mut rows = Vec::new();
+    for record in records {
+        for row in record.to_rows(&RowableContext::TTY) {
+            for (i, element) in row.iter().enumerate() {
+                widths_max[i] = widths_max[i].max(element.len());
             }
+            rows.push(row);
         }
-        None => {
-            // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
-            let mut widths_max = vec![0; headers.len()];
-            for (i, header) in header_labels.iter().enumerate() {
-                widths_max[i] = header.len();
-            }
-            let mut rows = Vec::new();
-            for record in records {
-                for row in record.to_rows(&context) {
-                    for (i, element) in row.iter().enumerate() {
-                        widths_max[i] = widths_max[i].max(element.len());
-                    }
-                    rows.push(row);
-                }
-            }
-            let w_gutter = 2;
-            let widths = optimize_widths(&widths_max, &ellipsisable, w_gutter);
-            // header
-            for (i, header) in header_labels.into_iter().enumerate() {
-                write!(writer, "{}", prepare_field(&header, &widths[i]),)?;
-            }
-            writeln!(writer)?;
-            // body
-            for row in rows {
-                for (i, element) in row.into_iter().enumerate() {
-                    write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
-                }
-                writeln!(writer)?;
-            }
+    }
+    let w_gutter = 2;
+    let widths = optimize_widths(&widths_max, &ellipsisable, w_gutter);
+    // header
+    for (i, header) in header_labels.into_iter().enumerate() {
+        // write!(writer, "{}", prepare_field(&header, &widths[i]),)?;
+        write_color(writer, 30, 30, 30, &prepare_field(&header, &widths[i]));
+    }
+    writeln!(writer)?;
+    // body
+    for row in rows {
+        for (i, element) in row.into_iter().enumerate() {
+            write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
         }
+        writeln!(writer)?;
     }
     Ok(())
 }
@@ -205,35 +211,19 @@ pub(crate) trait Tableable<T: Rowable> {
     fn get_header(&self) -> Vec<HeaderFormat>;
     fn get_records(&self) -> &Vec<T>;
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: Option<&str>,
-        context: RowableContext,
-    ) -> io::Result<()> {
-        let _ = to_table_writer(
-            &mut writer,
+    fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
+        let mut file = File::create(file_path)?;
+        to_table_delimited(
+            &mut file,
             self.get_header(),
             self.get_records(),
-            delimiter,
-            context,
-        );
-        Ok(())
-    }
-
-    fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let file = File::create(file_path)?;
-        self.to_writer(
-            file,
-            Some(&delimiter.to_string()),
-            RowableContext::Delimited,
+            &delimiter.to_string(),
         )
     }
 
     fn to_stdout(&self) -> io::Result<()> {
         let stdout = io::stdout();
-        let handle = stdout.lock();
-        // TODO: check if we are a TTY
-        self.to_writer(handle, None, RowableContext::TTY)
+        let mut handle = stdout.lock();
+        to_table_display(&mut handle, self.get_header(), self.get_records())
     }
 }
