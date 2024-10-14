@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
 use std::path::PathBuf;
+use std::os::fd::AsRawFd;
 
 fn write_color<W: Write + IsTty>(writer: &mut W, r: u8, g: u8, b: u8, message: &str) {
     if writer.is_tty() {
@@ -149,7 +150,7 @@ fn to_table_delimited<W: Write, T: Rowable>(
 }
 
 /// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
-fn to_table_display<W: Write + std::os::fd::AsRawFd, T: Rowable>(
+fn to_table_display<W: Write + AsRawFd, T: Rowable>(
     writer: &mut W,
     headers: Vec<HeaderFormat>,
     records: &Vec<T>,
