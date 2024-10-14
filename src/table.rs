@@ -36,16 +36,6 @@ pub(crate) trait Rowable {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>>;
 }
 
-fn to_writer_delimited<W: Write>(
-    writer: &mut W,
-    row: &[String],
-    delimiter: &str,
-) -> Result<(), Error> {
-    let row_str = row.join(delimiter);
-    writeln!(writer, "{}", row_str)?;
-    Ok(())
-}
-
 #[derive(Debug)]
 struct WidthFormat {
     width_pad: usize,
@@ -129,6 +119,16 @@ fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     }
 }
 
+// fn to_writer_delimited<W: Write>(
+//     writer: &mut W,
+//     row: &[String],
+//     delimiter: &str,
+// ) -> Result<(), Error> {
+//     let row_str = row.join(delimiter);
+//     writeln!(writer, "{}", row_str)?;
+//     Ok(())
+// }
+
 fn to_table_delimited<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<HeaderFormat>,
@@ -139,11 +139,10 @@ fn to_table_delimited<W: Write, T: Rowable>(
         return Ok(());
     }
     let header_labels: Vec<String> = headers.iter().map(|hf| hf.header.clone()).collect();
-
-    to_writer_delimited(writer, &header_labels, delimiter)?;
+    writeln!(writer, "{}", header_labels.join(delimiter))?;
     for record in records {
         for row in record.to_rows(&RowableContext::Delimited) {
-            to_writer_delimited(writer, &row, delimiter)?;
+            writeln!(writer, "{}", row.join(delimiter))?;
         }
     }
     Ok(())
