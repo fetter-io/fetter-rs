@@ -113,10 +113,10 @@ impl AuditReport {
 impl Tableable<AuditRecord> for AuditReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            HeaderFormat::new("Package".to_string(), false),
-            HeaderFormat::new("Vulnerabilities".to_string(), false),
-            HeaderFormat::new("Attribute".to_string(), false),
-            HeaderFormat::new("Value".to_string(), true),
+            HeaderFormat::new("Package".to_string(), false, None),
+            HeaderFormat::new("Vulnerabilities".to_string(), false, None),
+            HeaderFormat::new("Attribute".to_string(), false, None),
+            HeaderFormat::new("Value".to_string(), true, None),
         ]
     }
     fn get_records(&self) -> &Vec<AuditRecord> {

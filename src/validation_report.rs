@@ -168,10 +168,10 @@ impl ValidationReport {
 impl Tableable<ValidationRecord> for ValidationReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            HeaderFormat::new("Package".to_string(), false),
-            HeaderFormat::new("Dependency".to_string(), false),
-            HeaderFormat::new("Explain".to_string(), false),
-            HeaderFormat::new("Sites".to_string(), true),
+            HeaderFormat::new("Package".to_string(), false, None),
+            HeaderFormat::new("Dependency".to_string(), false, None),
+            HeaderFormat::new("Explain".to_string(), false, None),
+            HeaderFormat::new("Sites".to_string(), true, None),
         ]
     }
     fn get_records(&self) -> &Vec<ValidationRecord> {

@@ -60,8 +60,8 @@ impl CountReport {
 impl Tableable<CountRecord> for CountReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            HeaderFormat::new("".to_string(), false),
-            HeaderFormat::new("Count".to_string(), false),
+            HeaderFormat::new("".to_string(), false, Some((20, 20, 20))),
+            HeaderFormat::new("Count".to_string(), false, None),
         ]
     }
     fn get_records(&self) -> &Vec<CountRecord> {

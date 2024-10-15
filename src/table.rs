@@ -1,9 +1,29 @@
 use crossterm::terminal;
-
+use crossterm::tty::IsTty;
+use crossterm::{
+    execute,
+    style::{Attribute, Color, Print, SetAttribute, SetForegroundColor},
+};
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
+
+fn write_color<W: Write + IsTty>(writer: &mut W, r: u8, g: u8, b: u8, message: &str) {
+    if writer.is_tty() {
+        execute!(
+            writer,
+            SetForegroundColor(Color::Rgb { r, g, b }),
+            // SetAttribute(Attribute::Bold),
+            Print(message),
+            SetAttribute(Attribute::Reset)
+        )
+        .unwrap();
+    } else {
+        writeln!(writer, "{}", message).unwrap();
+    }
+}
 
 #[derive(PartialEq)]
 pub(crate) enum RowableContext {
@@ -15,16 +35,6 @@ pub(crate) enum RowableContext {
 /// Translate one struct into one or more rows (Vec<String>). Note that the number of resultant columns not be equal to the number of struct fields.
 pub(crate) trait Rowable {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>>;
-}
-
-fn to_writer_delimited<W: Write>(
-    writer: &mut W,
-    row: &[String],
-    delimiter: &str,
-) -> Result<(), Error> {
-    let row_str = row.join(delimiter);
-    writeln!(writer, "{}", row_str)?;
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -110,74 +120,112 @@ fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     }
 }
 
-/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
-fn to_table_writer<W: Write, T: Rowable>(
+// fn to_writer_delimited<W: Write>(
+//     writer: &mut W,
+//     row: &[String],
+//     delimiter: &str,
+// ) -> Result<(), Error> {
+//     let row_str = row.join(delimiter);
+//     writeln!(writer, "{}", row_str)?;
+//     Ok(())
+// }
+
+fn to_table_delimited<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<HeaderFormat>,
     records: &Vec<T>,
-    delimiter: Option<&str>,
-    context: RowableContext,
+    delimiter: &str,
+) -> Result<(), Error> {
+    if records.is_empty() || headers.is_empty() {
+        return Ok(());
+    }
+    let header_labels: Vec<String> = headers.iter().map(|hf| hf.header.clone()).collect();
+    writeln!(writer, "{}", header_labels.join(delimiter))?;
+    for record in records {
+        for row in record.to_rows(&RowableContext::Delimited) {
+            writeln!(writer, "{}", row.join(delimiter))?;
+        }
+    }
+    Ok(())
+}
+
+/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
+fn to_table_display<W: Write + AsRawFd, T: Rowable>(
+    writer: &mut W,
+    headers: Vec<HeaderFormat>,
+    records: &Vec<T>,
 ) -> Result<(), Error> {
     if records.is_empty() || headers.is_empty() {
         return Ok(());
     }
     let header_labels: Vec<String> = headers.iter().map(|hf| hf.header.clone()).collect();
     let ellipsisable: Vec<bool> = headers.iter().map(|hf| hf.ellipsisable).collect();
-
-    match delimiter {
-        Some(delim) => {
-            to_writer_delimited(writer, &header_labels, delim)?;
-            for record in records {
-                for row in record.to_rows(&context) {
-                    to_writer_delimited(writer, &row, delim)?;
-                }
+    // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
+    let mut widths_max = vec![0; headers.len()];
+    for (i, header) in header_labels.iter().enumerate() {
+        widths_max[i] = header.len();
+    }
+    let mut rows = Vec::new();
+    for record in records {
+        for row in record.to_rows(&RowableContext::TTY) {
+            for (i, element) in row.iter().enumerate() {
+                widths_max[i] = widths_max[i].max(element.len());
+            }
+            rows.push(row);
+        }
+    }
+    let w_gutter = 2;
+    let widths = optimize_widths(&widths_max, &ellipsisable, w_gutter);
+    // header
+    for (i, header) in header_labels.into_iter().enumerate() {
+        // write!(writer, "{}", prepare_field(&header, &widths[i]),)?;
+        write_color(writer, 30, 30, 30, &prepare_field(&header, &widths[i]));
+    }
+    writeln!(writer)?;
+    // body
+    for row in rows {
+        for (i, element) in row.into_iter().enumerate() {
+            if let Some(color) = &headers[i].color {
+                write_color(
+                    writer,
+                    color.0,
+                    color.1,
+                    color.2,
+                    &prepare_field(&element, &widths[i]),
+                );
+            } else {
+                write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
             }
         }
-        None => {
-            // evaluate headers and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
-            let mut widths_max = vec![0; headers.len()];
-            for (i, header) in header_labels.iter().enumerate() {
-                widths_max[i] = header.len();
-            }
-            let mut rows = Vec::new();
-            for record in records {
-                for row in record.to_rows(&context) {
-                    for (i, element) in row.iter().enumerate() {
-                        widths_max[i] = widths_max[i].max(element.len());
-                    }
-                    rows.push(row);
-                }
-            }
-            let w_gutter = 2;
-            let widths = optimize_widths(&widths_max, &ellipsisable, w_gutter);
-            // header
-            for (i, header) in header_labels.into_iter().enumerate() {
-                write!(writer, "{}", prepare_field(&header, &widths[i]),)?;
-            }
-            writeln!(writer)?;
-            // body
-            for row in rows {
-                for (i, element) in row.into_iter().enumerate() {
-                    write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
-                }
-                writeln!(writer)?;
-            }
-        }
+        writeln!(writer)?;
     }
     Ok(())
 }
+
+// #[derive(Clone)]
+// pub(crate) struct FormatColor {
+//     r: u8,
+//     g: u8,
+//     b: u8,
+// }
 
 #[derive(Clone)]
 pub(crate) struct HeaderFormat {
     header: String,
     ellipsisable: bool,
+    color: Option<(u8, u8, u8)>,
 }
 
 impl HeaderFormat {
-    pub(crate) fn new(header: String, ellipsisable: bool) -> HeaderFormat {
+    pub(crate) fn new(
+        header: String,
+        ellipsisable: bool,
+        color: Option<(u8, u8, u8)>,
+    ) -> HeaderFormat {
         HeaderFormat {
             header,
             ellipsisable,
+            color,
         }
     }
 }
@@ -186,35 +234,19 @@ pub(crate) trait Tableable<T: Rowable> {
     fn get_header(&self) -> Vec<HeaderFormat>;
     fn get_records(&self) -> &Vec<T>;
 
-    fn to_writer<W: Write>(
-        &self,
-        mut writer: W,
-        delimiter: Option<&str>,
-        context: RowableContext,
-    ) -> io::Result<()> {
-        let _ = to_table_writer(
-            &mut writer,
+    fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
+        let mut file = File::create(file_path)?;
+        to_table_delimited(
+            &mut file,
             self.get_header(),
             self.get_records(),
-            delimiter,
-            context,
-        );
-        Ok(())
-    }
-
-    fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let file = File::create(file_path)?;
-        self.to_writer(
-            file,
-            Some(&delimiter.to_string()),
-            RowableContext::Delimited,
+            &delimiter.to_string(),
         )
     }
 
     fn to_stdout(&self) -> io::Result<()> {
         let stdout = io::stdout();
-        let handle = stdout.lock();
-        // TODO: check if we are a TTY
-        self.to_writer(handle, None, RowableContext::TTY)
+        let mut handle = stdout.lock();
+        to_table_display(&mut handle, self.get_header(), self.get_records())
     }
 }
