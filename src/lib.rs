@@ -10,6 +10,7 @@ mod package;
 mod package_durl;
 mod package_match;
 mod path_shared;
+mod purge_report;
 mod scan_fs;
 mod scan_report;
 mod table;
