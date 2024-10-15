@@ -28,7 +28,7 @@ impl Rowable for CountRecord {
 
 //------------------------------------------------------------------------------
 #[derive(Debug)]
-pub struct CountReport {
+pub(crate) struct CountReport {
     records: Vec<CountRecord>,
 }
 

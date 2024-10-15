@@ -1,33 +1,31 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
 
+use rayon::prelude::*;
 
+use crate::package::Package;
+use crate::path_shared::PathShared;
+
+//------------------------------------------------------------------------------
+/// This contains the explicit files found in a RECORD file, as well as all discovered directories that contain one or more of those file.
 #[derive(Debug, Clone)]
-pub(crate) struct InstallRecord {
-    key: String,
-    value: usize,
-}
-
-
-
-
-/// This contains the explicit files found in a RECORD file, as well as all discovered directories.
-#[derive(Debug)]
-struct RecordTargets {
+struct Artifacts {
     files: Vec<(PathBuf, bool)>,
     dirs: HashSet<PathBuf>,
 }
 
-fn record_to_files(record_fp: &PathBuf) -> io::Result<RecordTargets> {
+fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     // parent of RECORD is the dist-info dir, and must exist
-    let dir_site = record_fp.parent().unwrap().parent().unwrap();
+    let dir_site = dist_info_fp.parent().unwrap(); //.parent().unwrap();
+    let fp_record = dist_info_fp.join("RECORD");
 
     let mut dirs = HashSet::new();
     let mut files = Vec::new();
 
-    let file = fs::File::open(record_fp)?;
+    let file = fs::File::open(fp_record)?;
     let reader = BufReader::new(file);
     for line in reader.lines() {
         let line = line?;
@@ -45,7 +43,7 @@ fn record_to_files(record_fp: &PathBuf) -> io::Result<RecordTargets> {
             }
         }
     }
-    Ok(RecordTargets { files, dirs })
+    Ok(Artifacts { files, dirs })
 }
 
 // Attempt to remove any empty directories
@@ -63,6 +61,61 @@ fn record_to_files(record_fp: &PathBuf) -> io::Result<RecordTargets> {
 //     }
 // }
 
+//------------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+struct InstallRecord {
+    package: Package,
+    site: PathShared,
+    artifacts: Artifacts,
+}
+
+pub(crate) struct InstallReport {
+    records: Vec<InstallRecord>,
+}
+
+impl InstallReport {
+    pub(crate) fn from_package_to_sites(
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    ) -> InstallReport {
+        let records: Vec<InstallRecord> = package_to_sites
+            .par_iter()
+            .flat_map(|(package, sites)| {
+                sites.par_iter().filter_map(|site| {
+                    let fp_dist_info = package.to_dist_info_dir(site);
+                    if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
+                        Some(InstallRecord {
+                            package: package.clone(),
+                            site: site.clone(),
+                            artifacts,
+                        })
+                    } else {
+                        eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        // let mut records = Vec::new();
+        // for (package, sites) in package_to_sites {
+        //     for site in sites {
+        //         let fp_dist_info = package.to_dist_info_dir(&site);
+        //         if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
+        //             records.push(InstallRecord {
+        //                 package: package.clone(),
+        //                 site: site.clone(),
+        //                 artifacts: artifacts,
+        //             });
+        //         } else {
+        //             eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
+        //         }
+        //     }
+        // }
+        InstallReport { records }
+    }
+}
+
+//------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,9 +127,9 @@ mod tests {
     #[test]
     fn test_record_a() {
         let dir_temp = tempdir().unwrap();
-        let dir_pkg = dir_temp.path().join("xarray-0.21.1.dist-info");
-        fs::create_dir(&dir_pkg).unwrap();
-        let fp = dir_pkg.as_path().join("RECORD");
+        let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
+        fs::create_dir(&dir_dist_info).unwrap();
+        let fp_record = dir_pkg.as_path().join("RECORD");
 
         let content = r#"
 xarray-0.21.1.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
@@ -139,9 +192,9 @@ xarray/util/__pycache__/generate_ops.cpython-311.pyc,,
 xarray/util/generate_ops.py,sha256=amEIE7w5momaWtwbl1wZY9jfVe2liYkweOHCRm8dxMs,9227
 xarray/util/print_versions.py,sha256=kSqlh0crnpEzanhYmV3F7RuGEys8nrOhM_Yf_i7D7bM,5145
         "#;
-        let mut file = File::create(&fp).unwrap();
+        let mut file = File::create(&fp_record).unwrap();
         write!(file, "{}", content).unwrap();
-        let rc = record_to_files(&fp).unwrap();
+        let rc = dist_info_to_artifacts(&dir_dist_info).unwrap();
         // println!("{:?}", rc);
         assert_eq!(rc.files.len(), 59);
         assert_eq!(rc.dirs.len(), 1);
