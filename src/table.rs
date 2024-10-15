@@ -7,8 +7,8 @@ use crossterm::{
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
-use std::path::PathBuf;
 use std::os::fd::AsRawFd;
+use std::path::PathBuf;
 
 fn write_color<W: Write + IsTty>(writer: &mut W, r: u8, g: u8, b: u8, message: &str) {
     if writer.is_tty() {
@@ -185,24 +185,47 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
     // body
     for row in rows {
         for (i, element) in row.into_iter().enumerate() {
-            write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
+            if let Some(color) = &headers[i].color {
+                write_color(
+                    writer,
+                    color.0,
+                    color.1,
+                    color.2,
+                    &prepare_field(&element, &widths[i]),
+                );
+            } else {
+                write!(writer, "{}", prepare_field(&element, &widths[i]),)?;
+            }
         }
         writeln!(writer)?;
     }
     Ok(())
 }
 
+// #[derive(Clone)]
+// pub(crate) struct FormatColor {
+//     r: u8,
+//     g: u8,
+//     b: u8,
+// }
+
 #[derive(Clone)]
 pub(crate) struct HeaderFormat {
     header: String,
     ellipsisable: bool,
+    color: Option<(u8, u8, u8)>,
 }
 
 impl HeaderFormat {
-    pub(crate) fn new(header: String, ellipsisable: bool) -> HeaderFormat {
+    pub(crate) fn new(
+        header: String,
+        ellipsisable: bool,
+        color: Option<(u8, u8, u8)>,
+    ) -> HeaderFormat {
         HeaderFormat {
             header,
             ellipsisable,
+            color,
         }
     }
 }
