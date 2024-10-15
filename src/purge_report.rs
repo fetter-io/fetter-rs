@@ -3,6 +3,16 @@ use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
 
+
+#[derive(Debug, Clone)]
+pub(crate) struct InstallRecord {
+    key: String,
+    value: usize,
+}
+
+
+
+
 /// This contains the explicit files found in a RECORD file, as well as all discovered directories.
 #[derive(Debug)]
 struct RecordTargets {
