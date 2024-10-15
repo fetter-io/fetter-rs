@@ -129,7 +129,7 @@ mod tests {
         let dir_temp = tempdir().unwrap();
         let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
         fs::create_dir(&dir_dist_info).unwrap();
-        let fp_record = dir_pkg.as_path().join("RECORD");
+        let fp_record = dir_dist_info.as_path().join("RECORD");
 
         let content = r#"
 xarray-0.21.1.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
