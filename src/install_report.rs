@@ -122,10 +122,10 @@ impl InstallReport {
 impl Tableable<InstallRecord> for InstallReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            HeaderFormat::new("Package".to_string(), false),
-            HeaderFormat::new("Site".to_string(), true),
-            HeaderFormat::new("Exists".to_string(), false),
-            HeaderFormat::new("Artifact".to_string(), true),
+            HeaderFormat::new("Package".to_string(), false, None),
+            HeaderFormat::new("Site".to_string(), true, None),
+            HeaderFormat::new("Exists".to_string(), false, None),
+            HeaderFormat::new("Artifact".to_string(), true, None),
         ]
     }
     fn get_records(&self) -> &Vec<InstallRecord> {
