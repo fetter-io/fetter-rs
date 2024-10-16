@@ -74,8 +74,8 @@ impl ScanReport {
 impl Tableable<ScanRecord> for ScanReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
-            HeaderFormat::new("Package".to_string(), false),
-            HeaderFormat::new("Site".to_string(), true),
+            HeaderFormat::new("Package".to_string(), false, None),
+            HeaderFormat::new("Site".to_string(), true, None),
         ]
     }
     fn get_records(&self) -> &Vec<ScanRecord> {
