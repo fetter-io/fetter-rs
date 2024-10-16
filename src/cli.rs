@@ -118,9 +118,9 @@ enum Commands {
         #[command(subcommand)]
         subcommands: AuditSubcommand,
     },
-    /// Search for vulnerabilities on observed packages.
-    Uncover {
-        /// Provide a glob-like pattern to match packages.
+    /// Discover all installed artifacts of packages.
+    Unpack {
+        /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
         pattern: String,
 
@@ -128,7 +128,7 @@ enum Commands {
         case: bool,
 
         #[command(subcommand)]
-        subcommands: UncoverSubcommand,
+        subcommands: UnpackSubcommand,
     },
     /// Purge packages that fail validation
     Purge {
@@ -222,7 +222,7 @@ enum AuditSubcommand {
 }
 
 #[derive(Subcommand)]
-enum UncoverSubcommand {
+enum UnpackSubcommand {
     /// Display installed artifacts in the terminal.
     Display,
     /// Write installed artifacts to a delimited file.
@@ -367,17 +367,17 @@ where
                 }
             }
         }
-        Some(Commands::Uncover {
+        Some(Commands::Unpack {
             subcommands,
             pattern,
             case,
         }) => {
             let ir = sfs.to_install_report(&pattern, *case);
             match subcommands {
-                UncoverSubcommand::Display => {
+                UnpackSubcommand::Display => {
                     let _ = ir.to_stdout();
                 }
-                UncoverSubcommand::Write { output, delimiter } => {
+                UnpackSubcommand::Write { output, delimiter } => {
                     let _ = ir.to_file(output, *delimiter);
                 }
             }
