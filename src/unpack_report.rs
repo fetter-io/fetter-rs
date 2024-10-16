@@ -67,13 +67,13 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
-pub(crate) struct InstallRecord {
+pub(crate) struct UnpackRecord {
     package: Package,
     site: PathShared,
     artifacts: Artifacts,
 }
 
-impl Rowable for InstallRecord {
+impl Rowable for UnpackRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let is_tty = *context == RowableContext::TTY;
 
@@ -111,21 +111,21 @@ impl Rowable for InstallRecord {
 }
 
 //------------------------------------------------------------------------------
-pub(crate) struct InstallReport {
-    records: Vec<InstallRecord>,
+pub(crate) struct UnpackReport {
+    records: Vec<UnpackRecord>,
 }
 
-impl InstallReport {
+impl UnpackReport {
     pub(crate) fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> InstallReport {
-        let records: Vec<InstallRecord> = package_to_sites
+    ) -> UnpackReport {
+        let records: Vec<UnpackRecord> = package_to_sites
             .par_iter()
             .flat_map(|(package, sites)| {
                 sites.par_iter().filter_map(|site| {
                     let fp_dist_info = package.to_dist_info_dir(site);
                     if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
-                        Some(InstallRecord {
+                        Some(UnpackRecord {
                             package: package.clone(),
                             site: site.clone(),
                             artifacts,
@@ -137,11 +137,11 @@ impl InstallReport {
                 })
             })
             .collect();
-        InstallReport { records }
+        UnpackReport { records }
     }
 }
 
-impl Tableable<InstallRecord> for InstallReport {
+impl Tableable<UnpackRecord> for UnpackReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
             HeaderFormat::new("Package".to_string(), false, None),
@@ -150,7 +150,7 @@ impl Tableable<InstallRecord> for InstallReport {
             HeaderFormat::new("Artifacts".to_string(), true, None),
         ]
     }
-    fn get_records(&self) -> &Vec<InstallRecord> {
+    fn get_records(&self) -> &Vec<UnpackRecord> {
         &self.records
     }
 }
