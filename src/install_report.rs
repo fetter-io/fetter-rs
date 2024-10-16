@@ -10,6 +10,9 @@ use crate::package::Package;
 use crate::path_shared::PathShared;
 use crate::table::Rowable;
 use crate::table::RowableContext;
+use crate::table::HeaderFormat;
+use crate::table::Tableable;
+
 //------------------------------------------------------------------------------
 /// This contains the explicit files found in a RECORD file, as well as all discovered directories that contain one or more of those file.
 #[derive(Debug, Clone)]
@@ -113,6 +116,20 @@ impl InstallReport {
             })
             .collect();
         InstallReport { records }
+    }
+}
+
+impl Tableable<InstallRecord> for InstallReport {
+    fn get_header(&self) -> Vec<HeaderFormat> {
+        vec![
+            HeaderFormat::new("Package".to_string(), false),
+            HeaderFormat::new("Site".to_string(), true),
+            HeaderFormat::new("Exists".to_string(), false),
+            HeaderFormat::new("Artifact".to_string(), true),
+        ]
+    }
+    fn get_records(&self) -> &Vec<InstallRecord> {
+        &self.records
     }
 }
 
