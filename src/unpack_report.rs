@@ -122,6 +122,30 @@ impl Rowable for UnpackRecord {
 }
 
 //------------------------------------------------------------------------------
+fn package_to_sites_to_records(
+    package_to_sites: &HashMap<Package, Vec<PathShared>>,
+) -> Vec<UnpackRecord> {
+    package_to_sites
+        .par_iter()
+        .flat_map(|(package, sites)| {
+            sites.par_iter().filter_map(|site| {
+                let fp_dist_info = package.to_dist_info_dir(site);
+                if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
+                    Some(UnpackRecord {
+                        package: package.clone(),
+                        site: site.clone(),
+                        artifacts,
+                    })
+                } else {
+                    eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
+                    None
+                }
+            })
+        })
+        .collect()
+}
+
+//------------------------------------------------------------------------------
 pub(crate) struct UnpackReport {
     records: Vec<UnpackRecord>,
 }
@@ -130,24 +154,7 @@ impl UnpackReport {
     pub(crate) fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
     ) -> UnpackReport {
-        let records: Vec<UnpackRecord> = package_to_sites
-            .par_iter()
-            .flat_map(|(package, sites)| {
-                sites.par_iter().filter_map(|site| {
-                    let fp_dist_info = package.to_dist_info_dir(site);
-                    if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
-                        Some(UnpackRecord {
-                            package: package.clone(),
-                            site: site.clone(),
-                            artifacts,
-                        })
-                    } else {
-                        eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
-                        None
-                    }
-                })
-            })
-            .collect();
+        let records = package_to_sites_to_records(package_to_sites);
         UnpackReport { records }
     }
 }
