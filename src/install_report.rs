@@ -22,8 +22,8 @@ struct Artifacts {
 }
 
 fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
-    // parent of RECORD is the dist-info dir, and must exist
-    let dir_site = dist_info_fp.parent().unwrap(); //.parent().unwrap();
+    // parent of dist-info dir is site packages
+    let dir_site = dist_info_fp.parent().unwrap();
     let fp_record = dist_info_fp.join("RECORD");
 
     let mut dirs = HashSet::new();
@@ -74,12 +74,34 @@ pub(crate) struct InstallRecord {
 }
 
 impl Rowable for InstallRecord {
-    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+    fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
+        let is_tty = *context == RowableContext::TTY;
+
+        let mut package_set = false;
+        let mut package_display = || {
+            if !is_tty || !package_set {
+                package_set = true;
+                self.package.to_string()
+            } else {
+                "".to_string()
+            }
+        };
+
+        let mut site_set = false;
+        let mut site_display = || {
+            if !is_tty || !site_set {
+                site_set = true;
+                self.site.display().to_string()
+            } else {
+                "".to_string()
+            }
+        };
+
         let mut rows: Vec<Vec<String>> = Vec::new();
         for (fp, exists) in &self.artifacts.files {
             rows.push(vec![
-                self.package.to_string(),
-                self.site.display().to_string(),
+                package_display(),
+                site_display(),
                 exists.to_string(),
                 fp.display().to_string(),
             ]);
