@@ -113,11 +113,13 @@ impl Rowable for InstallRecord {
 //------------------------------------------------------------------------------
 pub(crate) struct InstallReport {
     records: Vec<InstallRecord>,
+    count: bool,
 }
 
 impl InstallReport {
     pub(crate) fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        count: bool,
     ) -> InstallReport {
         let records: Vec<InstallRecord> = package_to_sites
             .par_iter()
@@ -137,7 +139,7 @@ impl InstallReport {
                 })
             })
             .collect();
-        InstallReport { records }
+        InstallReport { records, count }
     }
 }
 
@@ -147,7 +149,7 @@ impl Tableable<InstallRecord> for InstallReport {
             HeaderFormat::new("Package".to_string(), false, None),
             HeaderFormat::new("Site".to_string(), true, None),
             HeaderFormat::new("Exists".to_string(), false, None),
-            HeaderFormat::new("Artifact".to_string(), true, None),
+            HeaderFormat::new("Artifacts".to_string(), true, None),
         ]
     }
     fn get_records(&self) -> &Vec<InstallRecord> {

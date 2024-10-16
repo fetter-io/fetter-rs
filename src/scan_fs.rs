@@ -252,13 +252,18 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
-    pub(crate) fn to_install_report(&self, pattern: &str) -> InstallReport {
-        let packages = self.search_by_match(pattern, true);
+    pub(crate) fn to_install_report(&self,
+            pattern: &str,
+            case: bool,
+            count: bool,
+        ) -> InstallReport {
+        // TODO: sort
+        let packages = self.search_by_match(pattern, !case);
         let package_to_sites = packages
             .iter()
             .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
             .collect();
-        InstallReport::from_package_to_sites(&package_to_sites)
+        InstallReport::from_package_to_sites(&package_to_sites, count)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
