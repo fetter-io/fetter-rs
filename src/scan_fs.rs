@@ -21,6 +21,7 @@ use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
+use crate::install_report::InstallReport;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -248,6 +249,11 @@ impl ScanFS {
     pub(crate) fn to_audit_report(&self) -> AuditReport {
         let packages = self.get_packages();
         AuditReport::from_packages(&UreqClientLive, &packages)
+    }
+
+    pub(crate) fn to_install_report(&self) -> InstallReport {
+        let packages = self.get_packages();
+        InstallReport::from_package_to_sites(&self.package_to_sites)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.

@@ -67,7 +67,7 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
-struct InstallRecord {
+pub(crate) struct InstallRecord {
     package: Package,
     site: PathShared,
     artifacts: Artifacts,

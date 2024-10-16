@@ -81,7 +81,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: SearchSubcommand,
     },
-    /// Count discovered executables and installed packages.
+    /// Count discovered executables, sites, and packages.
     Count {
         #[command(subcommand)]
         subcommands: CountSubcommand,
@@ -117,6 +117,11 @@ enum Commands {
         #[command(subcommand)]
         subcommands: AuditSubcommand,
     },
+    /// Search for vulnerabilities on observed packages.
+    Uncover {
+        #[command(subcommand)]
+        subcommands: UncoverSubcommand,
+    },
     /// Purge packages that fail validation
     Purge {
         /// File path from which to read bound requirements.
@@ -127,7 +132,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ScanSubcommand {
-    /// Display scan to the terminal.
+    /// Display scan in the terminal.
     Display,
     /// Write a scan report to a file.
     Write {
@@ -140,7 +145,7 @@ enum ScanSubcommand {
 
 #[derive(Subcommand)]
 enum SearchSubcommand {
-    /// Display search to the terminal.
+    /// Display search int the terminal.
     Display,
     /// Write a search report to a file.
     Write {
@@ -153,9 +158,9 @@ enum SearchSubcommand {
 
 #[derive(Subcommand)]
 enum CountSubcommand {
-    /// Display scan to the terminal.
+    /// Display scan in the terminal.
     Display,
-    /// Write a report to a file.
+    /// Write a report to a delimited file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -166,7 +171,7 @@ enum CountSubcommand {
 
 #[derive(Subcommand)]
 enum DeriveSubcommand {
-    /// Display derive to the terminal.
+    /// Display derive in the terminal.
     Display,
     /// Write a derive report to a file.
     Write {
@@ -177,7 +182,7 @@ enum DeriveSubcommand {
 
 #[derive(Subcommand)]
 enum ValidateSubcommand {
-    /// Display validation to the terminal.
+    /// Display validation in the terminal.
     Display,
     /// Print a JSON representation of validation results.
     JSON,
@@ -197,9 +202,9 @@ enum ValidateSubcommand {
 
 #[derive(Subcommand)]
 enum AuditSubcommand {
-    /// Display validation to the terminal.
+    /// Display audit results in the terminal.
     Display,
-    /// Print a JSON representation of validation results.
+    /// Write audit results to a delimited file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -207,6 +212,21 @@ enum AuditSubcommand {
         delimiter: char,
     },
 }
+
+#[derive(Subcommand)]
+enum UncoverSubcommand {
+    /// Display installed artifacts in the terminal.
+    Display,
+    /// Write installed artifacts to a delimited file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
+
 //------------------------------------------------------------------------------
 
 // Get a ScanFS, optionally using exe_paths if provided
@@ -337,6 +357,17 @@ where
                 }
                 AuditSubcommand::Write { output, delimiter } => {
                     let _ = ar.to_file(output, *delimiter);
+                }
+            }
+        }
+        Some(Commands::Uncover { subcommands }) => {
+            let ir = sfs.to_install_report();
+            match subcommands {
+                UncoverSubcommand::Display => {
+                    let _ = ir.to_stdout();
+                }
+                UncoverSubcommand::Write { output, delimiter } => {
+                    let _ = ir.to_file(output, *delimiter);
                 }
             }
         }
