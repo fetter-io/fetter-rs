@@ -26,7 +26,7 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     let dir_site = dist_info_fp.parent().unwrap();
     let fp_record = dist_info_fp.join("RECORD");
 
-    let mut dirs = HashSet::new();
+    let mut dir_candidates = HashSet::new();
     let mut files = Vec::new();
 
     let file = fs::File::open(fp_record)?;
@@ -42,11 +42,17 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
             files.push((fp.to_path_buf(), exists));
             if exists {
                 if let Some(dir) = fp.parent() {
-                    dirs.insert(dir.to_path_buf());
+                    dir_candidates.insert(dir.to_path_buf());
                 }
             }
         }
     }
+    let dirs = dir_candidates.iter().filter_map(|dir| {
+        if fs::read_dir(&dir).ok()?.next().is_none() {
+            Some(dir.clone()) // keep if empty
+        } else {None}
+    }).collect();
+
     Ok(Artifacts { files, dirs })
 }
 
@@ -237,6 +243,6 @@ xarray/util/print_versions.py,sha256=kSqlh0crnpEzanhYmV3F7RuGEys8nrOhM_Yf_i7D7bM
         let rc = dist_info_to_artifacts(&dir_dist_info).unwrap();
         // println!("{:?}", rc);
         assert_eq!(rc.files.len(), 59);
-        assert_eq!(rc.dirs.len(), 1);
+        assert_eq!(rc.dirs.len(), 0);
     }
 }
