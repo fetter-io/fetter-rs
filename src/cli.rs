@@ -121,8 +121,11 @@ enum Commands {
     /// Search for vulnerabilities on observed packages.
     Uncover {
         /// Provide a glob-like pattern to match packages.
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "*")]
         pattern: String,
+
+        #[arg(short, long)]
+        case: bool,
 
         #[command(subcommand)]
         subcommands: UncoverSubcommand,
@@ -230,7 +233,6 @@ enum UncoverSubcommand {
         delimiter: char,
     },
 }
-
 
 //------------------------------------------------------------------------------
 
@@ -365,7 +367,11 @@ where
                 }
             }
         }
-        Some(Commands::Uncover { subcommands, pattern }) => {
+        Some(Commands::Uncover {
+            subcommands,
+            pattern,
+            case,
+        }) => {
             let ir = sfs.to_install_report(&pattern);
             match subcommands {
                 UncoverSubcommand::Display => {

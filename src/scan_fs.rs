@@ -13,6 +13,7 @@ use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
+use crate::install_report::InstallReport;
 use crate::package;
 use crate::package::Package;
 use crate::package_match::match_str;
@@ -22,7 +23,6 @@ use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
-use crate::install_report::InstallReport;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
@@ -254,9 +254,10 @@ impl ScanFS {
 
     pub(crate) fn to_install_report(&self, pattern: &str) -> InstallReport {
         let packages = self.search_by_match(pattern, true);
-        let package_to_sites = packages.iter().map(|p| {
-            (p.clone(), self.package_to_sites.get(p).unwrap().clone())
-        }).collect();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
         InstallReport::from_package_to_sites(&package_to_sites)
     }
 

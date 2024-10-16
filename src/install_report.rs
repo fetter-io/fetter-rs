@@ -8,9 +8,9 @@ use rayon::prelude::*;
 
 use crate::package::Package;
 use crate::path_shared::PathShared;
+use crate::table::HeaderFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
-use crate::table::HeaderFormat;
 use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
