@@ -47,11 +47,16 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
             }
         }
     }
-    let dirs = dir_candidates.iter().filter_map(|dir| {
-        if fs::read_dir(&dir).ok()?.next().is_none() {
-            Some(dir.clone()) // keep if empty
-        } else {None}
-    }).collect();
+    let dirs = dir_candidates
+        .iter()
+        .filter_map(|dir| {
+            if fs::read_dir(&dir).ok()?.next().is_none() {
+                Some(dir.clone()) // keep if empty
+            } else {
+                None
+            }
+        })
+        .collect();
 
     Ok(Artifacts { files, dirs })
 }
