@@ -13,6 +13,7 @@ use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::exe_search::find_exe;
+use crate::package;
 use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
@@ -251,9 +252,12 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
-    pub(crate) fn to_install_report(&self) -> InstallReport {
-        let packages = self.get_packages();
-        InstallReport::from_package_to_sites(&self.package_to_sites)
+    pub(crate) fn to_install_report(&self, pattern: &str) -> InstallReport {
+        let packages = self.search_by_match(pattern, true);
+        let package_to_sites = packages.iter().map(|p| {
+            (p.clone(), self.package_to_sites.get(p).unwrap().clone())
+        }).collect();
+        InstallReport::from_package_to_sites(&package_to_sites)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.

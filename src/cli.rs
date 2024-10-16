@@ -72,6 +72,7 @@ enum Commands {
     },
     /// Search environment to report on installed packages.
     Search {
+        /// Provide a glob-like pattern to match packages.
         #[arg(short, long)]
         pattern: String,
 
@@ -119,6 +120,10 @@ enum Commands {
     },
     /// Search for vulnerabilities on observed packages.
     Uncover {
+        /// Provide a glob-like pattern to match packages.
+        #[arg(short, long)]
+        pattern: String,
+
         #[command(subcommand)]
         subcommands: UncoverSubcommand,
     },
@@ -360,8 +365,8 @@ where
                 }
             }
         }
-        Some(Commands::Uncover { subcommands }) => {
-            let ir = sfs.to_install_report();
+        Some(Commands::Uncover { subcommands, pattern }) => {
+            let ir = sfs.to_install_report(&pattern);
             match subcommands {
                 UncoverSubcommand::Display => {
                     let _ = ir.to_stdout();
