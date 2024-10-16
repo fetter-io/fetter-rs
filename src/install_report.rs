@@ -8,7 +8,8 @@ use rayon::prelude::*;
 
 use crate::package::Package;
 use crate::path_shared::PathShared;
-
+use crate::table::Rowable;
+use crate::table::RowableContext;
 //------------------------------------------------------------------------------
 /// This contains the explicit files found in a RECORD file, as well as all discovered directories that contain one or more of those file.
 #[derive(Debug, Clone)]
@@ -69,6 +70,22 @@ struct InstallRecord {
     artifacts: Artifacts,
 }
 
+impl Rowable for InstallRecord {
+    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for (fp, exists) in &self.artifacts.files {
+            rows.push(vec![
+                self.package.to_string(),
+                self.site.display().to_string(),
+                exists.to_string(),
+                fp.display().to_string(),
+            ]);
+        }
+        rows
+    }
+}
+
+//------------------------------------------------------------------------------
 pub(crate) struct InstallReport {
     records: Vec<InstallRecord>,
 }
@@ -95,22 +112,6 @@ impl InstallReport {
                 })
             })
             .collect();
-
-        // let mut records = Vec::new();
-        // for (package, sites) in package_to_sites {
-        //     for site in sites {
-        //         let fp_dist_info = package.to_dist_info_dir(&site);
-        //         if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
-        //             records.push(InstallRecord {
-        //                 package: package.clone(),
-        //                 site: site.clone(),
-        //                 artifacts: artifacts,
-        //             });
-        //         } else {
-        //             eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
-        //         }
-        //     }
-        // }
         InstallReport { records }
     }
 }
