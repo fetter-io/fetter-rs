@@ -113,13 +113,11 @@ impl Rowable for InstallRecord {
 //------------------------------------------------------------------------------
 pub(crate) struct InstallReport {
     records: Vec<InstallRecord>,
-    count: bool,
 }
 
 impl InstallReport {
     pub(crate) fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-        count: bool,
     ) -> InstallReport {
         let records: Vec<InstallRecord> = package_to_sites
             .par_iter()
@@ -139,7 +137,7 @@ impl InstallReport {
                 })
             })
             .collect();
-        InstallReport { records, count }
+        InstallReport { records }
     }
 }
 

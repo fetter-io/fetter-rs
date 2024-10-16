@@ -127,9 +127,6 @@ enum Commands {
         #[arg(long)]
         case: bool,
 
-        #[arg(long)]
-        count: bool,
-
         #[command(subcommand)]
         subcommands: UncoverSubcommand,
     },
@@ -374,9 +371,8 @@ where
             subcommands,
             pattern,
             case,
-            count,
         }) => {
-            let ir = sfs.to_install_report(&pattern, *case, *count);
+            let ir = sfs.to_install_report(&pattern, *case);
             match subcommands {
                 UncoverSubcommand::Display => {
                     let _ = ir.to_stdout();
