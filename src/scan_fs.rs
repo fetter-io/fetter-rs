@@ -257,11 +257,7 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
-    pub(crate) fn to_install_report<T, R>(
-        &self,
-        pattern: &str,
-        case: bool,
-    ) -> T
+    pub(crate) fn to_install_report<T, R>(&self, pattern: &str, case: bool) -> T
     where
         T: Tableable<R> + UnpackReportTrait,
         R: Rowable,

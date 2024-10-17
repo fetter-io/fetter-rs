@@ -1,10 +1,10 @@
 use std::process;
 
 use crate::table::Rowable;
-use crate::unpack_report::UnpackFullRecord;
-use crate::unpack_report::UnpackFullReport;
 use crate::unpack_report::UnpackCountRecord;
 use crate::unpack_report::UnpackCountReport;
+use crate::unpack_report::UnpackFullRecord;
+use crate::unpack_report::UnpackFullReport;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -382,7 +382,9 @@ where
             pattern,
             case,
         }) => {
-            let ir = sfs.to_install_report::<UnpackCountReport, UnpackCountRecord>(&pattern, *case);
+            let ir = sfs.to_install_report::<UnpackCountReport, UnpackCountRecord>(
+                &pattern, *case,
+            );
 
             match subcommands {
                 UnpackSubcommand::Display => {
