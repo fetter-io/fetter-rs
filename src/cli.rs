@@ -1,5 +1,8 @@
 use std::process;
 
+// use crate::table::Rowable;
+use crate::unpack_report::UnpackFullRecord;
+use crate::unpack_report::UnpackFullReport;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -120,6 +123,10 @@ enum Commands {
     },
     /// Discover all installed artifacts of packages.
     Unpack {
+        /// Show artifact counts per package.
+        #[arg(long)]
+        count: bool,
+
         /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
         pattern: String,
@@ -369,10 +376,13 @@ where
         }
         Some(Commands::Unpack {
             subcommands,
+            count,
             pattern,
             case,
         }) => {
-            let ir = sfs.to_install_report(&pattern, *case);
+            let ir = sfs.to_install_report::<UnpackFullReport, UnpackFullRecord>(
+                &pattern, *case, *count,
+            );
             match subcommands {
                 UnpackSubcommand::Display => {
                     let _ = ir.to_stdout();

@@ -83,6 +83,13 @@ trait UnpackRecordTrait {
     fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
 }
 
+pub(crate) trait UnpackReportTrait {
+    /// Return a new record; caller must clone as needed.
+    fn from_package_to_sites(
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    ) -> Self;
+}
+
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub(crate) struct UnpackFullRecord {
@@ -194,8 +201,8 @@ pub(crate) struct UnpackFullReport {
     records: Vec<UnpackFullRecord>,
 }
 
-impl UnpackFullReport {
-    pub(crate) fn from_package_to_sites(
+impl UnpackReportTrait for UnpackFullReport {
+    fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
     ) -> UnpackFullReport {
         let records = package_to_sites_to_records(package_to_sites);
@@ -222,8 +229,8 @@ pub(crate) struct UnpackCountReport {
     records: Vec<UnpackCountRecord>,
 }
 
-impl UnpackCountReport {
-    pub(crate) fn from_package_to_sites(
+impl UnpackReportTrait for UnpackCountReport {
+    fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
     ) -> UnpackCountReport {
         let records = package_to_sites_to_records(package_to_sites);

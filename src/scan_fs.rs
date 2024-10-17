@@ -17,7 +17,11 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
-use crate::unpack_report::UnpackFullReport;
+use crate::table::Rowable;
+use crate::table::Tableable;
+// use crate::unpack_report::UnpackCountReport;
+// use crate::unpack_report::UnpackFullReport;
+use crate::unpack_report::UnpackReportTrait;
 use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
@@ -251,18 +255,28 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
-    pub(crate) fn to_install_report(
+    pub(crate) fn to_install_report<T, R>(
         &self,
         pattern: &str,
         case: bool,
-    ) -> UnpackFullReport {
+        count: bool,
+    ) -> T
+    where
+        T: Tableable<R> + UnpackReportTrait,
+        R: Rowable,
+    {
+        // ) -> UnpackFullReport {
         let mut packages = self.search_by_match(pattern, !case);
         packages.sort();
         let package_to_sites = packages
             .iter()
             .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
             .collect();
-        UnpackFullReport::from_package_to_sites(&package_to_sites)
+        if count {
+            T::from_package_to_sites(&package_to_sites)
+        } else {
+            T::from_package_to_sites(&package_to_sites)
+        }
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
