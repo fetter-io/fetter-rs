@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::io::BufRead;
+use std::path::PathBuf;
 
 use rayon::prelude::*;
 
@@ -146,9 +146,9 @@ fn package_to_sites_to_records<R>(
 where
     R: UnpackRecordTrait + Sync + std::marker::Send,
 {
-// fn package_to_sites_to_records(
-//     package_to_sites: &HashMap<Package, Vec<PathShared>>,
-// ) -> Vec<UnpackRecord> {
+    // fn package_to_sites_to_records(
+    //     package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    // ) -> Vec<UnpackRecord> {
     package_to_sites
         .par_iter()
         .flat_map(|(package, sites)| {
