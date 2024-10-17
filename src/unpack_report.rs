@@ -78,22 +78,22 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
 // }
 
 //------------------------------------------------------------------------------
-
 trait UnpackRecordTrait {
     /// Return a new record; caller must clone as needed.
     fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
-pub(crate) struct UnpackRecord {
+pub(crate) struct UnpackFullRecord {
     package: Package,
     site: PathShared,
     artifacts: Artifacts,
 }
 
-impl UnpackRecordTrait for UnpackRecord {
+impl UnpackRecordTrait for UnpackFullRecord {
     fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self {
-        UnpackRecord {
+        UnpackFullRecord {
             package,
             site,
             artifacts,
@@ -101,7 +101,7 @@ impl UnpackRecordTrait for UnpackRecord {
     }
 }
 
-impl Rowable for UnpackRecord {
+impl Rowable for UnpackFullRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let is_tty = *context == RowableContext::TTY;
 
@@ -137,18 +137,42 @@ impl Rowable for UnpackRecord {
         rows
     }
 }
+//------------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+pub(crate) struct UnpackCountRecord {
+    package: Package,
+    site: PathShared,
+    artifacts: Artifacts,
+}
+
+impl UnpackRecordTrait for UnpackCountRecord {
+    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self {
+        UnpackCountRecord {
+            package,
+            site,
+            artifacts,
+        }
+    }
+}
+
+impl Rowable for UnpackCountRecord {
+    fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+        vec![vec![
+            self.package.to_string(),
+            self.site.display().to_string(),
+            self.artifacts.files.len().to_string(),
+            self.artifacts.dirs.len().to_string(),
+        ]]
+    }
+}
 
 //------------------------------------------------------------------------------
-
 fn package_to_sites_to_records<R>(
     package_to_sites: &HashMap<Package, Vec<PathShared>>,
 ) -> Vec<R>
 where
     R: UnpackRecordTrait + Sync + std::marker::Send,
 {
-    // fn package_to_sites_to_records(
-    //     package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    // ) -> Vec<UnpackRecord> {
     package_to_sites
         .par_iter()
         .flat_map(|(package, sites)| {
@@ -156,11 +180,6 @@ where
                 let fp_dist_info = package.to_dist_info_dir(site);
                 if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
                     Some(R::new(package.clone(), site.clone(), artifacts))
-                    // Some(UnpackRecord {
-                    //     package: package.clone(),
-                    //     site: site.clone(),
-                    //     artifacts,
-                    // })
                 } else {
                     eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
                     None
@@ -171,20 +190,20 @@ where
 }
 
 //------------------------------------------------------------------------------
-pub(crate) struct UnpackReport {
-    records: Vec<UnpackRecord>,
+pub(crate) struct UnpackFullReport {
+    records: Vec<UnpackFullRecord>,
 }
 
-impl UnpackReport {
+impl UnpackFullReport {
     pub(crate) fn from_package_to_sites(
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> UnpackReport {
+    ) -> UnpackFullReport {
         let records = package_to_sites_to_records(package_to_sites);
-        UnpackReport { records }
+        UnpackFullReport { records }
     }
 }
 
-impl Tableable<UnpackRecord> for UnpackReport {
+impl Tableable<UnpackFullRecord> for UnpackFullReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
             HeaderFormat::new("Package".to_string(), false, None),
@@ -193,7 +212,35 @@ impl Tableable<UnpackRecord> for UnpackReport {
             HeaderFormat::new("Artifacts".to_string(), true, None),
         ]
     }
-    fn get_records(&self) -> &Vec<UnpackRecord> {
+    fn get_records(&self) -> &Vec<UnpackFullRecord> {
+        &self.records
+    }
+}
+
+//------------------------------------------------------------------------------
+pub(crate) struct UnpackCountReport {
+    records: Vec<UnpackCountRecord>,
+}
+
+impl UnpackCountReport {
+    pub(crate) fn from_package_to_sites(
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    ) -> UnpackCountReport {
+        let records = package_to_sites_to_records(package_to_sites);
+        UnpackCountReport { records }
+    }
+}
+
+impl Tableable<UnpackCountRecord> for UnpackCountReport {
+    fn get_header(&self) -> Vec<HeaderFormat> {
+        vec![
+            HeaderFormat::new("Package".to_string(), false, None),
+            HeaderFormat::new("Site".to_string(), true, None),
+            HeaderFormat::new("Files".to_string(), false, None),
+            HeaderFormat::new("Dirs".to_string(), false, None),
+        ]
+    }
+    fn get_records(&self) -> &Vec<UnpackCountRecord> {
         &self.records
     }
 }
