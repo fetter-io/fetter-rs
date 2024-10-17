@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::path::PathBuf;
+use std::io::BufRead;
 
 use rayon::prelude::*;
 
@@ -30,7 +31,7 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     let mut files = Vec::new();
 
     let file = fs::File::open(fp_record)?;
-    let reader = BufReader::new(file);
+    let reader = io::BufReader::new(file);
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
@@ -77,11 +78,27 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
 // }
 
 //------------------------------------------------------------------------------
+
+trait UnpackRecordTrait {
+    /// Return a new record; caller must clone as needed.
+    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct UnpackRecord {
     package: Package,
     site: PathShared,
     artifacts: Artifacts,
+}
+
+impl UnpackRecordTrait for UnpackRecord {
+    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self {
+        UnpackRecord {
+            package,
+            site,
+            artifacts,
+        }
+    }
 }
 
 impl Rowable for UnpackRecord {
@@ -122,20 +139,28 @@ impl Rowable for UnpackRecord {
 }
 
 //------------------------------------------------------------------------------
-fn package_to_sites_to_records(
+
+fn package_to_sites_to_records<R>(
     package_to_sites: &HashMap<Package, Vec<PathShared>>,
-) -> Vec<UnpackRecord> {
+) -> Vec<R>
+where
+    R: UnpackRecordTrait + Sync + std::marker::Send,
+{
+// fn package_to_sites_to_records(
+//     package_to_sites: &HashMap<Package, Vec<PathShared>>,
+// ) -> Vec<UnpackRecord> {
     package_to_sites
         .par_iter()
         .flat_map(|(package, sites)| {
             sites.par_iter().filter_map(|site| {
                 let fp_dist_info = package.to_dist_info_dir(site);
                 if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
-                    Some(UnpackRecord {
-                        package: package.clone(),
-                        site: site.clone(),
-                        artifacts,
-                    })
+                    Some(R::new(package.clone(), site.clone(), artifacts))
+                    // Some(UnpackRecord {
+                    //     package: package.clone(),
+                    //     site: site.clone(),
+                    //     artifacts,
+                    // })
                 } else {
                     eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
                     None
