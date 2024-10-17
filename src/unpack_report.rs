@@ -28,7 +28,7 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     let dir_site = dist_info_fp.parent().unwrap();
     let fp_record = dist_info_fp.join("RECORD");
 
-    let mut dir_candidates = HashSet::new();
+    let mut dirs = HashSet::new();
     let mut files = Vec::new();
 
     let file = fs::File::open(fp_record)?;
@@ -44,25 +44,25 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
             files.push((fp.to_path_buf(), exists));
             if exists {
                 if let Some(dir) = fp.parent() {
-                    dir_candidates.insert(dir.to_path_buf());
+                    dirs.insert(dir.to_path_buf());
                 }
             }
         }
     }
-    let dirs = dir_candidates
-        .iter()
-        .filter_map(|dir| {
-            if fs::read_dir(&dir).ok()?.next().is_none() {
-                Some(dir.clone()) // keep if empty
-            } else {
-                None
-            }
-        })
-        .collect();
-
     Ok(Artifacts { files, dirs })
 }
 
+// we cannot evaluate this until after we remove the files
+// let dirs = dir_candidates
+//     .iter()
+//     .filter_map(|dir| {
+//         if fs::read_dir(&dir).ok()?.next().is_none() {
+//             Some(dir.clone()) // keep if empty
+//         } else {
+//             None
+//         }
+//     })
+//     .collect();
 // Attempt to remove any empty directories
 // for dir in dirs {
 //     match fs::remove_dir(&dir) {
@@ -83,13 +83,6 @@ trait UnpackRecordTrait {
     /// Return a new record; caller must clone as needed.
     fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
 }
-
-// pub(crate) trait UnpackReportTrait {
-//     /// Return a new record; caller must clone as needed.
-//     fn from_package_to_sites(
-//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-//     ) -> Self;
-// }
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
@@ -203,15 +196,6 @@ pub(crate) struct UnpackFullReport {
     records: Vec<UnpackFullRecord>,
 }
 
-// impl UnpackFullReport {
-//     fn from_package_to_sites(
-//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-//     ) -> UnpackFullReport {
-//         let records = package_to_sites_to_records(package_to_sites);
-//         UnpackFullReport { records }
-//     }
-// }
-
 impl Tableable<UnpackFullRecord> for UnpackFullReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
         vec![
@@ -230,15 +214,6 @@ impl Tableable<UnpackFullRecord> for UnpackFullReport {
 pub(crate) struct UnpackCountReport {
     records: Vec<UnpackCountRecord>,
 }
-
-// impl UnpackCountReport {
-//     fn from_package_to_sites(
-//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-//     ) -> UnpackCountReport {
-//         let records = package_to_sites_to_records(package_to_sites);
-//         UnpackCountReport { records }
-//     }
-// }
 
 impl Tableable<UnpackCountRecord> for UnpackCountReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
