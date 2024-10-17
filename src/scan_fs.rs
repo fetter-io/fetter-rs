@@ -19,6 +19,8 @@ use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::table::Rowable;
 use crate::table::Tableable;
+// use crate::unpack_report::UnpackCountRecord;
+// use crate::unpack_report::UnpackFullRecord;
 // use crate::unpack_report::UnpackCountReport;
 // use crate::unpack_report::UnpackFullReport;
 use crate::unpack_report::UnpackReportTrait;
@@ -259,7 +261,6 @@ impl ScanFS {
         &self,
         pattern: &str,
         case: bool,
-        count: bool,
     ) -> T
     where
         T: Tableable<R> + UnpackReportTrait,
@@ -272,11 +273,7 @@ impl ScanFS {
             .iter()
             .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
             .collect();
-        if count {
-            T::from_package_to_sites(&package_to_sites)
-        } else {
-            T::from_package_to_sites(&package_to_sites)
-        }
+        T::from_package_to_sites(&package_to_sites)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
