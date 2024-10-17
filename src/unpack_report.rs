@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::BufRead;
+use std::marker::Send;
 use std::path::PathBuf;
 
 use rayon::prelude::*;
@@ -83,12 +84,12 @@ trait UnpackRecordTrait {
     fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
 }
 
-pub(crate) trait UnpackReportTrait {
-    /// Return a new record; caller must clone as needed.
-    fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> Self;
-}
+// pub(crate) trait UnpackReportTrait {
+//     /// Return a new record; caller must clone as needed.
+//     fn from_package_to_sites(
+//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
+//     ) -> Self;
+// }
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
@@ -174,11 +175,12 @@ impl Rowable for UnpackCountRecord {
 }
 
 //------------------------------------------------------------------------------
+/// Generic function to covert a `HashMap` to a `Vec` of of UnpackRecords.
 fn package_to_sites_to_records<R>(
     package_to_sites: &HashMap<Package, Vec<PathShared>>,
 ) -> Vec<R>
 where
-    R: UnpackRecordTrait + Sync + std::marker::Send,
+    R: UnpackRecordTrait + Sync + Send,
 {
     package_to_sites
         .par_iter()
@@ -201,14 +203,14 @@ pub(crate) struct UnpackFullReport {
     records: Vec<UnpackFullRecord>,
 }
 
-impl UnpackReportTrait for UnpackFullReport {
-    fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> UnpackFullReport {
-        let records = package_to_sites_to_records(package_to_sites);
-        UnpackFullReport { records }
-    }
-}
+// impl UnpackFullReport {
+//     fn from_package_to_sites(
+//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
+//     ) -> UnpackFullReport {
+//         let records = package_to_sites_to_records(package_to_sites);
+//         UnpackFullReport { records }
+//     }
+// }
 
 impl Tableable<UnpackFullRecord> for UnpackFullReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
@@ -229,14 +231,14 @@ pub(crate) struct UnpackCountReport {
     records: Vec<UnpackCountRecord>,
 }
 
-impl UnpackReportTrait for UnpackCountReport {
-    fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> UnpackCountReport {
-        let records = package_to_sites_to_records(package_to_sites);
-        UnpackCountReport { records }
-    }
-}
+// impl UnpackCountReport {
+//     fn from_package_to_sites(
+//         package_to_sites: &HashMap<Package, Vec<PathShared>>,
+//     ) -> UnpackCountReport {
+//         let records = package_to_sites_to_records(package_to_sites);
+//         UnpackCountReport { records }
+//     }
+// }
 
 impl Tableable<UnpackCountRecord> for UnpackCountReport {
     fn get_header(&self) -> Vec<HeaderFormat> {
@@ -249,6 +251,40 @@ impl Tableable<UnpackCountRecord> for UnpackCountReport {
     }
     fn get_records(&self) -> &Vec<UnpackCountRecord> {
         &self.records
+    }
+}
+
+//------------------------------------------------------------------------------
+pub(crate) enum UnpackReport {
+    Full(UnpackFullReport),
+    Count(UnpackCountReport),
+}
+impl UnpackReport {
+    pub(crate) fn from_package_to_sites(
+        count: bool,
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    ) -> Self {
+        if count {
+            let records = package_to_sites_to_records(package_to_sites);
+            UnpackReport::Count(UnpackCountReport { records })
+        } else {
+            let records = package_to_sites_to_records(package_to_sites);
+            UnpackReport::Full(UnpackFullReport { records })
+        }
+    }
+
+    pub(crate) fn to_stdout(&self) -> io::Result<()> {
+        match self {
+            UnpackReport::Full(report) => report.to_stdout(),
+            UnpackReport::Count(report) => report.to_stdout(),
+        }
+    }
+
+    pub(crate) fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
+        match self {
+            UnpackReport::Full(report) => report.to_file(file_path, delimiter),
+            UnpackReport::Count(report) => report.to_file(file_path, delimiter),
+        }
     }
 }
 

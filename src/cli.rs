@@ -1,10 +1,5 @@
 use std::process;
 
-use crate::table::Rowable;
-use crate::unpack_report::UnpackCountRecord;
-use crate::unpack_report::UnpackCountReport;
-use crate::unpack_report::UnpackFullRecord;
-use crate::unpack_report::UnpackFullReport;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
@@ -133,6 +128,7 @@ enum Commands {
         #[arg(short, long, default_value = "*")]
         pattern: String,
 
+        /// Enable case-sensitive pattern matching.
         #[arg(long)]
         case: bool,
 
@@ -382,10 +378,7 @@ where
             pattern,
             case,
         }) => {
-            let ir = sfs.to_install_report::<UnpackCountReport, UnpackCountRecord>(
-                &pattern, *case,
-            );
-
+            let ir = sfs.to_unpack_report(&pattern, *case, *count);
             match subcommands {
                 UnpackSubcommand::Display => {
                     let _ = ir.to_stdout();

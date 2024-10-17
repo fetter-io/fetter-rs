@@ -17,13 +17,14 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
-use crate::table::Rowable;
-use crate::table::Tableable;
+// use crate::table::Rowable;
+// use crate::table::Tableable;
 // use crate::unpack_report::UnpackCountRecord;
 // use crate::unpack_report::UnpackFullRecord;
 // use crate::unpack_report::UnpackCountReport;
 // use crate::unpack_report::UnpackFullReport;
-use crate::unpack_report::UnpackReportTrait;
+// use crate::unpack_report::UnpackReportTrait;
+use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
@@ -257,20 +258,36 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
-    pub(crate) fn to_install_report<T, R>(&self, pattern: &str, case: bool) -> T
-    where
-        T: Tableable<R> + UnpackReportTrait,
-        R: Rowable,
-    {
-        // ) -> UnpackFullReport {
+    pub(crate) fn to_unpack_report(
+        &self,
+        pattern: &str,
+        case: bool,
+        count: bool,
+    ) -> UnpackReport {
         let mut packages = self.search_by_match(pattern, !case);
         packages.sort();
         let package_to_sites = packages
             .iter()
             .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
             .collect();
-        T::from_package_to_sites(&package_to_sites)
+
+        UnpackReport::from_package_to_sites(count, &package_to_sites)
     }
+
+    // pub(crate) fn to_unpack_report<T, R>(&self, pattern: &str, case: bool) -> T
+    // where
+    //     T: Tableable<R> + UnpackReportTrait,
+    //     R: Rowable,
+    // {
+    //     // ) -> UnpackFullReport {
+    //     let mut packages = self.search_by_match(pattern, !case);
+    //     packages.sort();
+    //     let package_to_sites = packages
+    //         .iter()
+    //         .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+    //         .collect();
+    //     T::from_package_to_sites(&package_to_sites)
+    // }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
