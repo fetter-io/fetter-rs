@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -17,6 +18,7 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
+use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
@@ -223,7 +225,7 @@ impl ScanFS {
                     Some(sites) => Some(sites.clone()),
                     None => None,
                 };
-                // ds  is an Option type, might be None
+                // ds is an Option type, might be None
                 records.push(ValidationRecord::new(
                     Some(package), // can take ownership of Package
                     ds.cloned(),
@@ -248,6 +250,22 @@ impl ScanFS {
     pub(crate) fn to_audit_report(&self) -> AuditReport {
         let packages = self.get_packages();
         AuditReport::from_packages(&UreqClientLive, &packages)
+    }
+
+    pub(crate) fn to_unpack_report(
+        &self,
+        pattern: &str,
+        case_insensitive: bool,
+        count: bool,
+    ) -> UnpackReport {
+        let mut packages = self.search_by_match(pattern, case_insensitive);
+        packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        UnpackReport::from_package_to_sites(count, &package_to_sites)
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
@@ -310,6 +328,51 @@ impl ScanFS {
         let packages = self.search_by_match(pattern, case_insensitive);
         // println!("packages: {:?}", packages);
         ScanReport::from_packages(&packages, &self.package_to_sites)
+    }
+
+    pub(crate) fn to_purge_pattern(
+        &self,
+        pattern: &Option<String>,
+        case_insensitive: bool,
+        log: bool,
+    ) -> io::Result<()> {
+        let packages = match pattern {
+            Some(p) => self.search_by_match(p, case_insensitive),
+            None => self.package_to_sites.keys().cloned().collect(),
+        };
+        // packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
+        sr.remove(log)
+    }
+
+    pub(crate) fn to_purge_invalid(
+        &self,
+        dm: DepManifest,
+        vf: ValidationFlags,
+        log: bool,
+    ) -> io::Result<()> {
+        let vr = self.to_validation_report(dm, vf);
+        let packages: Vec<Package> = vr
+            .records
+            .iter()
+            .filter_map(|r| match &r.package {
+                Some(p) => Some(p.clone()),
+                None => None,
+            })
+            .collect();
+        // packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
+        sr.remove(log)
     }
 }
 

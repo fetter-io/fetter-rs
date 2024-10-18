@@ -26,6 +26,10 @@ impl PathShared {
         self.0.as_path()
     }
 
+    pub(crate) fn join(&self, part: &str) -> PathBuf {
+        self.0.join(part)
+    }
+
     pub(crate) fn display(&self) -> Display {
         self.0.display()
     }

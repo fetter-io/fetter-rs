@@ -45,7 +45,16 @@ Examples:
   fetter validate --bound /tmp/bound_requirements.txt display
   fetter --exe python3 validate --bound /tmp/bound_requirements.txt display
 
-  fetter purge --bound /tmp/bound_requirements.txt
+  fetter audit display
+
+  fetter --exe python3 audit display
+
+  fetter --exe python3 unpack --count display
+  fetter unpack -p pip* display
+
+  fetter --exe /usr/bin/python purge-pattern -p numpy*
+
+  fetter purge-invalid --bound /tmp/bound_requirements.txt
 ";
 
 #[derive(clap::Parser)]
@@ -72,16 +81,17 @@ enum Commands {
     },
     /// Search environment to report on installed packages.
     Search {
+        /// Provide a glob-like pattern to match packages.
         #[arg(short, long)]
         pattern: String,
 
-        #[arg(short, long)]
+        #[arg(long)]
         case: bool,
 
         #[command(subcommand)]
         subcommands: SearchSubcommand,
     },
-    /// Count discovered executables and installed packages.
+    /// Count discovered executables, sites, and packages.
     Count {
         #[command(subcommand)]
         subcommands: CountSubcommand,
@@ -99,7 +109,7 @@ enum Commands {
     Validate {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
-        bound: Option<PathBuf>,
+        bound: PathBuf,
 
         /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
         #[arg(long)]
@@ -117,17 +127,60 @@ enum Commands {
         #[command(subcommand)]
         subcommands: AuditSubcommand,
     },
-    /// Purge packages that fail validation
-    Purge {
+    /// Discover all installed artifacts of packages.
+    Unpack {
+        /// Show artifact counts per package.
+        #[arg(long)]
+        count: bool,
+
+        /// Provide a glob-like pattern to select packages.
+        #[arg(short, long, default_value = "*")]
+        pattern: String,
+
+        /// Enable case-sensitive pattern matching.
+        #[arg(long)]
+        case: bool,
+
+        #[command(subcommand)]
+        subcommands: UnpackSubcommand,
+    },
+    /// Purge packages that match a search pattern.
+    PurgePattern {
+        /// Provide a glob-like pattern to select packages.
+        #[arg(short, long, default_value = "*")]
+        pattern: Option<String>,
+
+        /// Enable case-sensitive pattern matching.
+        #[arg(long)]
+        case: bool,
+
+        /// Disable logging removed files.
+        #[arg(long)]
+        quiet: bool,
+    },
+    /// Purge packages that are invalid based on dependency specification.
+    PurgeInvalid {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
-        bound: Option<PathBuf>,
+        bound: PathBuf,
+
+        /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
+        #[arg(long)]
+        subset: bool,
+
+        /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
+        #[arg(long)]
+        superset: bool,
+
+        /// Disable logging removed files.
+        #[arg(long)]
+        quiet: bool,
     },
 }
 
 #[derive(Subcommand)]
 enum ScanSubcommand {
-    /// Display scan to the terminal.
+    /// Display scan in the terminal.
     Display,
     /// Write a scan report to a file.
     Write {
@@ -140,7 +193,7 @@ enum ScanSubcommand {
 
 #[derive(Subcommand)]
 enum SearchSubcommand {
-    /// Display search to the terminal.
+    /// Display search int the terminal.
     Display,
     /// Write a search report to a file.
     Write {
@@ -153,9 +206,9 @@ enum SearchSubcommand {
 
 #[derive(Subcommand)]
 enum CountSubcommand {
-    /// Display scan to the terminal.
+    /// Display scan in the terminal.
     Display,
-    /// Write a report to a file.
+    /// Write a report to a delimited file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -166,7 +219,7 @@ enum CountSubcommand {
 
 #[derive(Subcommand)]
 enum DeriveSubcommand {
-    /// Display derive to the terminal.
+    /// Display derive in the terminal.
     Display,
     /// Write a derive report to a file.
     Write {
@@ -177,7 +230,7 @@ enum DeriveSubcommand {
 
 #[derive(Subcommand)]
 enum ValidateSubcommand {
-    /// Display validation to the terminal.
+    /// Display validation in the terminal.
     Display,
     /// Print a JSON representation of validation results.
     JSON,
@@ -197,9 +250,9 @@ enum ValidateSubcommand {
 
 #[derive(Subcommand)]
 enum AuditSubcommand {
-    /// Display validation to the terminal.
+    /// Display audit results in the terminal.
     Display,
-    /// Print a JSON representation of validation results.
+    /// Write audit results to a delimited file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -207,6 +260,20 @@ enum AuditSubcommand {
         delimiter: char,
     },
 }
+
+#[derive(Subcommand)]
+enum UnpackSubcommand {
+    /// Display installed artifacts in the terminal.
+    Display,
+    /// Write installed artifacts to a delimited file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
 //------------------------------------------------------------------------------
 
 // Get a ScanFS, optionally using exe_paths if provided
@@ -221,12 +288,16 @@ fn get_scan(
     }
 }
 
-fn get_dep_manifest(bound: &Option<PathBuf>) -> Result<DepManifest, String> {
-    if let Some(bound) = bound {
-        DepManifest::from_requirements(bound)
-    } else {
-        Err("Invalid bound path".to_string())
-    }
+// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
+fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, String> {
+    // TODO: handle bad file
+    DepManifest::from_requirements(bound)
+
+    // if let Some(bound) = bound {
+    //     DepManifest::from_requirements(bound)
+    // } else {
+    //     Err("Invalid bound path".to_string())
+    // }
 }
 
 // TODO: return Result type with errors
@@ -340,10 +411,48 @@ where
                 }
             }
         }
-        Some(Commands::Purge { bound }) => {
-            let _dm = get_dep_manifest(bound);
-            println!("purge");
+        Some(Commands::Unpack {
+            subcommands,
+            count,
+            pattern,
+            case,
+        }) => {
+            let ir = sfs.to_unpack_report(&pattern, !case, *count);
+            match subcommands {
+                UnpackSubcommand::Display => {
+                    let _ = ir.to_stdout();
+                }
+                UnpackSubcommand::Write { output, delimiter } => {
+                    let _ = ir.to_file(output, *delimiter);
+                }
+            }
         }
+        Some(Commands::PurgePattern {
+            pattern,
+            case,
+            quiet,
+        }) => {
+            let _ = sfs.to_purge_pattern(pattern, !case, !quiet);
+        }
+        Some(Commands::PurgeInvalid {
+            bound,
+            subset,
+            superset,
+            quiet,
+        }) => {
+            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
+            let permit_superset = *superset;
+            let permit_subset = *subset;
+            let _ = sfs.to_purge_invalid(
+                dm,
+                ValidationFlags {
+                    permit_superset,
+                    permit_subset,
+                },
+                !quiet,
+            );
+        }
+        // must match None
         None => {}
     }
 }

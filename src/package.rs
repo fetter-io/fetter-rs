@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::package_durl::DirectURL;
+use crate::path_shared::PathShared;
 use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
 
@@ -59,6 +60,11 @@ impl Package {
             return Self::from_dist_info(file_name, durl);
         }
         None
+    }
+
+    /// Given a site directory, return a `PathBuf` to this Package's dist info directory.
+    pub(crate) fn to_dist_info_dir(&self, site: &PathShared) -> PathBuf {
+        site.join(&format!("{}.dist-info", self))
     }
 }
 
