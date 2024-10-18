@@ -68,7 +68,6 @@ impl Artifacts {
 //     }
 // }
 
-
 fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     // parent of dist-info dir is site packages
     let dir_site = dist_info_fp.parent().unwrap();
