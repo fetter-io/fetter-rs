@@ -45,6 +45,14 @@ Examples:
   fetter validate --bound /tmp/bound_requirements.txt display
   fetter --exe python3 validate --bound /tmp/bound_requirements.txt display
 
+  fetter audit display
+
+  fetter --exe python3 audit display
+
+  fetter --exe python3 unpack --count display
+  fetter unpack -p pip* display
+
+  fetter --exe /usr/bin/python purge -p numpy*
   fetter purge --bound /tmp/bound_requirements.txt
 ";
 
@@ -137,6 +145,14 @@ enum Commands {
     },
     /// Purge packages that fail validation
     Purge {
+        /// Provide a glob-like pattern to select packages.
+        #[arg(short, long, default_value = "*")]
+        pattern: Option<String>,
+
+        /// Enable case-sensitive pattern matching.
+        #[arg(long)]
+        case: bool,
+
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
         bound: Option<PathBuf>,
@@ -253,6 +269,7 @@ fn get_scan(
     }
 }
 
+// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
 fn get_dep_manifest(bound: &Option<PathBuf>) -> Result<DepManifest, String> {
     if let Some(bound) = bound {
         DepManifest::from_requirements(bound)
@@ -378,7 +395,7 @@ where
             pattern,
             case,
         }) => {
-            let ir = sfs.to_unpack_report(&pattern, *case, *count);
+            let ir = sfs.to_unpack_report(&pattern, !case, *count);
             match subcommands {
                 UnpackSubcommand::Display => {
                     let _ = ir.to_stdout();
@@ -388,9 +405,16 @@ where
                 }
             }
         }
-        Some(Commands::Purge { bound }) => {
-            let _dm = get_dep_manifest(bound);
-            println!("purge");
+        Some(Commands::Purge {
+            bound,
+            pattern,
+            case,
+        }) => {
+            let dm = match bound {
+                Some(b) => Some(get_dep_manifest(&Some(b.clone())).unwrap()),
+                None => None,
+            };
+            let _ = sfs.to_purge(pattern, !case, dm);
         }
         None => {}
     }

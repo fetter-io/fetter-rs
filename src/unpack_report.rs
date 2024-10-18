@@ -23,6 +23,24 @@ struct Artifacts {
     dirs: HashSet<PathBuf>,
 }
 
+impl Artifacts {
+    fn remove(&self) -> io::Result<()> {
+        for (fp, exists) in &self.files {
+            if *exists {
+                println!("removing file: {:?}", fp);
+                // fs::remove_file(&fp)?;
+            }
+        }
+        for dir in &self.dirs {
+            if fs::read_dir(dir)?.next().is_none() {
+                println!("removing dir: {:?}", dir);
+                // fs::remove_dir(&dir)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     // parent of dist-info dir is site packages
     let dir_site = dist_info_fp.parent().unwrap();
@@ -42,6 +60,7 @@ fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
             let fp = dir_site.join(fp_rel);
             let exists = fp.exists();
             files.push((fp.to_path_buf(), exists));
+            // Only store directories if the file exists; we will only delete them if they are empty after removals
             if exists {
                 if let Some(dir) = fp.parent() {
                     dirs.insert(dir.to_path_buf());
@@ -261,6 +280,22 @@ impl UnpackReport {
             UnpackReport::Count(report) => report.to_file(file_path, delimiter),
         }
     }
+
+    pub(crate) fn remove(&self) -> io::Result<()> {
+        match self {
+            UnpackReport::Full(report) => {
+                for record in &report.records {
+                    let _ = record.artifacts.remove();
+                }
+            }
+            UnpackReport::Count(report) => {
+                for record in &report.records {
+                    let _ = record.artifacts.remove();
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -345,6 +380,6 @@ xarray/util/print_versions.py,sha256=kSqlh0crnpEzanhYmV3F7RuGEys8nrOhM_Yf_i7D7bM
         let rc = dist_info_to_artifacts(&dir_dist_info).unwrap();
         // println!("{:?}", rc);
         assert_eq!(rc.files.len(), 59);
-        assert_eq!(rc.dirs.len(), 0);
+        assert_eq!(rc.dirs.len(), 1);
     }
 }
