@@ -120,16 +120,6 @@ fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     }
 }
 
-// fn to_writer_delimited<W: Write>(
-//     writer: &mut W,
-//     row: &[String],
-//     delimiter: &str,
-// ) -> Result<(), Error> {
-//     let row_str = row.join(delimiter);
-//     writeln!(writer, "{}", row_str)?;
-//     Ok(())
-// }
-
 fn to_table_delimited<W: Write, T: Rowable>(
     writer: &mut W,
     headers: Vec<HeaderFormat>,

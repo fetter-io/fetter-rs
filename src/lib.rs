@@ -13,6 +13,7 @@ mod path_shared;
 mod scan_fs;
 mod scan_report;
 mod table;
+mod unpack_report;
 mod ureq_client;
 mod util;
 mod validation_report;
