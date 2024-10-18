@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -17,6 +18,7 @@ use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
+use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
@@ -250,6 +252,22 @@ impl ScanFS {
         AuditReport::from_packages(&UreqClientLive, &packages)
     }
 
+    pub(crate) fn to_unpack_report(
+        &self,
+        pattern: &str,
+        case_insensitive: bool,
+        count: bool,
+    ) -> UnpackReport {
+        let mut packages = self.search_by_match(pattern, case_insensitive);
+        packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        UnpackReport::from_package_to_sites(count, &package_to_sites)
+    }
+
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
     pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
@@ -310,6 +328,26 @@ impl ScanFS {
         let packages = self.search_by_match(pattern, case_insensitive);
         // println!("packages: {:?}", packages);
         ScanReport::from_packages(&packages, &self.package_to_sites)
+    }
+
+    pub(crate) fn to_purge(
+        &self,
+        pattern: &Option<String>,
+        case_insensitive: bool,
+        dep_manifest: Option<DepManifest>,
+    ) -> io::Result<()> {
+        let packages = match pattern {
+            Some(p) => self.search_by_match(p, case_insensitive),
+            None => self.package_to_sites.keys().cloned().collect(),
+        };
+        // packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
+        sr.remove()
     }
 }
 
