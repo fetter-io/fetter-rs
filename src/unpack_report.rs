@@ -5,6 +5,9 @@ use std::io;
 use std::io::BufRead;
 use std::marker::Send;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
+// use std::time::Instant;
 
 use rayon::prelude::*;
 
@@ -30,21 +33,41 @@ impl Artifacts {
                 if log {
                     eprintln!("removing file: {:?}", fp);
                 }
-                // fs::remove_file(&fp)?;
+                fs::remove_file(&fp)?;
             }
         }
+        // as file system might be delayed in recognizing deletions, we try to sleep, but this is not entirely effective
+        thread::sleep(Duration::from_millis(4000));
         for dir in &self.dirs {
-            // println!("{:?} {:?}", dir, fs::read_dir(dir)?.collect::<Vec<_>>());
             if fs::read_dir(dir)?.next().is_none() {
                 if log {
                     eprintln!("removing dir: {:?}", dir);
                 }
-                // fs::remove_dir(&dir)?;
+                fs::remove_dir(&dir)?;
             }
         }
         Ok(())
     }
 }
+
+// for dir in &self.dirs {
+//     let start = Instant::now();
+//     let mut delay = Duration::from_millis(50);
+//     let max_wait = Duration::from_secs(5);
+
+//     while start.elapsed() < max_wait {
+//         if fs::read_dir(dir)?.next().is_none() {
+//             if log {
+//                 eprintln!("removing dir: {:?}", dir);
+//             }
+//             fs::remove_dir(&dir)?;
+//             break;
+//         }
+//         thread::sleep(delay);
+//         delay = delay.saturating_mul(2);
+//     }
+// }
+
 
 fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
     // parent of dist-info dir is site packages
@@ -289,14 +312,14 @@ impl UnpackReport {
     pub(crate) fn remove(&self, log: bool) -> io::Result<()> {
         match self {
             UnpackReport::Full(report) => {
-                for record in &report.records {
+                report.records.par_iter().for_each(|record| {
                     let _ = record.artifacts.remove(log);
-                }
+                });
             }
             UnpackReport::Count(report) => {
-                for record in &report.records {
+                report.records.par_iter().for_each(|record| {
                     let _ = record.artifacts.remove(log);
-                }
+                });
             }
         }
         Ok(())
