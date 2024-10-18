@@ -225,7 +225,7 @@ impl ScanFS {
                     Some(sites) => Some(sites.clone()),
                     None => None,
                 };
-                // ds  is an Option type, might be None
+                // ds is an Option type, might be None
                 records.push(ValidationRecord::new(
                     Some(package), // can take ownership of Package
                     ds.cloned(),
@@ -330,11 +330,11 @@ impl ScanFS {
         ScanReport::from_packages(&packages, &self.package_to_sites)
     }
 
-    pub(crate) fn to_purge(
+    pub(crate) fn to_purge_pattern(
         &self,
         pattern: &Option<String>,
         case_insensitive: bool,
-        dep_manifest: Option<DepManifest>,
+        log: bool,
     ) -> io::Result<()> {
         let packages = match pattern {
             Some(p) => self.search_by_match(p, case_insensitive),
@@ -347,7 +347,32 @@ impl ScanFS {
             .collect();
 
         let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
-        sr.remove()
+        sr.remove(log)
+    }
+
+    pub(crate) fn to_purge_invalid(
+        &self,
+        dm: DepManifest,
+        vf: ValidationFlags,
+        log: bool,
+    ) -> io::Result<()> {
+        let vr = self.to_validation_report(dm, vf);
+        let packages: Vec<Package> = vr
+            .records
+            .iter()
+            .filter_map(|r| match &r.package {
+                Some(p) => Some(p.clone()),
+                None => None,
+            })
+            .collect();
+        // packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .collect();
+
+        let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
+        sr.remove(log)
     }
 }
 

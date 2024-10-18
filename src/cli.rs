@@ -52,8 +52,9 @@ Examples:
   fetter --exe python3 unpack --count display
   fetter unpack -p pip* display
 
-  fetter --exe /usr/bin/python purge -p numpy*
-  fetter purge --bound /tmp/bound_requirements.txt
+  fetter --exe /usr/bin/python purge-pattern -p numpy*
+
+  fetter purge-invalid --bound /tmp/bound_requirements.txt
 ";
 
 #[derive(clap::Parser)]
@@ -108,7 +109,7 @@ enum Commands {
     Validate {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
-        bound: Option<PathBuf>,
+        bound: PathBuf,
 
         /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
         #[arg(long)]
@@ -143,8 +144,8 @@ enum Commands {
         #[command(subcommand)]
         subcommands: UnpackSubcommand,
     },
-    /// Purge packages that fail validation
-    Purge {
+    /// Purge packages that match a search pattern.
+    PurgePattern {
         /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
         pattern: Option<String>,
@@ -153,9 +154,27 @@ enum Commands {
         #[arg(long)]
         case: bool,
 
+        /// Disable logging removed files.
+        #[arg(long)]
+        quiet: bool,
+    },
+    /// Purge packages that are invalid based on dependency specification.
+    PurgeInvalid {
         /// File path from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
-        bound: Option<PathBuf>,
+        bound: PathBuf,
+
+        /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
+        #[arg(long)]
+        subset: bool,
+
+        /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
+        #[arg(long)]
+        superset: bool,
+
+        /// Disable logging removed files.
+        #[arg(long)]
+        quiet: bool,
     },
 }
 
@@ -270,12 +289,15 @@ fn get_scan(
 }
 
 // Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
-fn get_dep_manifest(bound: &Option<PathBuf>) -> Result<DepManifest, String> {
-    if let Some(bound) = bound {
-        DepManifest::from_requirements(bound)
-    } else {
-        Err("Invalid bound path".to_string())
-    }
+fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, String> {
+    // TODO: handle bad file
+    DepManifest::from_requirements(bound)
+
+    // if let Some(bound) = bound {
+    //     DepManifest::from_requirements(bound)
+    // } else {
+    //     Err("Invalid bound path".to_string())
+    // }
 }
 
 // TODO: return Result type with errors
@@ -405,17 +427,32 @@ where
                 }
             }
         }
-        Some(Commands::Purge {
-            bound,
+        Some(Commands::PurgePattern {
             pattern,
             case,
+            quiet,
         }) => {
-            let dm = match bound {
-                Some(b) => Some(get_dep_manifest(&Some(b.clone())).unwrap()),
-                None => None,
-            };
-            let _ = sfs.to_purge(pattern, !case, dm);
+            let _ = sfs.to_purge_pattern(pattern, !case, !quiet);
         }
+        Some(Commands::PurgeInvalid {
+            bound,
+            subset,
+            superset,
+            quiet,
+        }) => {
+            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
+            let permit_superset = *superset;
+            let permit_subset = *subset;
+            let _ = sfs.to_purge_invalid(
+                dm,
+                ValidationFlags {
+                    permit_superset,
+                    permit_subset,
+                },
+                !quiet,
+            );
+        }
+        // must match None
         None => {}
     }
 }

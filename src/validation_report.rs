@@ -39,7 +39,7 @@ pub(crate) struct ValidationFlags {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ValidationRecord {
-    package: Option<Package>,
+    pub(crate) package: Option<Package>,
     dep_spec: Option<DepSpec>,
     sites: Option<Vec<PathShared>>,
 }
@@ -121,14 +121,6 @@ impl ValidationReport {
     pub(crate) fn len(&self) -> usize {
         self.records.len()
     }
-
-    // #[allow(dead_code)]
-    // pub(crate) fn get_package_strings(&self) -> Vec<String> {
-    //     self.records
-    //         .iter()
-    //         .filter_map(|record| record.package.as_ref().map(ToString::to_string))
-    //         .collect()
-    // }
 
     pub(crate) fn to_validation_digest(&self) -> ValidationDigest {
         let mut records: Vec<&ValidationRecord> = self.records.iter().collect();

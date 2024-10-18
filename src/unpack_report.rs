@@ -24,16 +24,21 @@ struct Artifacts {
 }
 
 impl Artifacts {
-    fn remove(&self) -> io::Result<()> {
+    fn remove(&self, log: bool) -> io::Result<()> {
         for (fp, exists) in &self.files {
             if *exists {
-                println!("removing file: {:?}", fp);
+                if log {
+                    eprintln!("removing file: {:?}", fp);
+                }
                 // fs::remove_file(&fp)?;
             }
         }
         for dir in &self.dirs {
+            // println!("{:?} {:?}", dir, fs::read_dir(dir)?.collect::<Vec<_>>());
             if fs::read_dir(dir)?.next().is_none() {
-                println!("removing dir: {:?}", dir);
+                if log {
+                    eprintln!("removing dir: {:?}", dir);
+                }
                 // fs::remove_dir(&dir)?;
             }
         }
@@ -281,16 +286,16 @@ impl UnpackReport {
         }
     }
 
-    pub(crate) fn remove(&self) -> io::Result<()> {
+    pub(crate) fn remove(&self, log: bool) -> io::Result<()> {
         match self {
             UnpackReport::Full(report) => {
                 for record in &report.records {
-                    let _ = record.artifacts.remove();
+                    let _ = record.artifacts.remove(log);
                 }
             }
             UnpackReport::Count(report) => {
                 for record in &report.records {
-                    let _ = record.artifacts.remove();
+                    let _ = record.artifacts.remove(log);
                 }
             }
         }
