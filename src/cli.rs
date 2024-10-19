@@ -316,13 +316,12 @@ where
         return;
     }
     // we always do a scan; we might cache this
-
     let active = Arc::new(AtomicBool::new(true));
     let delay_init = Duration::from_secs(1);
     spin(active.clone(), delay_init);
     let sfs = get_scan(cli.exe, cli.user_site).unwrap(); // handle error
     active.store(false, Ordering::Relaxed);
-    thread::sleep(Duration::from_millis(100)); // clear
+    thread::sleep(Duration::from_millis(100));
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
