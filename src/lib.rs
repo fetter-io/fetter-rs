@@ -18,5 +18,6 @@ mod ureq_client;
 mod util;
 mod validation_report;
 mod version_spec;
+mod spin;
 
 pub use cli::run_cli;

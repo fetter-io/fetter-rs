@@ -4,11 +4,15 @@ use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::time::Duration;
+use std::thread;
 
 use crate::dep_manifest::DepManifest;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::table::Tableable;
+use crate::spin::spin;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -307,13 +311,18 @@ where
     T: Into<OsString> + Clone,
 {
     let cli = Cli::parse_from(args);
-
     if cli.command.is_none() {
         println!("No command provided. For more information, try '--help'.");
         return;
     }
     // we always do a scan; we might cache this
+
+    let active = Arc::new(AtomicBool::new(true));
+    let delay_init = Duration::from_secs(1);
+    spin(active.clone(), delay_init);
     let sfs = get_scan(cli.exe, cli.user_site).unwrap(); // handle error
+    active.store(false, Ordering::Relaxed);
+    thread::sleep(Duration::from_millis(100)); // clear
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
