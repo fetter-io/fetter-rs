@@ -4,15 +4,18 @@ use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use std::time::Duration;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
+use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
-use crate::table::Tableable;
 use crate::spin::spin;
+use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
 // utility enums

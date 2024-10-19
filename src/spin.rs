@@ -1,12 +1,15 @@
-use std::io::{stdout, Write};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use std::thread;
-use std::time::Duration;
 use crossterm::{
-    ExecutableCommand,
     cursor,
     terminal::{Clear, ClearType},
+    ExecutableCommand,
 };
+use std::io::{stdout, Write};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::time::Duration;
 
 pub(crate) fn spin(active: Arc<AtomicBool>, delay_init: Duration) {
     let frame_spin = vec!["-", "/", "-", "\\"];
