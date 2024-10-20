@@ -71,6 +71,10 @@ struct Cli {
     #[arg(short, long, value_name = "FILES", required = false)]
     exe: Option<Vec<PathBuf>>,
 
+    /// Disable logging and terminal animation.
+    #[arg(long)]
+    quiet: bool,
+
     /// Force inclusion of the user site-packages, even if it is not activated. If not set, user site packages will only be included if the interpreter has been configured to use it.
     #[arg(long, required = false)]
     user_site: bool,
@@ -160,10 +164,6 @@ enum Commands {
         /// Enable case-sensitive pattern matching.
         #[arg(long)]
         case: bool,
-
-        /// Disable logging removed files.
-        #[arg(long)]
-        quiet: bool,
     },
     /// Purge packages that are invalid based on dependency specification.
     PurgeInvalid {
@@ -178,10 +178,6 @@ enum Commands {
         /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
         #[arg(long)]
         superset: bool,
-
-        /// Disable logging removed files.
-        #[arg(long)]
-        quiet: bool,
     },
 }
 
@@ -287,12 +283,22 @@ enum UnpackSubcommand {
 fn get_scan(
     exe_paths: Option<Vec<PathBuf>>,
     force_usite: bool,
+    log: bool,
 ) -> Result<ScanFS, String> {
-    if let Some(exe_paths) = exe_paths {
-        ScanFS::from_exes(exe_paths, force_usite)
-    } else {
-        ScanFS::from_exe_scan(force_usite)
+
+    let active = Arc::new(AtomicBool::new(true));
+    if log {
+        spin(active.clone());
     }
+    let sfs = match exe_paths {
+        Some(exe_paths) => ScanFS::from_exes(exe_paths, force_usite),
+        None => ScanFS::from_exe_scan(force_usite),
+    };
+    if log {
+        active.store(false, Ordering::Relaxed);
+        thread::sleep(Duration::from_millis(100));
+    }
+    sfs
 }
 
 // Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
@@ -314,17 +320,14 @@ where
     T: Into<OsString> + Clone,
 {
     let cli = Cli::parse_from(args);
+    let quiet = cli.quiet;
     if cli.command.is_none() {
         println!("No command provided. For more information, try '--help'.");
         return;
     }
+
     // we always do a scan; we might cache this
-    let active = Arc::new(AtomicBool::new(true));
-    let delay_init = Duration::from_secs(1);
-    spin(active.clone(), delay_init);
-    let sfs = get_scan(cli.exe, cli.user_site).unwrap(); // handle error
-    active.store(false, Ordering::Relaxed);
-    thread::sleep(Duration::from_millis(100));
+    let sfs = get_scan(cli.exe, cli.user_site, !quiet).unwrap(); // handle error
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
@@ -441,7 +444,6 @@ where
         Some(Commands::PurgePattern {
             pattern,
             case,
-            quiet,
         }) => {
             let _ = sfs.to_purge_pattern(pattern, !case, !quiet);
         }
@@ -449,7 +451,6 @@ where
             bound,
             subset,
             superset,
-            quiet,
         }) => {
             let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
             let permit_superset = *superset;
