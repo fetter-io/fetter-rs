@@ -72,7 +72,7 @@ struct Cli {
     exe: Option<Vec<PathBuf>>,
 
     /// Disable logging and terminal animation.
-    #[arg(long)]
+    #[arg(long, short)]
     quiet: bool,
 
     /// Force inclusion of the user site-packages, even if it is not activated. If not set, user site packages will only be included if the interpreter has been configured to use it.
