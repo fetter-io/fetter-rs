@@ -58,7 +58,6 @@ impl LogiMapGen {
         let point = 0x2800 + norm as u32;
         char::from_u32(point).unwrap_or('?')
     }
-
 }
 
 pub(crate) fn spin(active: Arc<AtomicBool>, delay_init: Duration) {
