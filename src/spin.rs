@@ -15,8 +15,9 @@ use std::time::Duration;
 use crate::table::write_color;
 
 // we duplicate each component so we can update frames faster while keeping the visual changes slow
-const FRAME_SPIN: [&str; 16] = [
-    "•", "•", "○", "○", "◉", "◉", "◎", "◎", "◉", "◉", "○", "○", "•", "•", " ", " ",
+const FRAME_SPIN: [&str; 20] = [
+    "·", "·", "•", "•", "○", "○", "◉", "◉", "◎", "◎", "◉", "◉", "○", "○", "•", "•", "·",
+    "·", " ", " ",
 ];
 
 // vec!["◦", "•", "○", "◉", "◎", "◯", "◎", "◉", "○", "•", "◦", " "]
