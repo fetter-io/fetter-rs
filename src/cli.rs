@@ -285,7 +285,6 @@ fn get_scan(
     force_usite: bool,
     log: bool,
 ) -> Result<ScanFS, String> {
-
     let active = Arc::new(AtomicBool::new(true));
     if log {
         spin(active.clone());
@@ -441,10 +440,7 @@ where
                 }
             }
         }
-        Some(Commands::PurgePattern {
-            pattern,
-            case,
-        }) => {
+        Some(Commands::PurgePattern { pattern, case }) => {
             let _ = sfs.to_purge_pattern(pattern, !case, !quiet);
         }
         Some(Commands::PurgeInvalid {

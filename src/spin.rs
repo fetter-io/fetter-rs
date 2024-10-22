@@ -15,7 +15,14 @@ use std::time::Duration;
 use crate::table::write_color;
 
 pub(crate) fn spin(active: Arc<AtomicBool>) {
-    let frame_spin = vec!["┷", "┕", "┝", "┍", "┯", "┑", "┥", "┙"];
+    // let frame_spin = vec!["┷", "┕", "┝", "┍", "┯", "┑", "┥", "┙"];
+    let frame_spin = vec!["────", "•───", "••──", "•••─", "─•••", "──••", "───•"];
+    // let frame_spin = vec![
+    //     "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎", "▏", " ",
+    // ];
+    // let frame_spin = vec!["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂", "▁", " "];
+    // let frame_spin = vec!["○─•  ", "◉──• ", "◎───•", "◉──• ", "○─•  "];
+
     let mut stdout = stdout();
     if !stdout.is_tty() {
         return;
@@ -34,7 +41,7 @@ pub(crate) fn spin(active: Arc<AtomicBool>) {
                 let msg = format!("{} fettering... ", fs);
                 write_color(&mut stdout, 120, 120, 120, &msg);
                 stdout.flush().unwrap();
-                thread::sleep(Duration::from_millis(50));
+                thread::sleep(Duration::from_millis(100));
                 frame_idx += 1;
             }
             stdout.execute(cursor::MoveToColumn(0)).unwrap();
