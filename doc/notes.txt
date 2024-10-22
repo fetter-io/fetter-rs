@@ -95,3 +95,74 @@ Next steps
 
 
 
+--------------------------
+
+
+
+Fetter: 9 commands
+
+---
+
+./target/release/fetter scan display
+
+
+./target/release/fetter -e python3 scan display
+
+./target/release/fetter -e python3 scan write -o /tmp/out.txt
+cat /tmp/out.txt
+
+
+./target/release/fetter --help
+
+
+
+./target/release/fetter -e /home/ariza/.env311/bin/python3 audit display
+
+
+./target/release/fetter -e python3 unpack display
+
+./target/release/fetter -e python3 unpack --count display
+
+
+---
+
+Data model to tables
+
+Data model might define more than row per record
+
+Data model might need to have derived columns
+
+
+Basic model of a Report { Vec<Records> }
+
+
+---
+
+Table traits:
+
+Two traits: 
+Rowable
+    define a method that converts a record into a Vec of strings
+
+Tableable
+    Generic to a type of Rowable
+
+    Implementer must define get_header, get_records as a Vec of Rowabel
+
+    Provides to_file, to_stdout methods
+
+
+Count Report
+Audit Report
+
+
+
+Antother application of traits: testing APIs
+
+
+    Ureq client
+
+
+
+
+
