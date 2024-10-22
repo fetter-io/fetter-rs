@@ -15,7 +15,6 @@ use std::time::Duration;
 use crate::table::write_color;
 
 pub(crate) fn spin(active: Arc<AtomicBool>) {
-    // let frame_spin = vec!["┷", "┕", "┝", "┍", "┯", "┑", "┥", "┙"];
     let frame_spin = vec!["────", "•───", "••──", "•••─", "─•••", "──••", "───•"];
     // let frame_spin = vec![
     //     "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎", "▏", " ",
