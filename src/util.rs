@@ -1,3 +1,6 @@
+use std::env;
+use std::path::PathBuf;
+
 // Normalize all names
 pub(crate) fn name_to_key(name: &String) -> String {
     name.to_lowercase().replace("-", "_")
@@ -27,6 +30,33 @@ pub(crate) fn url_strip_user(url: &String) -> String {
     url.to_string()
 }
 
+//------------------------------------------------------------------------------
+
+pub(crate) fn path_home() -> Option<PathBuf> {
+    if env::consts::OS == "windows" {
+        env::var_os("USERPROFILE").map(PathBuf::from)
+    } else {
+        env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+pub(crate) fn path_normalize(mut path: PathBuf) -> Result<PathBuf, String> {
+    if let Some(path_str) = path.to_str() {
+        if path_str.starts_with("~") {
+            if let Some(home) = path_home() {
+                path = home.join(path_str.trim_start_matches("~"));
+            } else {
+                return Err("Usage of `~` unresolved.".into());
+            }
+        }
+    }
+    // only expand relative paths if there is more than one component
+    if path.is_relative() && path.components().count() > 1 {
+        let cwd = env::current_dir().map_err(|e| e.to_string())?;
+        path = cwd.join(path);
+    }
+    Ok(path)
+}
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
