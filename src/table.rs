@@ -97,16 +97,6 @@ fn optimize_widths(
             });
         }
     }
-    // proportional reduction from all
-    // for width in widths_max.iter() {
-    //     let proportion = *width as f64 / w_total as f64;
-    //     let reduction = (proportion * w_excess) as usize;
-    //     let w_field = (*width - reduction).max(3);
-    //     widths.push(WidthFormat {
-    //         width_chars: w_field - w_gutter,
-    //         width_pad: w_field,
-    //     });
-    // }
     widths
 }
 
@@ -197,13 +187,6 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
     }
     Ok(())
 }
-
-// #[derive(Clone)]
-// pub(crate) struct FormatColor {
-//     r: u8,
-//     g: u8,
-//     b: u8,
-// }
 
 #[derive(Clone)]
 pub(crate) struct HeaderFormat {
