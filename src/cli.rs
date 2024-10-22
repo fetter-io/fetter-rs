@@ -16,6 +16,7 @@ use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::spin::spin;
 use crate::table::Tableable;
+// use crate::util::path_normalize;
 
 //------------------------------------------------------------------------------
 // utility enums

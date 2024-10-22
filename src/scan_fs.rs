@@ -20,6 +20,7 @@ use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
+use crate::util::path_normalize;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
@@ -125,8 +126,10 @@ impl ScanFS {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, force_usite);
-                (exe, dirs)
+                // if normalization fails, just copy the pre-norm
+                let exe_norm = path_normalize(&exe).unwrap_or_else(|_| exe.clone());
+                let dirs = get_site_package_dirs(&exe_norm, force_usite);
+                (exe_norm, dirs)
             })
             .collect();
         Self::from_exe_to_sites(exe_to_sites)

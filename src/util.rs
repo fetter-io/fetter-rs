@@ -40,23 +40,25 @@ pub(crate) fn path_home() -> Option<PathBuf> {
     }
 }
 
-pub(crate) fn path_normalize(mut path: PathBuf) -> Result<PathBuf, String> {
-    if let Some(path_str) = path.to_str() {
+pub(crate) fn path_normalize(path: &PathBuf) -> Result<PathBuf, String> {
+    let mut fp = path.clone();
+    if let Some(path_str) = fp.to_str() {
         if path_str.starts_with("~") {
             if let Some(home) = path_home() {
-                path = home.join(path_str.trim_start_matches("~"));
+                fp = home.join(path_str.trim_start_matches("~"));
             } else {
                 return Err("Usage of `~` unresolved.".into());
             }
         }
     }
-    // only expand relative paths if there is more than one component
-    if path.is_relative() && path.components().count() > 1 {
+    // Only expand relative paths if there is more than one component
+    if fp.is_relative() && fp.components().count() > 1 {
         let cwd = env::current_dir().map_err(|e| e.to_string())?;
-        path = cwd.join(path);
+        fp = cwd.join(fp);
     }
-    Ok(path)
+    Ok(fp)
 }
+
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
