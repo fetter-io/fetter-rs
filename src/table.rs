@@ -10,7 +10,13 @@ use std::io::{Error, Write};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
-fn write_color<W: Write + IsTty>(writer: &mut W, r: u8, g: u8, b: u8, message: &str) {
+pub(crate) fn write_color<W: Write + IsTty>(
+    writer: &mut W,
+    r: u8,
+    g: u8,
+    b: u8,
+    message: &str,
+) {
     if writer.is_tty() {
         execute!(
             writer,
