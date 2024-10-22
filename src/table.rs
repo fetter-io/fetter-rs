@@ -31,6 +31,7 @@ pub(crate) fn write_color<W: Write + IsTty>(
     }
 }
 
+//------------------------------------------------------------------------------
 #[derive(PartialEq)]
 pub(crate) enum RowableContext {
     Delimited,
@@ -43,6 +44,7 @@ pub(crate) trait Rowable {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>>;
 }
 
+//------------------------------------------------------------------------------
 #[derive(Debug)]
 struct WidthFormat {
     width_pad: usize,
@@ -188,6 +190,7 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
     Ok(())
 }
 
+//------------------------------------------------------------------------------
 #[derive(Clone)]
 pub(crate) struct HeaderFormat {
     header: String,
@@ -209,6 +212,7 @@ impl HeaderFormat {
     }
 }
 
+//------------------------------------------------------------------------------
 pub(crate) trait Tableable<T: Rowable> {
     fn get_header(&self) -> Vec<HeaderFormat>;
     fn get_records(&self) -> &Vec<T>;
