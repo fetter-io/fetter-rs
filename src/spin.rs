@@ -14,13 +14,21 @@ use std::time::Duration;
 
 use crate::table::write_color;
 
+// we duplicate each component so we can update frames faster while keeping the visual changes slow
+const FRAME_SPIN: [&str; 16] = ["•", "•", "○", "○", "◉", "◉", "◎", "◎", "◉", "◉", "○", "○", "•", "•", " ", " "];
+
+// let frame_spin: Vec<_> = vec![
+//     "◦", "•", "○", "◉", "◎", "◯", "◎", "◉", "○", "•", "◦", " ",
+// ]
+// let frame_spin = vec!["────", "•───", "••──", "•••─", "─•••", "──••", "───•"];
+// let frame_spin = vec![
+//     "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎", "▏", " ",
+// ];
+// let frame_spin = vec!["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂", "▁", " "];
+// let frame_spin = vec!["○─•  ", "◉──• ", "◎───•", "◉──• ", "○─•  "];
+
+
 pub(crate) fn spin(active: Arc<AtomicBool>) {
-    let frame_spin = vec!["────", "•───", "••──", "•••─", "─•••", "──••", "───•"];
-    // let frame_spin = vec![
-    //     "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎", "▏", " ",
-    // ];
-    // let frame_spin = vec!["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂", "▁", " "];
-    // let frame_spin = vec!["○─•  ", "◉──• ", "◎───•", "◉──• ", "○─•  "];
 
     let mut stdout = stdout();
     if !stdout.is_tty() {
@@ -36,11 +44,11 @@ pub(crate) fn spin(active: Arc<AtomicBool>) {
             stdout.execute(Clear(ClearType::CurrentLine)).unwrap();
             while active.load(Ordering::Relaxed) {
                 stdout.execute(cursor::MoveToColumn(0)).unwrap();
-                let fs = frame_spin[frame_idx % frame_spin.len()];
+                let fs = FRAME_SPIN[frame_idx % FRAME_SPIN.len()];
                 let msg = format!("{} fettering... ", fs);
                 write_color(&mut stdout, 120, 120, 120, &msg);
                 stdout.flush().unwrap();
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(Duration::from_millis(80));
                 frame_idx += 1;
             }
             stdout.execute(cursor::MoveToColumn(0)).unwrap();
