@@ -16,6 +16,7 @@ use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::spin::spin;
 use crate::table::Tableable;
+use crate::util::path_normalize;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -278,13 +279,14 @@ enum UnpackSubcommand {
 }
 
 //------------------------------------------------------------------------------
+// Utility constructors specialized fro CLI contexts
 
 // Get a ScanFS, optionally using exe_paths if provided
 fn get_scan(
     exe_paths: Option<Vec<PathBuf>>,
     force_usite: bool,
     log: bool,
-) -> Result<ScanFS, String> {
+) -> Result<ScanFS, Box<dyn std::error::Error>> {
     let active = Arc::new(AtomicBool::new(true));
     if log {
         spin(active.clone());
@@ -300,20 +302,15 @@ fn get_scan(
     sfs
 }
 
-// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
-fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, String> {
-    // TODO: handle bad file
-    DepManifest::from_requirements(bound)
-
-    // if let Some(bound) = bound {
-    //     DepManifest::from_requirements(bound)
-    // } else {
-    //     Err("Invalid bound path".to_string())
-    // }
+// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.
+fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, Box<dyn std::error::Error>> {
+    // if we cannot normalize we keep that path as is
+    let fp = path_normalize(&bound).unwrap_or_else(|_| bound.clone());
+    DepManifest::from_requirements(&fp)
 }
 
-// TODO: return Result type with errors
-pub fn run_cli<I, T>(args: I)
+//------------------------------------------------------------------------------
+pub fn run_cli<I, T>(args: I) -> Result<(), Box<dyn std::error::Error>>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -321,8 +318,7 @@ where
     let cli = Cli::parse_from(args);
     let quiet = cli.quiet;
     if cli.command.is_none() {
-        println!("No command provided. For more information, try '--help'.");
-        return;
+        return Err("No command provided. For more information, try '--help'.".into());
     }
 
     // we always do a scan; we might cache this
@@ -369,11 +365,11 @@ where
         }) => {
             match subcommands {
                 DeriveSubcommand::Display => {
-                    let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
+                    let dm = sfs.to_dep_manifest((*anchor).into())?;
                     dm.to_stdout();
                 }
                 DeriveSubcommand::Write { output } => {
-                    let dm = sfs.to_dep_manifest((*anchor).into()).unwrap();
+                    let dm = sfs.to_dep_manifest((*anchor).into())?;
                     // TODO: might have a higher-order func that branches based on extension between txt and json
                     let _ = dm.to_requirements(output);
                 }
@@ -385,7 +381,7 @@ where
             superset,
             subcommands,
         }) => {
-            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
+            let dm = get_dep_manifest(bound)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
             let vr = sfs.to_validation_report(
@@ -400,10 +396,7 @@ where
                     let _ = vr.to_stdout();
                 }
                 ValidateSubcommand::JSON => {
-                    println!(
-                        "{}",
-                        serde_json::to_string(&vr.to_validation_digest()).unwrap()
-                    );
+                    println!("{}", serde_json::to_string(&vr.to_validation_digest())?);
                 }
                 ValidateSubcommand::Write { output, delimiter } => {
                     let _ = vr.to_file(output, *delimiter);
@@ -448,7 +441,7 @@ where
             subset,
             superset,
         }) => {
-            let dm = get_dep_manifest(bound).unwrap(); // TODO: handle error
+            let dm = get_dep_manifest(bound)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
             let _ = sfs.to_purge_invalid(
@@ -460,9 +453,9 @@ where
                 !quiet,
             );
         }
-        // must match None
         None => {}
     }
+    Ok(())
 }
 
 //-----------------------------------------------------------------------------

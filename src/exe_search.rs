@@ -8,12 +8,14 @@ use std::process::Command;
 
 use rayon::prelude::*;
 
+use crate::util::path_home;
+
 //------------------------------------------------------------------------------
 // Provide absolute paths for directories that should be excluded from executable search.
 fn get_search_exclude_paths() -> HashSet<PathBuf> {
     let mut paths: HashSet<PathBuf> = HashSet::new();
-    match env::var("HOME") {
-        Ok(home) => {
+    match path_home() {
+        Some(home) => {
             paths.insert(PathBuf::from(home.clone()).join(".cache"));
             paths.insert(PathBuf::from(home.clone()).join(".npm"));
 
@@ -26,9 +28,8 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
                 paths.insert(PathBuf::from(home.clone()).join(".local/share/Trash"));
             }
         }
-        Err(e) => {
-            // log this
-            eprintln!("Error getting HOME {}", e);
+        None => {
+            eprintln!("Error getting HOME");
         }
     }
     paths
@@ -44,9 +45,8 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
             paths.insert((PathBuf::from(path), false));
         }
     }
-
-    match env::var("HOME") {
-        Ok(home) => {
+    match path_home() {
+        Some(home) => {
             paths.insert((PathBuf::from(home.clone()), false));
             // collect all directories in the user's home directory
             match fs::read_dir(PathBuf::from(home)) {
@@ -63,9 +63,8 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
                 }
             }
         }
-        Err(e) => {
-            // log this
-            eprintln!("Error getting HOME {}", e);
+        None => {
+            eprintln!("Error getting HOME");
         }
     }
     paths.insert((PathBuf::from("/bin"), false));
@@ -106,7 +105,7 @@ fn is_symlink(path: &Path) -> bool {
     }
 }
 
-// Use the default Python to and get its executable path.
+// Use the default Python to get its executable path.
 fn get_exe_default() -> Option<PathBuf> {
     return match Command::new("python3")
         .arg("-c")

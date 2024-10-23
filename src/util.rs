@@ -1,3 +1,12 @@
+use std::env;
+use std::path::PathBuf;
+
+//------------------------------------------------------------------------------
+
+pub(crate) type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
+
+//------------------------------------------------------------------------------
+
 // Normalize all names
 pub(crate) fn name_to_key(name: &String) -> String {
     name.to_lowercase().replace("-", "_")
@@ -25,6 +34,35 @@ pub(crate) fn url_strip_user(url: &String) -> String {
         }
     }
     url.to_string()
+}
+
+//------------------------------------------------------------------------------
+
+pub(crate) fn path_home() -> Option<PathBuf> {
+    if env::consts::OS == "windows" {
+        env::var_os("USERPROFILE").map(PathBuf::from)
+    } else {
+        env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+pub(crate) fn path_normalize(path: &PathBuf) -> ResultDynError<PathBuf> {
+    let mut fp = path.clone();
+    if let Some(path_str) = fp.to_str() {
+        if path_str.starts_with("~") {
+            if let Some(home) = path_home() {
+                fp = home.join(path_str.trim_start_matches("~"));
+            } else {
+                return Err("Usage of `~` unresolved.".into());
+            }
+        }
+    }
+    // Only expand relative paths if there is more than one component
+    if fp.is_relative() && fp.components().count() > 1 {
+        let cwd = env::current_dir().map_err(|e| e.to_string())?;
+        fp = cwd.join(fp);
+    }
+    Ok(fp)
 }
 
 //------------------------------------------------------------------------------

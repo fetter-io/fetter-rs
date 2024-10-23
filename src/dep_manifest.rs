@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
+use crate::util::ResultDynError;
 
 // A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
 #[derive(Debug, Clone)]
@@ -18,7 +19,7 @@ pub(crate) struct DepManifest {
 
 impl DepManifest {
     #[allow(dead_code)]
-    pub(crate) fn from_iter<I, S>(ds_iter: I) -> Result<Self, String>
+    pub(crate) fn from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -27,14 +28,16 @@ impl DepManifest {
         for spec in ds_iter {
             let dep_spec = DepSpec::from_string(spec.as_ref())?;
             if dep_specs.contains_key(&dep_spec.key) {
-                return Err(format!("Duplicate package key found: {}", dep_spec.key));
+                return Err(
+                    format!("Duplicate package key found: {}", dep_spec.key).into()
+                );
             }
             dep_specs.insert(dep_spec.key.clone(), dep_spec);
         }
         Ok(DepManifest { dep_specs })
     }
     // Create a DepManifest from a requirements.txt file, which might reference onther requirements.txt files.
-    pub(crate) fn from_requirements(file_path: &PathBuf) -> Result<Self, String> {
+    pub(crate) fn from_requirements(file_path: &PathBuf) -> ResultDynError<Self> {
         let mut files: VecDeque<PathBuf> = VecDeque::new();
         files.push_back(file_path.clone());
         let mut dep_specs = HashMap::new();
@@ -61,7 +64,8 @@ impl DepManifest {
                             return Err(format!(
                                 "Duplicate package key found: {}",
                                 ds.key
-                            ));
+                            )
+                            .into());
                         }
                         dep_specs.insert(ds.key.clone(), ds);
                     }
@@ -70,17 +74,19 @@ impl DepManifest {
         }
         Ok(DepManifest { dep_specs })
     }
-    pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> Result<Self, String> {
+    pub(crate) fn from_dep_specs(dep_specs: &Vec<DepSpec>) -> ResultDynError<Self> {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
         for dep_spec in dep_specs {
             if ds.contains_key(&dep_spec.key) {
-                return Err(format!("Duplicate DepSpec key found: {}", dep_spec.key));
+                return Err(
+                    format!("Duplicate DepSpec key found: {}", dep_spec.key).into()
+                );
             }
             ds.insert(dep_spec.key.clone(), dep_spec.clone());
         }
         Ok(DepManifest { dep_specs: ds })
     }
-    // pub(crate) fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
+    // pub(crate) fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> ResultDynError<Self> {
     //     let contents = fs::read_to_string(file_path)
     //         .map_err(|e| format!("Failed to read pyproject.toml file: {}", e))?;
     //     let parsed_toml: toml::Value = toml::from_str(&contents)
@@ -99,7 +105,7 @@ impl DepManifest {
     //     Ok(DepManifest { packages })
     // }
 
-    // pub(crate) fn from_git_repo(repo_url: &str) -> Result<Self, String> {
+    // pub(crate) fn from_git_repo(repo_url: &str) -> ResultDynError<Self> {
     //     // Create a temporary directory
     //     let tmp_dir = tempdir().map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     //     let repo_path = tmp_dir.path().join("repo");

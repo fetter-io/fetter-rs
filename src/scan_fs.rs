@@ -20,6 +20,8 @@ use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
+use crate::util::path_normalize;
+use crate::util::ResultDynError;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
@@ -91,7 +93,7 @@ pub(crate) struct ScanFS {
 impl ScanFS {
     fn from_exe_to_sites(
         exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
@@ -121,17 +123,19 @@ impl ScanFS {
     pub(crate) fn from_exes(
         exes: Vec<PathBuf>,
         force_usite: bool,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, force_usite);
-                (exe, dirs)
+                // if normalization fails, just copy the pre-norm
+                let exe_norm = path_normalize(&exe).unwrap_or_else(|_| exe.clone());
+                let dirs = get_site_package_dirs(&exe_norm, force_usite);
+                (exe_norm, dirs)
             })
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
-    pub(crate) fn from_exe_scan(force_usite: bool) -> Result<Self, String> {
+    pub(crate) fn from_exe_scan(force_usite: bool) -> ResultDynError<Self> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
@@ -148,7 +152,7 @@ impl ScanFS {
         exe: PathBuf,
         site: PathBuf,
         packages: Vec<Package>,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         let mut exe_to_sites = HashMap::new();
         let site_shared = PathShared::from_path_buf(site);
 
@@ -269,7 +273,10 @@ impl ScanFS {
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
-    pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
+    pub(crate) fn to_dep_manifest(
+        &self,
+        anchor: Anchor,
+    ) -> Result<DepManifest, Box<dyn std::error::Error>> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {
@@ -303,7 +310,7 @@ impl ScanFS {
                 Anchor::Upper => {
                     DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
                 }
-                Anchor::Both => return Err("Not implemented".to_string()),
+                Anchor::Both => return Err("Not implemented".into()),
             };
             if let Ok(dep_spec) = ds {
                 dep_specs.push(dep_spec);
