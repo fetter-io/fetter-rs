@@ -272,7 +272,7 @@ impl ScanFS {
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
-    pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, String> {
+    pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, Box<dyn std::error::Error>> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {

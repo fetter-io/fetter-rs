@@ -303,7 +303,7 @@ fn get_scan(
 }
 
 // Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.
-fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, String> {
+fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, Box<dyn std::error::Error>> {
     // if we cannot normalize we keep that path as is
     let fp = path_normalize(&bound).unwrap_or_else(|_| bound.clone());
     DepManifest::from_requirements(&fp)

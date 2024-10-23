@@ -74,7 +74,7 @@ pub(crate) struct DepSpec {
 }
 impl DepSpec {
     /// Given a URL to a whl file, parse the name and version and return a DepSpec
-    fn from_whl(input: &str) -> Result<Self, String> {
+    fn from_whl(input: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let input = input.trim();
         if input.starts_with("http://")
             || input.starts_with("https://")
@@ -101,16 +101,16 @@ impl DepSpec {
                 });
             }
         }
-        return Err("Invalid .whl".to_string());
+        return Err("Invalid .whl".into());
     }
 
     /// Given a string as found in a requirements.txt or similar, create a DepSpec.
-    pub(crate) fn from_string(input: &str) -> Result<Self, String> {
+    pub(crate) fn from_string(input: &str) -> Result<Self, Box<dyn std::error::Error>> {
         if let Ok(ds) = DepSpec::from_whl(input) {
             return Ok(ds);
         }
         let mut parsed = DepSpecParser::parse(Rule::name_req, input)
-            .map_err(|e| format!("Parsing error: {}", e))?;
+            .map_err(|e| -> Box<dyn std::error::Error> {format!("Parsing error: {}", e).into()})?;
 
         let parse_result = parsed.next().ok_or("Parsing error: No results")?;
         // check for unconsumed input
@@ -118,7 +118,7 @@ impl DepSpec {
             return Err(format!(
                 "Unrecognized input: {:?}",
                 input[parse_result.as_str().len()..].to_string()
-            ));
+            ).into());
         }
 
         let mut package_name = None;
@@ -142,18 +142,18 @@ impl DepSpec {
                         // operator
                         let op_pair = inner_pairs.next().ok_or("Expected version_cmp")?;
                         if op_pair.as_rule() != Rule::version_cmp {
-                            return Err("Expected version_cmp".to_string());
+                            return Err("Expected version_cmp".into());
                         }
                         let op = op_pair
                             .as_str()
                             .trim()
                             .parse::<DepOperator>()
-                            .map_err(|e| format!("Invalid operator: {}", e))?;
+                            .map_err(|e|-> Box<dyn std::error::Error> {format!("Invalid operator: {}", e).into()})?;
                         // version
                         let version_pair =
                             inner_pairs.next().ok_or("Expected version")?;
                         if version_pair.as_rule() != Rule::version {
-                            return Err("Expected version".to_string());
+                            return Err("Expected version".into());
                         }
                         let version = version_pair.as_str().trim().to_string();
 
@@ -173,7 +173,7 @@ impl DepSpec {
                     return Err(format!(
                         "Provided name {} does not match whl name {}",
                         ds.name, package_name
-                    ));
+                    ).into());
                 }
                 return Ok(ds);
             }
