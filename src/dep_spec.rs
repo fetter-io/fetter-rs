@@ -11,6 +11,7 @@ use crate::package::Package;
 use crate::util::name_to_key;
 use crate::util::url_strip_user;
 use crate::util::url_trim;
+use crate::util::ResultDynError;
 use crate::version_spec::VersionSpec;
 
 // This is a grammar for https://packaging.python.org/en/latest/specifications/dependency-specifiers/
@@ -72,9 +73,10 @@ pub(crate) struct DepSpec {
     operators: Vec<DepOperator>,
     versions: Vec<VersionSpec>,
 }
+
 impl DepSpec {
     /// Given a URL to a whl file, parse the name and version and return a DepSpec
-    fn from_whl(input: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    fn from_whl(input: &str) -> ResultDynError<Self> {
         let input = input.trim();
         if input.starts_with("http://")
             || input.starts_with("https://")
@@ -105,12 +107,13 @@ impl DepSpec {
     }
 
     /// Given a string as found in a requirements.txt or similar, create a DepSpec.
-    pub(crate) fn from_string(input: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn from_string(input: &str) -> ResultDynError<Self> {
         if let Ok(ds) = DepSpec::from_whl(input) {
             return Ok(ds);
         }
-        let mut parsed = DepSpecParser::parse(Rule::name_req, input)
-            .map_err(|e| -> Box<dyn std::error::Error> {format!("Parsing error: {}", e).into()})?;
+        let mut parsed = DepSpecParser::parse(Rule::name_req, input).map_err(
+            |e| -> Box<dyn std::error::Error> { format!("Parsing error: {}", e).into() },
+        )?;
 
         let parse_result = parsed.next().ok_or("Parsing error: No results")?;
         // check for unconsumed input
@@ -118,7 +121,8 @@ impl DepSpec {
             return Err(format!(
                 "Unrecognized input: {:?}",
                 input[parse_result.as_str().len()..].to_string()
-            ).into());
+            )
+            .into());
         }
 
         let mut package_name = None;
@@ -144,11 +148,11 @@ impl DepSpec {
                         if op_pair.as_rule() != Rule::version_cmp {
                             return Err("Expected version_cmp".into());
                         }
-                        let op = op_pair
-                            .as_str()
-                            .trim()
-                            .parse::<DepOperator>()
-                            .map_err(|e|-> Box<dyn std::error::Error> {format!("Invalid operator: {}", e).into()})?;
+                        let op = op_pair.as_str().trim().parse::<DepOperator>().map_err(
+                            |e| -> Box<dyn std::error::Error> {
+                                format!("Invalid operator: {}", e).into()
+                            },
+                        )?;
                         // version
                         let version_pair =
                             inner_pairs.next().ok_or("Expected version")?;
@@ -173,7 +177,8 @@ impl DepSpec {
                     return Err(format!(
                         "Provided name {} does not match whl name {}",
                         ds.name, package_name
-                    ).into());
+                    )
+                    .into());
                 }
                 return Ok(ds);
             }
@@ -190,7 +195,7 @@ impl DepSpec {
     pub(crate) fn from_package(
         package: &Package,
         operator: DepOperator,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         let mut operators = Vec::new();
         let mut versions = Vec::new();
         operators.push(operator);

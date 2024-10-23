@@ -9,9 +9,7 @@ use std::path::PathBuf;
 
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
-
-type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
-
+use crate::util::ResultDynError;
 
 // A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
 #[derive(Debug, Clone)]
@@ -20,7 +18,6 @@ pub(crate) struct DepManifest {
 }
 
 impl DepManifest {
-
     #[allow(dead_code)]
     pub(crate) fn from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
     where
@@ -31,7 +28,9 @@ impl DepManifest {
         for spec in ds_iter {
             let dep_spec = DepSpec::from_string(spec.as_ref())?;
             if dep_specs.contains_key(&dep_spec.key) {
-                return Err(format!("Duplicate package key found: {}", dep_spec.key).into());
+                return Err(
+                    format!("Duplicate package key found: {}", dep_spec.key).into()
+                );
             }
             dep_specs.insert(dep_spec.key.clone(), dep_spec);
         }
@@ -65,7 +64,8 @@ impl DepManifest {
                             return Err(format!(
                                 "Duplicate package key found: {}",
                                 ds.key
-                            ).into());
+                            )
+                            .into());
                         }
                         dep_specs.insert(ds.key.clone(), ds);
                     }
@@ -78,7 +78,9 @@ impl DepManifest {
         let mut ds: HashMap<String, DepSpec> = HashMap::new();
         for dep_spec in dep_specs {
             if ds.contains_key(&dep_spec.key) {
-                return Err(format!("Duplicate DepSpec key found: {}", dep_spec.key).into());
+                return Err(
+                    format!("Duplicate DepSpec key found: {}", dep_spec.key).into()
+                );
             }
             ds.insert(dep_spec.key.clone(), dep_spec.clone());
         }

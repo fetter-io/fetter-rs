@@ -134,7 +134,9 @@ impl ScanFS {
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
-    pub(crate) fn from_exe_scan(force_usite: bool) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn from_exe_scan(
+        force_usite: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
@@ -272,7 +274,10 @@ impl ScanFS {
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
-    pub(crate) fn to_dep_manifest(&self, anchor: Anchor) -> Result<DepManifest, Box<dyn std::error::Error>> {
+    pub(crate) fn to_dep_manifest(
+        &self,
+        anchor: Anchor,
+    ) -> Result<DepManifest, Box<dyn std::error::Error>> {
         let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
 
         for package in self.package_to_sites.keys() {

@@ -1,4 +1,5 @@
 use crate::util::url_strip_user;
+use crate::util::ResultDynError;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs::File;
@@ -30,10 +31,10 @@ pub(crate) struct DirectURL {
 }
 
 impl DirectURL {
-    pub(crate) fn from_file(path: &PathBuf) -> Result<Self, String> {
+    pub(crate) fn from_file(path: &PathBuf) -> ResultDynError<Self> {
         let file = File::open(path).map_err(|e| format!("failed to open file: {}", e));
         serde_json::from_reader(file.unwrap())
-            .map_err(|e| format!("failed to parse JSON: {}", e))
+            .map_err(|e| format!("failed to parse JSON: {}", e).into())
     }
 
     // Alternate constructor for test.
@@ -42,7 +43,7 @@ impl DirectURL {
         url: String,
         vcs: Option<String>,
         commit_id: Option<String>,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         let vcs_info: Option<VcsInfo>;
         if vcs.is_some() && commit_id.is_some() {
             vcs_info = Some(VcsInfo {

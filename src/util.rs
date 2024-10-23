@@ -1,6 +1,12 @@
 use std::env;
 use std::path::PathBuf;
 
+//------------------------------------------------------------------------------
+
+pub(crate) type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
+
+//------------------------------------------------------------------------------
+
 // Normalize all names
 pub(crate) fn name_to_key(name: &String) -> String {
     name.to_lowercase().replace("-", "_")
