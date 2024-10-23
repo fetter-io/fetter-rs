@@ -214,16 +214,16 @@ mod tests {
         let dm =
             DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
-        let p1 = Package::from_dist_info("pk2-2.0.dist-info", None).unwrap();
+        let p1 = Package::from_dist_info("pk2-2.0.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p1, false).0, true);
 
-        let p2 = Package::from_dist_info("foo-2.0.dist-info", None).unwrap();
+        let p2 = Package::from_dist_info("foo-2.0.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p2, false).0, false);
 
-        let p3 = Package::from_dist_info("pk1-0.2.5.dist-info", None).unwrap();
+        let p3 = Package::from_dist_info("pk1-0.2.5.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p3, false).0, true);
 
-        let p3 = Package::from_dist_info("pk1-0.3.0.dist-info", None).unwrap();
+        let p3 = Package::from_dist_info("pk1-0.3.0.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p3, false).0, false);
     }
 
@@ -553,7 +553,7 @@ regex==2024.4.16
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =
-            Package::from_dist_info("packaging-24.2.dev0.dist-info", Some(durl)).unwrap();
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl)).unwrap();
 
         let ds1 = DepSpec::from_string("packaging @ git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
         let specs = vec![
@@ -580,7 +580,7 @@ regex==2024.4.16
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =
-            Package::from_dist_info("packaging-24.2.dev0.dist-info", Some(durl)).unwrap();
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl)).unwrap();
 
         let ds1 = DepSpec::from_string("packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
         let specs = vec![

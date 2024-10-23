@@ -32,18 +32,24 @@ impl Package {
             direct_url: direct_url,
         })
     }
-    /// Create a Package from a dist_info string.
+    /// Create a Package from a dist-info string. As the name of the package / source dir may be different than the dist-info representation, optionall provide a `name`
     pub(crate) fn from_dist_info(
         input: &str,
+        name: Option<&str>,
         direct_url: Option<DirectURL>,
     ) -> Option<Self> {
         let trimmed_input = input.trim_end_matches(".dist-info");
         let parts: Vec<&str> = trimmed_input.split('-').collect();
         if parts.len() >= 2 {
-            // NOTE: we expect that dist-info based names have already normalized hyphens to underscores, joingwith '-' may not be meaningful here
-            let name = parts[..parts.len() - 1].join("-");
+            // NOTE: we expect that dist-info based names have already normalized hyphens to underscores
+            let name_from_di = parts[..parts.len() - 1].join("-");
             let version = parts.last()?;
-            return Self::from_name_version_durl(&name, version, direct_url);
+            if let Some(name) = name {
+                return Self::from_name_version_durl(name, version, direct_url);
+            }
+            else {
+                return Self::from_name_version_durl(&name_from_di, version, direct_url)
+            }
         }
         None
     }
@@ -57,7 +63,7 @@ impl Package {
             } else {
                 None
             };
-            return Self::from_dist_info(file_name, durl);
+            return Self::from_dist_info(file_name, None, durl);
         }
         None
     }
@@ -106,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_package_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None).unwrap();
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
         assert_eq!(p1.name, "matplotlib");
         assert_eq!(p1.version.to_string(), "3.9.0");
     }
@@ -114,16 +120,16 @@ mod tests {
     #[test]
     fn test_package_b() {
         assert_eq!(
-            Package::from_dist_info("matplotlib3.9.0.distin", None),
+            Package::from_dist_info("matplotlib3.9.0.distin", None, None),
             None
         );
     }
 
     #[test]
     fn test_package_c() {
-        let p1 = Package::from_dist_info("xarray-0.21.1.dist-info", None).unwrap();
-        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info", None).unwrap();
-        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info", None).unwrap();
+        let p1 = Package::from_dist_info("xarray-0.21.1.dist-info", None, None).unwrap();
+        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
+        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
 
         assert_eq!(p2 > p1, true);
         assert_eq!(p1 < p2, true);
@@ -132,7 +138,7 @@ mod tests {
     }
     #[test]
     fn test_package_to_string_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None).unwrap();
+        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
         assert_eq!(p1.to_string(), "matplotlib-3.9.0");
     }
     #[test]

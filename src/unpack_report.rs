@@ -59,9 +59,11 @@ impl Artifacts {
         }
         // this can be a Vec
         let mut dirs = HashSet::new();
+        // the naming of the dist-info dir is normalized
         if dirs_observed.contains(&dir_dist_info) {
             dirs.insert(dir_dist_info.clone());
         }
+        // src might be a dir or a file!
         if dirs_observed.contains(&dir_src) {
             dirs.insert(dir_src.clone());
         }
@@ -347,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_record_a() {
-        let pkg = Package::from_dist_info("xarray-0.21.1.dist-info", None).unwrap();
+        let pkg = Package::from_dist_info("xarray-0.21.1.dist-info",  None, None).unwrap();
         let dir_temp = tempdir().unwrap(); // this is our site
         let site = PathShared::from_path_buf(dir_temp.path().to_path_buf());
         let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
