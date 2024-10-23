@@ -12,7 +12,7 @@ use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
 // Given a name from the dist-info dir, try to find the src dir int the site dir doing a case-insenstive search. Then, return the case-sensitve name of the src dir.
-fn find_dir_src(site: PathBuf, name_from_di: &str) -> Option<String> {
+fn find_dir_src(site: &PathBuf, name_from_di: &str) -> Option<String> {
     if let Ok(entries) = fs::read_dir(site) {
         for entry in entries {
             if let Ok(entry) = entry {
@@ -67,6 +67,7 @@ impl Package {
         })
     }
     /// Create a Package from a dist-info string. As the name of the package / source dir may be different than the dist-info representation, optionall provide a `name`
+    #[allow(dead_code)]
     pub(crate) fn from_dist_info(
         file_name: &str,
         name: Option<&str>,
@@ -80,21 +81,8 @@ impl Package {
             }
         }
         None
-        // let trimmed_input = file_name.trim_end_matches(".dist-info");
-        // let parts: Vec<&str> = trimmed_input.split('-').collect();
-        // if parts.len() >= 2 {
-        //     // NOTE: we expect that dist-info based names have already normalized hyphens to underscores
-        //     let name_from_di = parts[..parts.len() - 1].join("-");
-        //     let version = parts.last()?;
-        //     if let Some(name) = name {
-        //         return Self::from_name_version_durl(name, version, direct_url);
-        //     } else {
-        //         return Self::from_name_version_durl(&name_from_di, version, direct_url);
-        //     }
-        // }
-        // None
     }
-    /// Create a Package from a dist_info file path.
+    /// Create a Package from a dist_info file path. This is the main constructor for live usage.
     pub(crate) fn from_file_path(file_path: &PathBuf) -> Option<Self> {
         let file_name = file_path.file_name().and_then(|name| name.to_str())?;
 
@@ -106,12 +94,15 @@ impl Package {
                 None
             };
 
-            // let dir_site = file_path.parent().unwrap(); // TODO: propagate package errors
-            // if Some(dir_src) = find_dir_src(&dir_site, ) {
+            let dir_site = file_path.parent()?.to_path_buf(); // TODO: propagate package errors
 
-            // }
-
-            return Self::from_dist_info(file_name, None, durl);
+            if let Some((name_from_di, version)) = extract_from_dist_info(file_name) {
+                let name = match find_dir_src(&dir_site, &name_from_di) {
+                    Some(name) => name,
+                    None => name_from_di,
+                };
+                return Self::from_name_version_durl(&name, &version, durl);
+            }
         }
         None
     }
