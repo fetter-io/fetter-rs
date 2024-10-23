@@ -286,7 +286,7 @@ fn get_scan(
     exe_paths: Option<Vec<PathBuf>>,
     force_usite: bool,
     log: bool,
-) -> Result<ScanFS, String> {
+) -> Result<ScanFS, Box<dyn std::error::Error>> {
     let active = Arc::new(AtomicBool::new(true));
     if log {
         spin(active.clone());

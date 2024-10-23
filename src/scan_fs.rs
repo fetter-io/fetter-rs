@@ -92,7 +92,7 @@ pub(crate) struct ScanFS {
 impl ScanFS {
     fn from_exe_to_sites(
         exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
@@ -122,7 +122,7 @@ impl ScanFS {
     pub(crate) fn from_exes(
         exes: Vec<PathBuf>,
         force_usite: bool,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
@@ -134,7 +134,7 @@ impl ScanFS {
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
-    pub(crate) fn from_exe_scan(force_usite: bool) -> Result<Self, String> {
+    pub(crate) fn from_exe_scan(force_usite: bool) -> Result<Self, Box<dyn std::error::Error>> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
