@@ -66,6 +66,12 @@ impl Package {
     pub(crate) fn to_dist_info_dir(&self, site: &PathShared) -> PathBuf {
         site.join(&format!("{}.dist-info", self))
     }
+
+    /// Given a site directory, return a `PathBuf` to this Package's dist info directory.
+    pub(crate) fn to_src_dir(&self, site: &PathShared) -> PathBuf {
+        site.join(&self.name)
+    }
+
 }
 
 // A case insensitive ordering.
