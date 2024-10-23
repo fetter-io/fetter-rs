@@ -45,7 +45,6 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
             paths.insert((PathBuf::from(path), false));
         }
     }
-
     match path_home() {
         Some(home) => {
             paths.insert((PathBuf::from(home.clone()), false));
@@ -106,7 +105,7 @@ fn is_symlink(path: &Path) -> bool {
     }
 }
 
-// Use the default Python to and get its executable path.
+// Use the default Python to get its executable path.
 fn get_exe_default() -> Option<PathBuf> {
     return match Command::new("python3")
         .arg("-c")

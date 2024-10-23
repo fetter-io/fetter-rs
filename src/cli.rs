@@ -16,7 +16,7 @@ use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::spin::spin;
 use crate::table::Tableable;
-// use crate::util::path_normalize;
+use crate::util::path_normalize;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -301,16 +301,10 @@ fn get_scan(
     sfs
 }
 
-// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.``
+// Given a Path, load a DepManifest. This might branch by extension to handle pyproject.toml and other formats.
 fn get_dep_manifest(bound: &PathBuf) -> Result<DepManifest, String> {
-    // TODO: handle bad file
-    DepManifest::from_requirements(bound)
-
-    // if let Some(bound) = bound {
-    //     DepManifest::from_requirements(bound)
-    // } else {
-    //     Err("Invalid bound path".to_string())
-    // }
+    let fp = path_normalize(&bound).unwrap_or_else(|_| bound.clone());
+    DepManifest::from_requirements(&fp)
 }
 
 // TODO: return Result type with errors
