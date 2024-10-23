@@ -135,9 +135,7 @@ impl ScanFS {
             .collect();
         Self::from_exe_to_sites(exe_to_sites)
     }
-    pub(crate) fn from_exe_scan(
-        force_usite: bool,
-    ) -> ResultDynError<Self> {
+    pub(crate) fn from_exe_scan(force_usite: bool) -> ResultDynError<Self> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
