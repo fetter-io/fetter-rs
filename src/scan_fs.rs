@@ -306,7 +306,7 @@ impl ScanFS {
                 Anchor::Upper => {
                     DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
                 }
-                Anchor::Both => return Err("Not implemented".to_string()),
+                Anchor::Both => return Err("Not implemented".into()),
             };
             if let Ok(dep_spec) = ds {
                 dep_specs.push(dep_spec);
