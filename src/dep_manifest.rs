@@ -553,7 +553,8 @@ regex==2024.4.16
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =
-            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl)).unwrap();
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl))
+                .unwrap();
 
         let ds1 = DepSpec::from_string("packaging @ git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
         let specs = vec![
@@ -580,7 +581,8 @@ regex==2024.4.16
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =
-            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl)).unwrap();
+            Package::from_dist_info("packaging-24.2.dev0.dist-info", None, Some(durl))
+                .unwrap();
 
         let ds1 = DepSpec::from_string("packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407").unwrap();
         let specs = vec![

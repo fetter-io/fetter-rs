@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::fs;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,39 @@ use crate::package_durl::DirectURL;
 use crate::path_shared::PathShared;
 use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
+
+//------------------------------------------------------------------------------
+// Given a name from the dist-info dir, try to find the src dir int the site dir doing a case-insenstive search. Then, return the case-sensitve name of the src dir.
+fn find_dir_src(site: PathBuf, name_from_di: &str) -> Option<String> {
+    if let Ok(entries) = fs::read_dir(site) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name.eq_ignore_ascii_case(name_from_di) {
+                        return Some(file_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// Given the name of dist-info directory, get a the name and the version
+fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
+    let trimmed_input = file_name.trim_end_matches(".dist-info");
+    let parts: Vec<&str> = trimmed_input.split('-').collect();
+    if parts.len() >= 2 {
+        // NOTE: we expect that dist-info based names have already normalized hyphens to underscores
+        let name = parts[..parts.len() - 1].join("-");
+        let version = parts.last()?.to_string();
+        Some((name, version))
+    } else {
+        None
+    }
+}
+
 
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
@@ -34,35 +68,49 @@ impl Package {
     }
     /// Create a Package from a dist-info string. As the name of the package / source dir may be different than the dist-info representation, optionall provide a `name`
     pub(crate) fn from_dist_info(
-        input: &str,
+        file_name: &str,
         name: Option<&str>,
         direct_url: Option<DirectURL>,
     ) -> Option<Self> {
-        let trimmed_input = input.trim_end_matches(".dist-info");
-        let parts: Vec<&str> = trimmed_input.split('-').collect();
-        if parts.len() >= 2 {
-            // NOTE: we expect that dist-info based names have already normalized hyphens to underscores
-            let name_from_di = parts[..parts.len() - 1].join("-");
-            let version = parts.last()?;
-            if let Some(name) = name {
-                return Self::from_name_version_durl(name, version, direct_url);
-            }
-            else {
-                return Self::from_name_version_durl(&name_from_di, version, direct_url)
+        if let Some((name_from_di, version)) = extract_from_dist_info(file_name) {
+            if let Some(name) = name { // favor name if passed in
+                return Self::from_name_version_durl(name, &version, direct_url);
+            } else {
+                return Self::from_name_version_durl(&name_from_di, &version, direct_url);
             }
         }
         None
+        // let trimmed_input = file_name.trim_end_matches(".dist-info");
+        // let parts: Vec<&str> = trimmed_input.split('-').collect();
+        // if parts.len() >= 2 {
+        //     // NOTE: we expect that dist-info based names have already normalized hyphens to underscores
+        //     let name_from_di = parts[..parts.len() - 1].join("-");
+        //     let version = parts.last()?;
+        //     if let Some(name) = name {
+        //         return Self::from_name_version_durl(name, version, direct_url);
+        //     } else {
+        //         return Self::from_name_version_durl(&name_from_di, version, direct_url);
+        //     }
+        // }
+        // None
     }
     /// Create a Package from a dist_info file path.
     pub(crate) fn from_file_path(file_path: &PathBuf) -> Option<Self> {
         let file_name = file_path.file_name().and_then(|name| name.to_str())?;
+
         if file_name.ends_with(".dist-info") && file_path.is_dir() {
-            let durl_fp = file_path.join("direct_url.json");
-            let durl = if durl_fp.is_file() {
-                DirectURL::from_file(&durl_fp).ok()
+            let fp_durl = file_path.join("direct_url.json");
+            let durl = if fp_durl.is_file() {
+                DirectURL::from_file(&fp_durl).ok()
             } else {
                 None
             };
+
+            // let dir_site = file_path.parent().unwrap(); // TODO: propagate package errors
+            // if Some(dir_src) = find_dir_src(&dir_site, ) {
+
+            // }
+
             return Self::from_dist_info(file_name, None, durl);
         }
         None
@@ -77,7 +125,6 @@ impl Package {
     pub(crate) fn to_src_dir(&self, site: &PathShared) -> PathBuf {
         site.join(&self.name)
     }
-
 }
 
 // A case insensitive ordering.
@@ -112,7 +159,8 @@ mod tests {
 
     #[test]
     fn test_package_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
+        let p1 =
+            Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
         assert_eq!(p1.name, "matplotlib");
         assert_eq!(p1.version.to_string(), "3.9.0");
     }
@@ -128,8 +176,10 @@ mod tests {
     #[test]
     fn test_package_c() {
         let p1 = Package::from_dist_info("xarray-0.21.1.dist-info", None, None).unwrap();
-        let p2 = Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
-        let p3 = Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
+        let p2 =
+            Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
+        let p3 =
+            Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
 
         assert_eq!(p2 > p1, true);
         assert_eq!(p1 < p2, true);
@@ -138,7 +188,8 @@ mod tests {
     }
     #[test]
     fn test_package_to_string_a() {
-        let p1 = Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
+        let p1 =
+            Package::from_dist_info("matplotlib-3.9.0.dist-info", None, None).unwrap();
         assert_eq!(p1.to_string(), "matplotlib-3.9.0");
     }
     #[test]

@@ -27,7 +27,6 @@ struct Artifacts {
 }
 
 impl Artifacts {
-
     fn from_package(package: &Package, site: &PathShared) -> io::Result<Self> {
         let dir_dist_info = package.to_dist_info_dir(site);
         let dir_src = package.to_src_dir(site);
@@ -69,7 +68,6 @@ impl Artifacts {
         }
         Ok(Artifacts { files, dirs })
     }
-
 
     fn remove(&self, log: bool) -> io::Result<()> {
         for (fp, exists) in &self.files {
@@ -349,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_record_a() {
-        let pkg = Package::from_dist_info("xarray-0.21.1.dist-info",  None, None).unwrap();
+        let pkg = Package::from_dist_info("xarray-0.21.1.dist-info", None, None).unwrap();
         let dir_temp = tempdir().unwrap(); // this is our site
         let site = PathShared::from_path_buf(dir_temp.path().to_path_buf());
         let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
