@@ -1,13 +1,10 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
+// use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::BufRead;
 use std::marker::Send;
 use std::path::PathBuf;
-use std::thread;
-use std::time::Duration;
-// use std::time::Instant;
 
 use rayon::prelude::*;
 
@@ -17,33 +14,71 @@ use crate::table::HeaderFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
+use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
 /// This contains the explicit files found in a RECORD file, as well as all discovered directories that contain one or more of those file.
 #[derive(Debug, Clone)]
 struct Artifacts {
     files: Vec<(PathBuf, bool)>,
-    dirs: HashSet<PathBuf>,
+    dirs: Vec<PathBuf>,
 }
 
 impl Artifacts {
+    fn from_package(package: &Package, site: &PathShared) -> ResultDynError<Self> {
+        let dir_dist_info = package
+            .to_dist_info_dir(site)
+            .ok_or_else(|| "Cannot find dist-info dir")?;
+        // parent of dist-info dir is site packages; all RECORD paths are relative to this
+        let dir_site = dir_dist_info.parent().unwrap();
+        let fp_record = dir_dist_info.join("RECORD");
+
+        // note: might store these in an ordered set, as RECORD files might have redundancies
+        let mut files = Vec::new();
+        // let mut dirs_observed = HashSet::new();
+
+        let file = fs::File::open(fp_record)?;
+        let reader = io::BufReader::new(file);
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Some(fp_rel) = line.split(',').next() {
+                let fp = dir_site.join(fp_rel);
+                let exists = fp.exists();
+                files.push((fp.to_path_buf(), exists));
+                // if exists {
+                //     if let Some(dir) = fp.parent() {
+                //         dirs_observed.insert(dir.to_path_buf());
+                //     }
+                // }
+            }
+        }
+        let mut dirs = Vec::new();
+        dirs.push(dir_dist_info);
+        if let Some(dir_src) = package.to_src_dir(site) {
+            dirs.push(dir_src);
+        };
+
+        Ok(Artifacts { files, dirs })
+    }
+
     fn remove(&self, log: bool) -> io::Result<()> {
         for (fp, exists) in &self.files {
             if *exists {
-                if log {
-                    eprintln!("removing file: {:?}", fp);
+                if let Err(e) = fs::remove_file(&fp) {
+                    eprintln!("Failed to remove file {:?}: {}", fp, e);
+                } else if log {
+                    eprintln!("Removing file: {:?}", fp);
                 }
-                fs::remove_file(&fp)?;
             }
         }
-        // as file system might be delayed in recognizing deletions, we try to sleep, but this is not entirely effective
-        thread::sleep(Duration::from_millis(4000));
         for dir in &self.dirs {
-            if fs::read_dir(dir)?.next().is_none() {
-                if log {
-                    eprintln!("removing dir: {:?}", dir);
-                }
-                fs::remove_dir(&dir)?;
+            if let Err(e) = fs::remove_dir_all(&dir) {
+                eprintln!("Failed to remove directory {:?}: {}", dir, e);
+            } else if log {
+                eprintln!("Removing directory: {:?}", dir);
             }
         }
         Ok(())
@@ -67,36 +102,6 @@ impl Artifacts {
 //         delay = delay.saturating_mul(2);
 //     }
 // }
-
-fn dist_info_to_artifacts(dist_info_fp: &PathBuf) -> io::Result<Artifacts> {
-    // parent of dist-info dir is site packages
-    let dir_site = dist_info_fp.parent().unwrap();
-    let fp_record = dist_info_fp.join("RECORD");
-
-    let mut dirs = HashSet::new();
-    let mut files = Vec::new();
-
-    let file = fs::File::open(fp_record)?;
-    let reader = io::BufReader::new(file);
-    for line in reader.lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Some(fp_rel) = line.split(',').next() {
-            let fp = dir_site.join(fp_rel);
-            let exists = fp.exists();
-            files.push((fp.to_path_buf(), exists));
-            // Only store directories if the file exists; we will only delete them if they are empty after removals
-            if exists {
-                if let Some(dir) = fp.parent() {
-                    dirs.insert(dir.to_path_buf());
-                }
-            }
-        }
-    }
-    Ok(Artifacts { files, dirs })
-}
 
 // we cannot evaluate this until after we remove the files
 // let dirs = dir_candidates
@@ -181,6 +186,16 @@ impl Rowable for UnpackFullRecord {
                 fp.display().to_string(),
             ]);
         }
+
+        for dir in &self.artifacts.dirs {
+            rows.push(vec![
+                package_display(),
+                site_display(),
+                true.to_string(),
+                dir.display().to_string(),
+            ]);
+        }
+
         rows
     }
 }
@@ -224,12 +239,11 @@ where
     package_to_sites
         .par_iter()
         .flat_map(|(package, sites)| {
-            sites.par_iter().filter_map(|site| {
-                let fp_dist_info = package.to_dist_info_dir(site);
-                if let Ok(artifacts) = dist_info_to_artifacts(&fp_dist_info) {
+            sites.par_iter().filter_map(move |site| {
+                if let Ok(artifacts) = Artifacts::from_package(&package, &site) {
                     Some(R::new(package.clone(), site.clone(), artifacts))
                 } else {
-                    eprintln!("Failed to read artifacts: {:?}", fp_dist_info);
+                    eprintln!("Failed to read artifacts: {:?}", package);
                     None
                 }
             })
@@ -336,7 +350,9 @@ mod tests {
 
     #[test]
     fn test_record_a() {
-        let dir_temp = tempdir().unwrap();
+        let pkg = Package::from_dist_info("xarray-0.21.1.dist-info", None, None).unwrap();
+        let dir_temp = tempdir().unwrap(); // this is our site
+        let site = PathShared::from_path_buf(dir_temp.path().to_path_buf());
         let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
         fs::create_dir(&dir_dist_info).unwrap();
         let fp_record = dir_dist_info.as_path().join("RECORD");
@@ -404,7 +420,7 @@ xarray/util/print_versions.py,sha256=kSqlh0crnpEzanhYmV3F7RuGEys8nrOhM_Yf_i7D7bM
         "#;
         let mut file = File::create(&fp_record).unwrap();
         write!(file, "{}", content).unwrap();
-        let rc = dist_info_to_artifacts(&dir_dist_info).unwrap();
+        let rc = Artifacts::from_package(&pkg, &site).unwrap();
         // println!("{:?}", rc);
         assert_eq!(rc.files.len(), 59);
         assert_eq!(rc.dirs.len(), 1);
