@@ -46,7 +46,7 @@ pub(crate) fn path_home() -> Option<PathBuf> {
     }
 }
 
-pub(crate) fn path_normalize(path: &PathBuf) -> Result<PathBuf, String> {
+pub(crate) fn path_normalize(path: &PathBuf) -> ResultDynError<PathBuf> {
     let mut fp = path.clone();
     if let Some(path_str) = fp.to_str() {
         if path_str.starts_with("~") {

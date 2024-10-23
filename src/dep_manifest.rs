@@ -86,7 +86,7 @@ impl DepManifest {
         }
         Ok(DepManifest { dep_specs: ds })
     }
-    // pub(crate) fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> Result<Self, String> {
+    // pub(crate) fn from_pyproject_toml<P: AsRef<Path>>(file_path: P) -> ResultDynError<Self> {
     //     let contents = fs::read_to_string(file_path)
     //         .map_err(|e| format!("Failed to read pyproject.toml file: {}", e))?;
     //     let parsed_toml: toml::Value = toml::from_str(&contents)
@@ -105,7 +105,7 @@ impl DepManifest {
     //     Ok(DepManifest { packages })
     // }
 
-    // pub(crate) fn from_git_repo(repo_url: &str) -> Result<Self, String> {
+    // pub(crate) fn from_git_repo(repo_url: &str) -> ResultDynError<Self> {
     //     // Create a temporary directory
     //     let tmp_dir = tempdir().map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     //     let repo_path = tmp_dir.path().join("repo");

@@ -21,6 +21,7 @@ use crate::scan_report::ScanReport;
 use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClientLive;
 use crate::util::path_normalize;
+use crate::util::ResultDynError;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationRecord;
 use crate::validation_report::ValidationReport;
@@ -92,7 +93,7 @@ pub(crate) struct ScanFS {
 impl ScanFS {
     fn from_exe_to_sites(
         exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> ResultDynError<Self> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
         let site_to_packages = exe_to_sites
             .par_iter()
@@ -122,7 +123,7 @@ impl ScanFS {
     pub(crate) fn from_exes(
         exes: Vec<PathBuf>,
         force_usite: bool,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> ResultDynError<Self> {
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes
             .into_par_iter()
             .map(|exe| {
@@ -136,7 +137,7 @@ impl ScanFS {
     }
     pub(crate) fn from_exe_scan(
         force_usite: bool,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> ResultDynError<Self> {
         // For every unique exe, we hae a list of site packages; some site packages might be associated with more than one exe, meaning that a reverse lookup would have to be site-package to Vec of exe
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = find_exe()
             .into_par_iter()
@@ -153,7 +154,7 @@ impl ScanFS {
         exe: PathBuf,
         site: PathBuf,
         packages: Vec<Package>,
-    ) -> Result<Self, String> {
+    ) -> ResultDynError<Self> {
         let mut exe_to_sites = HashMap::new();
         let site_shared = PathShared::from_path_buf(site);
 
