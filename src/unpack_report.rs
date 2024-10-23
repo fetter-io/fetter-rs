@@ -1,13 +1,10 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
+// use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::BufRead;
 use std::marker::Send;
 use std::path::PathBuf;
-use std::thread;
-use std::time::Duration;
-// use std::time::Instant;
 
 use rayon::prelude::*;
 
@@ -17,25 +14,28 @@ use crate::table::HeaderFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
+use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
 /// This contains the explicit files found in a RECORD file, as well as all discovered directories that contain one or more of those file.
 #[derive(Debug, Clone)]
 struct Artifacts {
     files: Vec<(PathBuf, bool)>,
-    dirs: HashSet<PathBuf>,
+    dirs: Vec<PathBuf>,
 }
 
 impl Artifacts {
-    fn from_package(package: &Package, site: &PathShared) -> io::Result<Self> {
-        let dir_dist_info = package.to_dist_info_dir(site);
-        let dir_src = package.to_src_dir(site);
+    fn from_package(package: &Package, site: &PathShared) -> ResultDynError<Self> {
+        let dir_dist_info = package
+            .to_dist_info_dir(site)
+            .ok_or_else(|| "Cannot find dist-info dir")?;
         // parent of dist-info dir is site packages; all RECORD paths are relative to this
         let dir_site = dir_dist_info.parent().unwrap();
         let fp_record = dir_dist_info.join("RECORD");
 
-        let mut dirs_observed = HashSet::new();
+        // note: might store these in an ordered set, as RECORD files might have redundancies
         let mut files = Vec::new();
+        // let mut dirs_observed = HashSet::new();
 
         let file = fs::File::open(fp_record)?;
         let reader = io::BufReader::new(file);
@@ -48,44 +48,37 @@ impl Artifacts {
                 let fp = dir_site.join(fp_rel);
                 let exists = fp.exists();
                 files.push((fp.to_path_buf(), exists));
-                // Only store directories if the file exists; we will only delete them if they are empty after removals
-                if exists {
-                    if let Some(dir) = fp.parent() {
-                        dirs_observed.insert(dir.to_path_buf());
-                    }
-                }
+                // if exists {
+                //     if let Some(dir) = fp.parent() {
+                //         dirs_observed.insert(dir.to_path_buf());
+                //     }
+                // }
             }
         }
-        // this can be a Vec
-        let mut dirs = HashSet::new();
-        // the naming of the dist-info dir is normalized
-        if dirs_observed.contains(&dir_dist_info) {
-            dirs.insert(dir_dist_info.clone());
-        }
-        // src might be a dir or a file!
-        if dirs_observed.contains(&dir_src) {
-            dirs.insert(dir_src.clone());
-        }
+        let mut dirs = Vec::new();
+        dirs.push(dir_dist_info);
+        if let Some(dir_src) = package.to_src_dir(site) {
+            dirs.push(dir_src);
+        };
+
         Ok(Artifacts { files, dirs })
     }
 
     fn remove(&self, log: bool) -> io::Result<()> {
         for (fp, exists) in &self.files {
             if *exists {
-                if log {
-                    eprintln!("removing file: {:?}", fp);
+                if let Err(e) = fs::remove_file(&fp) {
+                    eprintln!("Failed to remove file {:?}: {}", fp, e);
+                } else if log {
+                    eprintln!("Removing file: {:?}", fp);
                 }
-                fs::remove_file(&fp)?;
             }
         }
-        // as file system might be delayed in recognizing deletions, we try to sleep, but this is not entirely effective
-        thread::sleep(Duration::from_millis(4000));
         for dir in &self.dirs {
-            if fs::read_dir(dir)?.next().is_none() {
-                if log {
-                    eprintln!("removing dir: {:?}", dir);
-                }
-                fs::remove_dir(&dir)?;
+            if let Err(e) = fs::remove_dir_all(&dir) {
+                eprintln!("Failed to remove directory {:?}: {}", dir, e);
+            } else if log {
+                eprintln!("Removing directory: {:?}", dir);
             }
         }
         Ok(())
@@ -193,6 +186,16 @@ impl Rowable for UnpackFullRecord {
                 fp.display().to_string(),
             ]);
         }
+
+        for dir in &self.artifacts.dirs {
+            rows.push(vec![
+                package_display(),
+                site_display(),
+                true.to_string(),
+                dir.display().to_string(),
+            ]);
+        }
+
         rows
     }
 }

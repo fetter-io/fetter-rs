@@ -11,7 +11,7 @@ use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
-// Given a name from the dist-info dir, try to find the src dir int the site dir doing a case-insenstive search. Then, return the case-sensitve name of the src dir.
+// Given a name from the dist-info dir, try to find the src dir in the site dir doing a case-insensitive search. Then, return the case-sensitve name of the src dir. Note that some packages might only have source file ending in .py; we will not find it but it will be defined in RECORD.
 fn find_dir_src(site: &PathBuf, name_from_di: &str) -> Option<String> {
     if let Ok(entries) = fs::read_dir(site) {
         for entry in entries {
@@ -28,7 +28,7 @@ fn find_dir_src(site: &PathBuf, name_from_di: &str) -> Option<String> {
     None
 }
 
-// Given the name of dist-info directory, get a the name and the version
+// Given the name of dist-info directory, get a the name and the version from the dist-info name.
 fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
     let trimmed_input = file_name.trim_end_matches(".dist-info");
     let parts: Vec<&str> = trimmed_input.split('-').collect();
@@ -41,7 +41,6 @@ fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
         None
     }
 }
-
 
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
@@ -74,7 +73,8 @@ impl Package {
         direct_url: Option<DirectURL>,
     ) -> Option<Self> {
         if let Some((name_from_di, version)) = extract_from_dist_info(file_name) {
-            if let Some(name) = name { // favor name if passed in
+            if let Some(name) = name {
+                // favor name if passed in
                 return Self::from_name_version_durl(name, &version, direct_url);
             } else {
                 return Self::from_name_version_durl(&name_from_di, &version, direct_url);
@@ -108,13 +108,24 @@ impl Package {
     }
 
     /// Given a site directory, return a `PathBuf` to this Package's dist info directory.
-    pub(crate) fn to_dist_info_dir(&self, site: &PathShared) -> PathBuf {
-        site.join(&format!("{}.dist-info", self))
+    pub(crate) fn to_dist_info_dir(&self, site: &PathShared) -> Option<PathBuf> {
+        // dist-info files will always be written in normalized key style
+        let fp = site.join(&format!("{}-{}.dist-info", self.key, self.version));
+        if fp.exists() {
+            Some(fp)
+        } else {
+            None
+        }
     }
 
-    /// Given a site directory, return a `PathBuf` to this Package's dist info directory.
-    pub(crate) fn to_src_dir(&self, site: &PathShared) -> PathBuf {
-        site.join(&self.name)
+    /// Given a site directory, return a `PathBuf` to this Package's src directory. This assumes that the name, if case sensitive, was observed as with case.
+    pub(crate) fn to_src_dir(&self, site: &PathShared) -> Option<PathBuf> {
+        let fp = site.join(&self.name);
+        if fp.exists() {
+            Some(fp)
+        } else {
+            None
+        }
     }
 }
 
