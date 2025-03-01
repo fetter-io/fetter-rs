@@ -386,6 +386,11 @@ repos:
 ## What is New in Fetter
 
 
+### 1.9.0-dev
+
+Environment markers in `Pipfile.lock` files are now imported.
+
+
 ### 1.8.0
 
 Added the `--ignore` parameter to `site-install`.

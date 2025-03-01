@@ -147,9 +147,12 @@ impl LockFile {
         for group in groups {
             if let Some(packages) = parsed.get(group).and_then(|g| g.as_object()) {
                 for (name, details) in packages.iter() {
+                    let em = details
+                        .get("markers")
+                        .map_or_else(|| "".to_string(), |v| format!("; {}", v));
                     if let Some(version) = details.get("version").and_then(|v| v.as_str())
                     {
-                        dependencies.push(format!("{}{}", name, version));
+                        dependencies.push(format!("{}{}{}", name, version, em));
                     }
                 }
             }
@@ -649,6 +652,8 @@ content-hash = "88d4af2d19b75cf5d80ba6b72bbee80790fa9757747e24304c4b1c51e86f3837
         );
     }
 
+    //--------------------------------------------------------------------------
+
     #[test]
     fn test_get_dependencies_pipfilelock_a() {
         let pipfile_lock_content = r#"
@@ -680,6 +685,46 @@ content-hash = "88d4af2d19b75cf5d80ba6b72bbee80790fa9757747e24304c4b1c51e86f3837
             vec!["asgiref==3.6.0", "django==4.1.7", "attrs==22.2.0"]
         );
     }
+
+    #[test]
+    fn test_get_dependencies_pipfilelock_b() {
+        let pipfile_lock_content = r#"
+        {
+            "_meta": { "hash": { "sha256": "abc123" } },
+            "default": {
+                "asgiref": { "markers": "python_version < '3.4'", "version": "==3.6.0" },
+                "django": { "markers": "python_version >= '3.4'", "version": "==4.1.7" }
+            },
+            "develop": {
+                "attrs": { "markers": "python_version >= '3.4'", "version": "==22.2.0" }
+            }
+        }
+        "#;
+
+        let lockfile = LockFile::new(pipfile_lock_content.to_string());
+
+        let dependencies_default = lockfile.get_dependencies(None).unwrap();
+        assert_eq!(
+            dependencies_default,
+            vec![
+                "asgiref==3.6.0; \"python_version < '3.4'\"",
+                "django==4.1.7; \"python_version >= '3.4'\""
+            ]
+        );
+
+        let dependencies_with_develop = lockfile
+            .get_dependencies(Some(&vec!["develop".to_string()]))
+            .unwrap();
+        assert_eq!(
+            dependencies_with_develop,
+            vec![
+                "asgiref==3.6.0; \"python_version < '3.4'\"",
+                "django==4.1.7; \"python_version >= '3.4'\"",
+                "attrs==22.2.0; \"python_version >= '3.4'\""
+            ]
+        );
+    }
+    //--------------------------------------------------------------------------
 
     #[test]
     fn test_get_dependencies_pip_tools_a() {
