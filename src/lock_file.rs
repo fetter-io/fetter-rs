@@ -108,11 +108,11 @@ impl LockFile {
                     // leave out semicolon until we know if we have both markers and versions
                     let mut em = Vec::new();
 
-                    // Handle `python-versions`
-                    if let Some(python_versions) =
+                    // Here we convert the `python-versions` attribute to environment marker expressions; it is not clear if this the right thing to do.
+                    if let Some(pyv) =
                         package.get("python-versions").and_then(|v| v.as_str())
                     {
-                        let python_constraints = python_versions
+                        let python_constraints = pyv
                             .split(',')
                             .map(|s| s.trim())
                             .filter_map(|s| {
@@ -140,15 +140,14 @@ impl LockFile {
                             em.push(python_constraints);
                         }
                     }
-
-                    if let Some(markers) = package.get("markers") {
-                        em.push(format!("{}", markers));
+                    // look for both marker and markers
+                    if let Some(markers) = package
+                        .get("markers")
+                        .or_else(|| package.get("marker"))
+                        .and_then(|m| m.as_str())
+                    {
+                        em.push(markers.to_string()); // Directly push as String
                     }
-                    // older versions used marker
-                    // if let Some(markers) = package.get("marker") {
-                    //     em.push(format!("{}", markers));
-                    // }
-                    // println!("{:?}", em);
                     let dep_string = if em.is_empty() {
                         format!("{}=={}", name, version)
                     } else {
@@ -684,19 +683,19 @@ content-hash = "88d4af2d19b75cf5d80ba6b72bbee80790fa9757747e24304c4b1c51e86f3837
         assert_eq!(
             dependencies,
             vec![
-                "arraykit==0.10.0",
-                "arraymap==0.4.0",
-                "certifi==2025.1.31",
-                "charset-normalizer==3.4.1",
-                "idna==3.10",
-                "jinja2==3.1.3",
-                "markupsafe==3.0.2",
-                "numpy==2.2.2",
-                "requests==2.32.3",
-                "static-frame==2.16.1",
-                "typing-extensions==4.12.2",
-                "urllib3==2.3.0",
-                "zipp==3.18.1"
+                "arraykit==0.10.0; python_version >= '3.9'",
+                "arraymap==0.4.0; python_version >= '3.9'",
+                "certifi==2025.1.31; python_version >= '3.6'",
+                "charset-normalizer==3.4.1; python_version >= '3.7'",
+                "idna==3.10; python_version >= '3.6'",
+                "jinja2==3.1.3; python_version >= '3.7'",
+                "markupsafe==3.0.2; python_version >= '3.9'",
+                "numpy==2.2.2; python_version >= '3.10'",
+                "requests==2.32.3; python_version >= '3.8'",
+                "static-frame==2.16.1; python_version >= '3.9'",
+                "typing-extensions==4.12.2; python_version >= '3.8'",
+                "urllib3==2.3.0; python_version >= '3.9'",
+                "zipp==3.18.1; python_version >= '3.8'"
             ]
         );
     }
@@ -744,8 +743,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let dependencies = lockfile.get_dependencies(None).unwrap();
         assert_eq!(
             dependencies,
-            vec!["pathlib2==2.3.7.post1; 'sys_platform == \"win32\"'",
-            "six==1.17.0; python_version != '3.0.*' and python_version != '3.1.*' and python_version != '3.2.*' and python_version >= '2.7' and 'sys_platform == \"win32\"'"]
+            vec!["pathlib2==2.3.7.post1; sys_platform == \"win32\"",
+            "six==1.17.0; python_version != '3.0.*' and python_version != '3.1.*' and python_version != '3.2.*' and python_version >= '2.7' and sys_platform == \"win32\""]
         );
     }
 
