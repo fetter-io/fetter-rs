@@ -17,6 +17,35 @@ pub(crate) struct LockFile {
     content: String,
 }
 
+fn extract_py_marker(package: &TomlValue, py_version_key: &str) -> Vec<String> {
+    let mut em = Vec::new();
+
+    if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
+        let marker_py = pyv
+            .split(',')
+            .map(|s| s.trim())
+            .filter_map(|s| {
+                if s == "*" {
+                    None
+                } else {
+                    let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
+                    let (op, ver) = s.split_at(pos);
+                    if ver.trim().is_empty() {
+                        None
+                    } else {
+                        Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" and ");
+        if !marker_py.is_empty() {
+            em.push(marker_py);
+        }
+    }
+    em
+}
+
 impl LockFile {
     pub(crate) fn new(content: String) -> Self {
         let file_type = Self::detect_type(&content);
@@ -105,40 +134,7 @@ impl LockFile {
                     package.get("name").and_then(|n| n.as_str()),
                     package.get("version").and_then(|v| v.as_str()),
                 ) {
-                    let mut em = Vec::new();
-
-                    // Here we convert the `python-versions` attribute to environment marker expressions; it is not clear if this the right thing to do.
-                    if let Some(pyv) =
-                        package.get("python-versions").and_then(|v| v.as_str())
-                    {
-                        let marker_py = pyv
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter_map(|s| {
-                                if s == "*" {
-                                    None
-                                } else {
-                                    let pos = s
-                                        .find(|c: char| c.is_ascii_digit())
-                                        .unwrap_or(s.len());
-                                    let (op, ver) = s.split_at(pos);
-                                    if ver.trim().is_empty() {
-                                        None
-                                    } else {
-                                        Some(format!(
-                                            "python_version {} '{}'",
-                                            op.trim(),
-                                            ver.trim()
-                                        ))
-                                    }
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" and ");
-                        if !marker_py.is_empty() {
-                            em.push(marker_py);
-                        }
-                    }
+                    let mut em = extract_py_marker(package, "python-versions");
                     // look for both marker and markers
                     if let Some(markers) = package
                         .get("markers")
@@ -172,7 +168,16 @@ impl LockFile {
                     package.get("name").and_then(|n| n.as_str()),
                     package.get("version").and_then(|v| v.as_str()),
                 ) {
-                    dependencies.push(format!("{}=={}", name, version));
+                    let mut em = extract_py_marker(package, "requires-python");
+                    if let Some(marker) = package.get("marker").and_then(|m| m.as_str()) {
+                        em.push(marker.to_string());
+                    }
+                    let dep_string = if em.is_empty() {
+                        format!("{}=={}", name, version)
+                    } else {
+                        format!("{}=={}; {}", name, version, em.join(" and "))
+                    };
+                    dependencies.push(dep_string);
                 }
             }
         }
@@ -905,7 +910,51 @@ wheels = [
 
         assert_eq!(
             dependencies,
-            vec!["attrs==23.2.0", "cattrs==23.2.3", "numpy==2.0.1"]
+            vec![
+                "attrs==23.2.0; python_version >= '3.7'",
+                "cattrs==23.2.3; python_version >= '3.8'",
+                "numpy==2.0.1; python_version >= '3.9'"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_get_dependencies_pep751_b() {
+        let content = r#"
+metadata-version = "1.0"
+requires-python = ">=3.9"
+created-by = "PEP 751"
+
+[[packages]]
+name = "attrs"
+version = "23.2.0"
+requires-python = ">=3.7"
+marker = "python_version > '3.0'"
+index = "https://pypi.org/simple/"
+wheels = [
+    {name = "attrs-23.2.0-py3-none-any.whl", upload-time = 2023-12-31T06:30:30.772444Z, url = "https://files.pythonhosted.org/packages/e0/44/827b2a91a5816512fcaf3cc4ebc465ccd5d598c45cefa6703fcf4a79018f/attrs-23.2.0-py3-none-any.whl", size = 60752, hashes = {sha256 = "99b87a485a5820b23b879f04c2305b44b951b502fd64be915879d77a7e8fc6f1"} }
+]
+
+[[packages]]
+name = "cattrs"
+version = "23.2.3"
+requires-python = ">=3.8"
+marker = "python_version > '3.1'"
+index = "https://pypi.org/simple/"
+wheels = [
+    {name = "cattrs-23.2.3-py3-none-any.whl", upload-time = 2023-11-30T22:19:19.163763Z, url = "https://files.pythonhosted.org/packages/b3/0d/cd4a4071c7f38385dc5ba91286723b4d1090b87815db48216212c6c6c30e/cattrs-23.2.3-py3-none-any.whl", size = 57474, hashes = {sha256 = "0341994d94971052e9ee70662542699a3162ea1e0c62f7ce1b4a57f563685108"} }
+]
+
+"#;
+        let lockfile = LockFile::new(content.to_string());
+        let dependencies = lockfile.get_dependencies(None).unwrap();
+
+        assert_eq!(
+            dependencies,
+            vec![
+                "attrs==23.2.0; python_version >= '3.7' and python_version > '3.0'",
+                "cattrs==23.2.3; python_version >= '3.8' and python_version > '3.1'"
+            ]
         );
     }
 }
