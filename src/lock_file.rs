@@ -105,26 +105,25 @@ impl LockFile {
                     package.get("name").and_then(|n| n.as_str()),
                     package.get("version").and_then(|v| v.as_str()),
                 ) {
-                    // leave out semicolon until we know if we have both markers and versions
                     let mut em = Vec::new();
 
                     // Here we convert the `python-versions` attribute to environment marker expressions; it is not clear if this the right thing to do.
                     if let Some(pyv) =
                         package.get("python-versions").and_then(|v| v.as_str())
                     {
-                        let python_constraints = pyv
+                        let marker_py = pyv
                             .split(',')
                             .map(|s| s.trim())
                             .filter_map(|s| {
                                 if s == "*" {
                                     None
                                 } else {
-                                    let split_pos = s
+                                    let pos = s
                                         .find(|c: char| c.is_ascii_digit())
                                         .unwrap_or(s.len());
-                                    let (op, ver) = s.split_at(split_pos);
+                                    let (op, ver) = s.split_at(pos);
                                     if ver.trim().is_empty() {
-                                        None // Skip
+                                        None
                                     } else {
                                         Some(format!(
                                             "python_version {} '{}'",
@@ -136,8 +135,8 @@ impl LockFile {
                             })
                             .collect::<Vec<_>>()
                             .join(" and ");
-                        if !python_constraints.is_empty() {
-                            em.push(python_constraints);
+                        if !marker_py.is_empty() {
+                            em.push(marker_py);
                         }
                     }
                     // look for both marker and markers
