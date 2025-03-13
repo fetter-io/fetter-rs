@@ -1,6 +1,7 @@
+use crate::util::extract_py_marker;
 use crate::util::ResultDynError;
 use serde_json::Value as JsonValue;
-use toml::Value as TomlValue; // Use the `toml` crate for parsing
+use toml::Value as TomlValue;
 
 #[derive(Debug, PartialEq)]
 enum LockFileType {
@@ -15,35 +16,6 @@ enum LockFileType {
 pub(crate) struct LockFile {
     file_type: LockFileType,
     content: String,
-}
-
-fn extract_py_marker(package: &TomlValue, py_version_key: &str) -> Vec<String> {
-    let mut em = Vec::new();
-
-    if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
-        let marker_py = pyv
-            .split(',')
-            .map(|s| s.trim())
-            .filter_map(|s| {
-                if s == "*" {
-                    None
-                } else {
-                    let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
-                    let (op, ver) = s.split_at(pos);
-                    if ver.trim().is_empty() {
-                        None
-                    } else {
-                        Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
-                    }
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" and ");
-        if !marker_py.is_empty() {
-            em.push(marker_py);
-        }
-    }
-    em
 }
 
 impl LockFile {
