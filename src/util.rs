@@ -11,9 +11,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH}; // Use `std::os::fd::AsRawFd`
-                                         // use std::os::fd::AsRawFd;
-                                         // use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
+use toml::Value as TomlValue;
 
 //------------------------------------------------------------------------------
 
@@ -295,30 +294,37 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
     })
 }
 
-// pub(crate) fn hash_paths<I, T>(paths: I, flag: bool) -> String
-// where
-//     I: IntoIterator<Item = T>,
-//     T: AsRef<Path>,
-// {
-//     let mut ps: Vec<&Path> = paths.into_iter().map(|path| path.as_ref()).collect();
-//     ps.sort();
+pub(crate) fn extract_py_marker(
+    package: &TomlValue,
+    py_version_key: &str,
+) -> Vec<String> {
+    let mut em = Vec::new();
 
-//     let concatenated = ps
-//         .iter()
-//         .map(|path| path.to_string_lossy())
-//         .collect::<Vec<_>>()
-//         .join("\n");
-
-//     let input = format!("{concatenated}\n{}", flag);
-//     let mut hasher = Sha256::new();
-//     hasher.update(input.as_bytes());
-//     let hash = hasher.finalize();
-
-//     hash.iter().fold(String::new(), |mut acc, byte| {
-//         write!(&mut acc, "{:02x}", byte).unwrap();
-//         acc
-//     })
-// }
+    if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
+        let marker_py = pyv
+            .split(',')
+            .map(|s| s.trim())
+            .filter_map(|s| {
+                if s == "*" {
+                    None
+                } else {
+                    let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
+                    let (op, ver) = s.split_at(pos);
+                    if ver.trim().is_empty() {
+                        None
+                    } else {
+                        Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" and ");
+        if !marker_py.is_empty() {
+            em.push(marker_py);
+        }
+    }
+    em
+}
 
 //------------------------------------------------------------------------------
 #[cfg(test)]

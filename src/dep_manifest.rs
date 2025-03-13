@@ -920,7 +920,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "platformdirs",
                 "poetry_core",
                 "pyproject_hooks",
-                "python",
                 "requests",
                 "requests_toolbelt",
                 "shellingham",
@@ -938,7 +937,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "cachecontrol==0.14.0"
+            "cachecontrol==0.14.0; python_version == '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("dulwich")
@@ -946,7 +945,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "dulwich==0.22.1"
+            "dulwich==0.22.1; python_version == '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("tomli")
@@ -954,7 +953,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "tomli==2.0.1"
+            "tomli==2.0.1; python_version == '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("platformdirs")
@@ -962,7 +961,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "platformdirs>=3.0.0,<5"
+            "platformdirs>=3.0.0,<5; python_version == '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("importlib_metadata")
@@ -970,7 +969,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "importlib-metadata>=4.4"
+            "importlib-metadata>=4.4; python_version == '3.9'"
         );
     }
 
@@ -1037,7 +1036,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "installer",
                 "keyring",
                 "poetry_core",
-                "python",
                 "trove_classifiers",
                 "xattr"
             ]
@@ -1062,7 +1060,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "pytest",
                 "pytest_cov",
                 "pytest_xdist",
-                "python",
                 "trove_classifiers",
                 "xattr"
             ]
@@ -1089,7 +1086,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "keyring",
                 "mypy",
                 "poetry_core",
-                "python",
                 "trove_classifiers",
                 "types_requests",
                 "xattr"
@@ -1123,7 +1119,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "pytest",
                 "pytest_cov",
                 "pytest_xdist",
-                "python",
                 "trove_classifiers",
                 "types_requests",
                 "xattr"
@@ -1214,7 +1209,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "platformdirs",
                 "poetry_core",
                 "pyproject_hooks",
-                "python",
                 "requests",
                 "requests_toolbelt",
                 "shellingham",
@@ -1231,7 +1225,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "cachecontrol^0.14.0"
+            "cachecontrol^0.14.0; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("platformdirs")
@@ -1239,7 +1233,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "platformdirs>=3.0.0,<5"
+            "platformdirs>=3.0.0,<5; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("build")
@@ -1247,7 +1241,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "build^1.2.1"
+            "build^1.2.1; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("dulwich")
@@ -1255,7 +1249,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "dulwich^0.22.1"
+            "dulwich^0.22.1; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("platformdirs")
@@ -1263,7 +1257,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "platformdirs>=3.0.0,<5"
+            "platformdirs>=3.0.0,<5; python_version ^ '3.9'"
         );
     }
 
@@ -1339,7 +1333,6 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 "poetry_core",
                 "pyproject_hooks",
                 "pytest_github_actions_annotate_failures",
-                "python",
                 "requests",
                 "requests_toolbelt",
                 "shellingham",
@@ -1356,7 +1349,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "cachecontrol^0.14.0"
+            "cachecontrol^0.14.0; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("platformdirs")
@@ -1364,7 +1357,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "platformdirs>=3.0.0,<5"
+            "platformdirs>=3.0.0,<5; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("build")
@@ -1372,7 +1365,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "build^1.2.1"
+            "build^1.2.1; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("dulwich")
@@ -1380,7 +1373,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "dulwich^0.22.1"
+            "dulwich^0.22.1; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("platformdirs")
@@ -1388,7 +1381,7 @@ pytest-github-actions-annotate-failures = "==0.1.7"
                 .next()
                 .unwrap()
                 .to_string(),
-            "platformdirs>=3.0.0,<5"
+            "platformdirs>=3.0.0,<5; python_version ^ '3.9'"
         );
         assert_eq!(
             dm.get_dep_specs("pytest_github_actions_annotate_failures")

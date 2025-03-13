@@ -1,7 +1,10 @@
+use crate::util::extract_py_marker;
 use crate::util::ResultDynError;
 use toml::Value;
 
-fn poetry_toml_value_to_string((name, value): (&String, &toml::Value)) -> String {
+fn poetry_toml_value_to_string(
+    (name, value, marker): (&String, &toml::Value, Option<&String>),
+) -> String {
     let version = match value {
         toml::Value::String(v) => v.clone(),
         toml::Value::Table(t) => t
@@ -11,7 +14,11 @@ fn poetry_toml_value_to_string((name, value): (&String, &toml::Value)) -> String
             .to_string(),
         _ => String::new(),
     };
-    format!("{}{}", name, version)
+    if let Some(em) = marker {
+        format!("{}{}; {}", name, version, em)
+    } else {
+        format!("{}{}", name, version)
+    }
 }
 
 #[derive(Debug)]
@@ -114,9 +121,18 @@ impl PyProjectInfo {
             .and_then(|poetry| poetry.get("dependencies"))
             .and_then(|deps| deps.as_table())
         {
+            // get one value or None
+            let py_em =
+                extract_py_marker(&toml::Value::Table(dependencies.clone()), "python")
+                    .into_iter()
+                    .next();
+
             Ok(dependencies
                 .iter()
-                .map(|(name, value)| poetry_toml_value_to_string((name, value)))
+                .filter(|(name, _)| *name != "python")
+                .map(|(name, value)| {
+                    poetry_toml_value_to_string((name, value, py_em.as_ref()))
+                })
                 .collect::<Vec<_>>())
         } else {
             Err("Could not extract from toml tool.poetry.dependencies".into())
@@ -136,7 +152,7 @@ impl PyProjectInfo {
         {
             Ok(dependencies
                 .iter()
-                .map(|(name, value)| poetry_toml_value_to_string((name, value)))
+                .map(|(name, value)| poetry_toml_value_to_string((name, value, None)))
                 .collect::<Vec<_>>())
         } else {
             Err(format!(
