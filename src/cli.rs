@@ -354,9 +354,9 @@ enum ValidateSubcommand {
 
 #[derive(Subcommand)]
 enum SiteInstallSubcommand {
-    /// Print a Json representation of validation results.
+    /// Configure site-install to print warnings on validation errors.
     Warn,
-    /// Return an exit code, 0 on success, 3 (by default) on error.
+    /// Configure site-install to return an exit code on validation errors.
     Exit {
         #[arg(short, long, default_value = "3")]
         code: i32,

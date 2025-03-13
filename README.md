@@ -318,8 +318,8 @@ repos:
   - `--subset`: Allow the observed packages to be a subset of the bound requirements.
   - `--superset`: Allow the observed packages to be a superset of the bound requirements.
 - Subcommands
-  - `warn`: Show validation results in the terminal.
-  - `exit`: Return an exit code (0 for success, customizable for errors).
+  - `warn`: Configure site-install to print warnings on validation errors.
+  - `exit`: Configure site-install to return an exit code on validation errors.
     - `--code, -c <INT>`: Specify the error code (default: `3`).
 
 
