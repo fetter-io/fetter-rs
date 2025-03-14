@@ -374,6 +374,8 @@ enum AuditSubcommand {
         #[arg(short, long, default_value = ",")]
         delimiter: char,
     },
+    /// Print a Json representation of audit report results.
+    Json,
     /// Return an exit code, 0 on success, 3 (by default) on error.
     Exit {
         #[arg(short, long, default_value = "3")]
@@ -621,6 +623,9 @@ where
                 thread::sleep(Duration::from_millis(100));
             }
             match subcommands {
+                Some(AuditSubcommand::Json) => {
+                    println!("{}", serde_json::to_string(&ar.to_audit_digest())?);
+                }
                 Some(AuditSubcommand::Write { output, delimiter }) => {
                     let _ = ar.to_file(output, *delimiter);
                 }

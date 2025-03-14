@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
@@ -78,8 +79,19 @@ impl Rowable for AuditRecord {
         rows
     }
 }
+//------------------------------------------------------------------------------
+// A summary of validation results suitable for JSON serialization to naive readers that need lablled fields.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct AuditDigestRecord {
+    package: Option<String>,
+    vuln_ids: Vec<String>,
+    vuln_infos: HashMap<String, OSVVulnInfo>,
+}
+
+pub(crate) type AuditDigest = Vec<AuditDigestRecord>;
 
 //------------------------------------------------------------------------------
+// Complete report of a validation process.
 #[derive(Debug)]
 pub struct AuditReport {
     records: Vec<AuditRecord>,
@@ -101,7 +113,7 @@ impl AuditReport {
                 let record = AuditRecord {
                     package: package.clone(),
                     vuln_ids: vuln_ids.clone(),
-                    vuln_infos, // move
+                    vuln_infos:  vuln_infos.clone(), // move
                 };
                 records.push(record);
             }
@@ -111,6 +123,20 @@ impl AuditReport {
 
     pub(crate) fn len(&self) -> usize {
         self.records.len()
+    }
+
+    pub(crate) fn to_audit_digest(&self) -> AuditDigest {
+        let mut audit_digests = Vec::new();
+
+        for record in &self.records {
+            audit_digests.push(AuditDigestRecord {
+                package: Some(record.package.to_string()),
+                vuln_ids: record.vuln_ids.clone(),
+                vuln_infos: record.vuln_infos.clone(),
+            });
+        }
+
+        audit_digests
     }
 }
 
