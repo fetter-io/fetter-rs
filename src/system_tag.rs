@@ -46,7 +46,7 @@ impl SystemTag {
                                 .replace('"', "")
                                 .trim()
                                 .to_string()
-                        }) // FIX: Clone & clean
+                        })
                 })
                 .unwrap_or_else(|| "unknown".to_string())
         };
