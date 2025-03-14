@@ -17,6 +17,7 @@ mod scan_fs;
 mod scan_report;
 mod site_customize;
 mod spin;
+mod system_tag;
 mod table;
 mod unpack_report;
 mod ureq_client;
