@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
-use std::process::Command;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
@@ -25,17 +25,30 @@ impl SystemTag {
         let os_name = env::consts::OS.to_string();
 
         let os_version = if os_name == "macos" {
-            Command::new("sw_vers")
-                .arg("-productVersion")
-                .output()
+            fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
                 .ok()
-                .and_then(|output| String::from_utf8(output.stdout).ok())
-                .map(|s| s.trim().to_string())
+                .and_then(|content| {
+                    content
+                        .lines()
+                        .find(|line| line.contains("<key>ProductVersion</key>"))
+                        .map(|line| line.to_string())
+                })
                 .unwrap_or_else(|| "unknown".to_string())
         } else {
-            fs::read_to_string("/proc/version")
-                .map(|s| s.split_whitespace().nth(2).unwrap_or("unknown").to_string())
-                .unwrap_or_else(|_| "unknown".to_string())
+            fs::read_to_string("/etc/os-release")
+                .ok()
+                .and_then(|content| {
+                    content
+                        .lines()
+                        .find(|line| line.starts_with("VERSION_ID="))
+                        .map(|line| {
+                            line.replace("VERSION_ID=", "")
+                                .replace('"', "")
+                                .trim()
+                                .to_string()
+                        }) // FIX: Clone & clean
+                })
+                .unwrap_or_else(|| "unknown".to_string())
         };
 
         let architecture = env::consts::ARCH.to_string();
@@ -53,6 +66,20 @@ impl SystemTag {
             logical_cores,
         })
     }
+
+    pub fn to_hash(&self) -> String {
+        let json = serde_json::to_string(self).expect("Unexpected");
+
+        let mut hasher = Sha256::new();
+        hasher.update(json.as_bytes());
+        let hash = hasher.finalize();
+
+        hash.iter().fold(String::new(), |mut acc, byte| {
+            use std::fmt::Write;
+            write!(&mut acc, "{:02x}", byte).unwrap();
+            acc
+        })
+    }
 }
 
 #[cfg(test)]
@@ -61,7 +88,7 @@ mod tests {
     use serde_json;
 
     #[test]
-    fn test_json_serialization_round_trip() {
+    fn test_system_tag_json_a() {
         let original = SystemTag {
             username: "testuser".to_string(),
             hostname: "testhost".to_string(),
@@ -78,5 +105,31 @@ mod tests {
             serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_system_tag_hash_a() {
+        let tag = SystemTag {
+            username: "testuser".to_string(),
+            hostname: "testhost".to_string(),
+            os_name: "linux".to_string(),
+            os_version: "5.10.0".to_string(),
+            architecture: "x86_64".to_string(),
+            logical_cores: 8,
+        };
+
+        let hash1 = tag.to_hash();
+        let hash2 = tag.to_hash();
+        assert_eq!(hash1, hash2);
+        assert_eq!(
+            hash1,
+            "cfd43732505b2af92e28dc350f1f59ecdd000e5f03dd9ecb5fef250c7b4dcf53"
+        )
+    }
+
+    #[test]
+    fn test_system_tag_live_a() {
+        let st = SystemTag::from_system();
+        println!("{:?}", st);
     }
 }
