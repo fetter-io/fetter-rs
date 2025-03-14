@@ -374,6 +374,11 @@ enum AuditSubcommand {
         #[arg(short, long, default_value = ",")]
         delimiter: char,
     },
+    /// Return an exit code, 0 on success, 3 (by default) on error.
+    Exit {
+        #[arg(short, long, default_value = "3")]
+        code: i32,
+    },
 }
 
 #[derive(Subcommand)]
@@ -618,7 +623,10 @@ where
             match subcommands {
                 Some(AuditSubcommand::Write { output, delimiter }) => {
                     let _ = ar.to_file(output, *delimiter);
-                } // NOTE: might add Json and Exit
+                }
+                Some(AuditSubcommand::Exit { code }) => {
+                    process::exit(if ar.len() > 0 { *code } else { 0 });
+                }
                 Some(AuditSubcommand::Display) | None => {
                     // default
                     let _ = ar.to_writer(stderr);
