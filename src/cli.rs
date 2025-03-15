@@ -624,7 +624,7 @@ where
             }
             match subcommands {
                 Some(AuditSubcommand::Json) => {
-                    println!("{}", serde_json::to_string(&ar.to_audit_digest())?);
+                    println!("{}", serde_json::to_string(&ar)?);
                 }
                 Some(AuditSubcommand::Write { output, delimiter }) => {
                     let _ = ar.to_file(output, *delimiter);
