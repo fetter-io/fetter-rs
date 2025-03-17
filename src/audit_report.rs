@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::osv_query::query_osv_batches;
@@ -12,7 +13,7 @@ use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) struct AuditRecord {
     package: Package,
     vuln_ids: Vec<String>,
@@ -78,9 +79,9 @@ impl Rowable for AuditRecord {
         rows
     }
 }
-
 //------------------------------------------------------------------------------
-#[derive(Debug)]
+// Complete report of a validation process.
+#[derive(Debug, Serialize)]
 pub struct AuditReport {
     records: Vec<AuditRecord>,
 }
@@ -174,5 +175,33 @@ mod tests {
         assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Summary,Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files");
         assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Reference,https://nvd.nist.gov/vuln/detail/CVE-2024-1727");
         assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Severity,CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L");
+    }
+
+    #[test]
+    fn test_audit_report_serialization() {
+        let mock_get = r#"
+        {"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","details":" Impact\nThis CVE covers the ability of 3rd party websites to access routes and upload files to users running Gradio applications locally.  For example, the malicious owners of [www.dontvisitme.com](http://www.dontvisitme.com/) could put a script on their website that uploads a large file to http://localhost:7860/upload and anyone who visits their website and has a Gradio app will now have that large file uploaded on their computer\n\n### Patches\nYes, the problem has been patched in Gradio version 4.19.2 or higher. We have no knowledge of this exploit being used against users of Gradio applications, but we encourage all users to upgrade to Gradio 4.19.2 or higher.\n\nFixed in: https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a\nCVE: https://nvd.nist.gov/vuln/detail/CVE-2024-1727","aliases":["CVE-2024-1727"],"modified":"2024-05-21T15:12:35.101662Z","published":"2024-05-21T14:43:50Z","database_specific":{"github_reviewed_at":"2024-05-21T14:43:50Z","github_reviewed":true,"severity":"MODERATE","cwe_ids":["CWE-352"],"nvd_published_at":null},"references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"affected":[{"package":{"name":"gradio","ecosystem":"PyPI","purl":"pkg:pypi/gradio"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"4.19.2"}]}],"versions":["4.18.0","4.19.0","4.19.1","4.2.0","4.3.0","4.4.0","4.4.1","4.5.0","4.7.0","4.7.1","4.8.0","4.9.0","4.9.1"],"database_specific":{"source":"https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/05/GHSA-48cq-79qq-6f7x/GHSA-48cq-79qq-6f7x.json"}}],"schema_version":"1.6.0","severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}"#;
+
+        let client = UreqClientMock {
+            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]}]}".to_string()),
+            mock_get : Some(mock_get.to_string()),
+        };
+
+        let packages =
+            vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
+
+        let ar = AuditReport::from_packages(&client, &packages);
+        let ar_json = serde_json::to_string_pretty(&ar).unwrap();
+        let expected_json = r#"{"records":[{"package":{"name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}}}]}"#;
+
+        println!("Generated JSON: {}", ar_json);
+        let expected_json: serde_json::Value =
+            serde_json::from_str(expected_json).unwrap();
+        let actual_json: serde_json::Value = serde_json::from_str(&ar_json).unwrap();
+
+        assert_eq!(
+            actual_json, expected_json,
+            "AuditDigest JSON output mismatch!"
+        );
     }
 }

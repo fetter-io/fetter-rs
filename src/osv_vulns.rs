@@ -1,5 +1,6 @@
 use rayon::prelude::*;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
@@ -10,7 +11,7 @@ use std::fmt;
 use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct OSVVulnReference {
     url: String,
     r#type: String,
@@ -23,7 +24,7 @@ impl fmt::Display for OSVVulnReference {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct OSVReferences(Vec<OSVVulnReference>);
 
 impl OSVReferences {
@@ -54,7 +55,7 @@ impl fmt::Display for OSVReferences {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize, Ord, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Serialize, Ord, Eq, PartialEq, PartialOrd)]
 struct OSVSeverity {
     r#type: String,
     score: String,
@@ -67,7 +68,7 @@ impl fmt::Display for OSVSeverity {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct OSVSeverities(Vec<OSVSeverity>);
 
 impl OSVSeverities {
@@ -104,7 +105,7 @@ impl fmt::Display for OSVSeverities {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct OSVVulnInfo {
     pub(crate) id: String,
     pub(crate) summary: Option<String>,
