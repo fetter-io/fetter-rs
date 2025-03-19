@@ -692,23 +692,6 @@ impl ScanFS {
         Ok(())
     }
 
-    pub(crate) fn to_monitor_scan(
-        &self,
-        period: u64,
-        log: bool,
-    ) -> ResultDynError<()> {
-        loop {
-            thread::spawn(move || {
-                let payload = serde_json::to_string(sfs);
-                if log {
-                    logger!(module_path!(), "Got payload: {:?}", payload);
-                }
-
-            });
-            thread::sleep(Duration::from_secs(period));
-        }
-    }
-
 }
 
 //------------------------------------------------------------------------------

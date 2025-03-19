@@ -688,7 +688,8 @@ where
             );
         }
         Some(Commands::MonitorScan { period }) => {
-            let _ = sfs.to_monitor_scan(&sfs, *period, log);
+            // let _ = sfs.to_monitor_scan(&sfs, *period, log);
+            println!("monitor scan");
         }
         None => {}
     }
