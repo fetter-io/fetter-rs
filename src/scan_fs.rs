@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
+use std::thread;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -690,6 +691,24 @@ impl ScanFS {
         }
         Ok(())
     }
+
+    pub(crate) fn to_monitor_scan(
+        &self,
+        period: u64,
+        log: bool,
+    ) -> ResultDynError<()> {
+        loop {
+            thread::spawn(move || {
+                let payload = serde_json::to_string(sfs);
+                if log {
+                    logger!(module_path!(), "Got payload: {:?}", payload);
+                }
+
+            });
+            thread::sleep(Duration::from_secs(period));
+        }
+    }
+
 }
 
 //------------------------------------------------------------------------------

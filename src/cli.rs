@@ -255,6 +255,11 @@ enum Commands {
         #[arg(long)]
         superset: bool,
     },
+    /// Periodically scan system and post JSON output to a URL.
+    MonitorScan {
+        #[arg(short, long, default_value = "120")]
+        period: u64,
+    }
 }
 
 impl fmt::Display for Commands {
@@ -272,6 +277,7 @@ impl fmt::Display for Commands {
             Commands::UnpackFiles { .. } => "unpack-files",
             Commands::PurgePattern { .. } => "purge-pattern",
             Commands::PurgeInvalid { .. } => "purge-invalid",
+            Commands::MonitorScan { .. } => "monitor-scan",
         };
         write!(f, "{}", op_str)
     }
@@ -680,6 +686,9 @@ where
                 },
                 log,
             );
+        }
+        Some(Commands::MonitorScan { period }) => {
+            let _ = sfs.to_monitor_scan(&sfs, *period, log);
         }
         None => {}
     }
