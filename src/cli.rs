@@ -24,6 +24,7 @@ use crate::table::Tableable;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
+use crate::monitor::monitor_scan_loop;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -259,7 +260,7 @@ enum Commands {
     MonitorScan {
         #[arg(short, long, default_value = "120")]
         period: u64,
-    }
+    },
 }
 
 impl fmt::Display for Commands {
@@ -409,11 +410,11 @@ enum UnpackFilesSubcommand {
 }
 
 //------------------------------------------------------------------------------
-// Utility constructors specialized fro CLI contexts
+// Utility constructors specialized for CLI contexts
 
 // Provided `exe_paths` are not normalize.
-fn get_scan(
-    exe_paths: &Vec<PathBuf>, // could be a ref
+fn from_cache_or_exes(
+    exe_paths: &Vec<PathBuf>,
     force_usite: bool,
     animate: bool,
     cache_dur: Duration,
@@ -429,16 +430,16 @@ fn get_scan(
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfsl = ScanFS::from_exes(exe_paths, force_usite, log)?;
+        let sfs = ScanFS::from_exes(exe_paths, force_usite, log)?;
 
         if cache_dur > DURATION_0 {
-            sfsl.to_cache(cache_dur, log)?;
+            sfs.to_cache(cache_dur, log)?;
         }
         if animate {
             active.store(false, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(100));
         }
-        Ok(sfsl)
+        Ok(sfs)
     })
 }
 
@@ -461,22 +462,26 @@ where
     let banner = cli.banner;
 
     // do a fresh scan or load a cached scan
-    let mut sfs = get_scan(
-        &cli.exe,
-        cli.user_site,
-        !quiet,
-        Duration::from_secs(cli.cache_duration),
-        log,
-        stderr,
-    )?;
+    let get_sfs = || -> ResultDynError<ScanFS> {
+        from_cache_or_exes(
+            &cli.exe,
+            cli.user_site,
+            !quiet,
+            Duration::from_secs(cli.cache_duration),
+            log,
+            stderr,
+        )
+    };
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
             Some(ScanSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_file(output, *delimiter);
             }
             Some(ScanSubcommand::Display) | None => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_writer(stderr);
             }
@@ -487,22 +492,26 @@ where
             case,
         }) => match subcommands {
             Some(SearchSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_search_report(pattern, !case);
                 let _ = sr.to_file(output, *delimiter);
             }
             Some(SearchSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let sr = sfs.to_search_report(pattern, !case);
                 let _ = sr.to_writer(stderr);
             }
         },
         Some(Commands::Count { subcommands }) => match subcommands {
             Some(CountSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let cr = sfs.to_count_report();
                 let _ = cr.to_file(output, *delimiter);
             }
             Some(CountSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let cr = sfs.to_count_report();
                 let _ = cr.to_writer(stderr);
             }
@@ -512,12 +521,14 @@ where
             anchor,
         }) => match subcommands {
             Some(DeriveSubcommand::Write { output }) => {
+                let sfs = get_sfs()?;
                 let dm = sfs.to_dep_manifest((*anchor).into())?;
                 let dmr = dm.to_dep_manifest_report();
                 let _ = dmr.to_file(output, ' ');
             }
             Some(DeriveSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let dm = sfs.to_dep_manifest((*anchor).into())?;
                 let dmr = dm.to_dep_manifest_report();
                 let _ = dmr.to_writer(stderr);
@@ -532,6 +543,7 @@ where
             subcommands,
         }) => {
             // a DepManifest can be specialized for different python versions; if any DepManifest constituents have
+            let mut sfs = get_sfs()?;
             let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
             let permit_superset = *superset;
             let permit_subset = *subset;
@@ -582,6 +594,7 @@ where
             superset,
             subcommands,
         }) => {
+            let sfs = get_sfs()?;
             let vf = ValidationFlags {
                 permit_superset: *superset,
                 permit_subset: *subset,
@@ -600,6 +613,7 @@ where
             )?;
         }
         Some(Commands::SiteUninstall {}) => {
+            let sfs = get_sfs()?;
             sfs.site_validate_uninstall(log)?;
         }
         Some(Commands::Audit {
@@ -607,7 +621,8 @@ where
             pattern,
             case,
         }) => {
-            // network look makes this potentially slow
+            let sfs = get_sfs()?;
+            // network lookup makes this potentially slow
             let active = Arc::new(AtomicBool::new(true));
             if !quiet {
                 spin(
@@ -637,6 +652,7 @@ where
             pattern,
             case,
         }) => {
+            let sfs = get_sfs()?;
             let count = true;
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
@@ -654,6 +670,7 @@ where
             pattern,
             case,
         }) => {
+            let sfs = get_sfs()?;
             let count = false;
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
@@ -667,6 +684,7 @@ where
             }
         }
         Some(Commands::PurgePattern { pattern, case }) => {
+            let sfs = get_sfs()?;
             let _ = sfs.to_purge_pattern(pattern, !case, log);
         }
         Some(Commands::PurgeInvalid {
@@ -675,6 +693,7 @@ where
             subset,
             superset,
         }) => {
+            let mut sfs = get_sfs()?;
             let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
             let permit_superset = *superset;
             let permit_subset = *subset;
@@ -688,8 +707,7 @@ where
             );
         }
         Some(Commands::MonitorScan { period }) => {
-            // let _ = sfs.to_monitor_scan(&sfs, *period, log);
-            println!("monitor scan");
+            let _ = monitor_scan_loop(&cli.exe, cli.user_site, *period, log);
         }
         None => {}
     }

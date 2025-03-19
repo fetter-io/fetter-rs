@@ -10,7 +10,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
-use std::thread;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -691,7 +690,6 @@ impl ScanFS {
         }
         Ok(())
     }
-
 }
 
 //------------------------------------------------------------------------------

@@ -6,6 +6,7 @@ mod dep_spec;
 mod env_marker;
 mod exe_search;
 mod lock_file;
+mod monitor;
 mod osv_query;
 mod osv_vulns;
 mod package;
