@@ -326,6 +326,51 @@ pub(crate) fn extract_py_marker(
     em
 }
 
+pub(crate) fn extract_py_marker_from_yaml(specifiers: &str) -> Option<String> {
+    let marker = specifiers
+        .split(',')
+        .map(str::trim)
+        .filter_map(|s| {
+            if s == "*" {
+                None
+            } else {
+                let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
+                let (op, ver) = s.split_at(pos);
+                if ver.trim().is_empty() {
+                    None
+                } else {
+                    Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" and ");
+    if marker.is_empty() {
+        None
+    } else {
+        Some(marker)
+    }
+}
+
+// Helper to extract name and version from conda package filenames in Pixi lock files
+pub(crate) fn parse_conda_filename(filename: &str) -> Option<(String, String)> {
+    let filename = filename.strip_suffix(".conda").unwrap_or(filename);
+    let tokens: Vec<&str> = filename.split('-').collect();
+    let version_index = tokens.iter().position(|token| {
+        token
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+    })?;
+    if version_index == 0 {
+        return None;
+    }
+    let name = tokens[..version_index].join("-");
+    let version = tokens[version_index].to_string();
+    Some((name, version))
+}
+
 //------------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
