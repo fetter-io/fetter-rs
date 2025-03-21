@@ -14,7 +14,7 @@ pub struct SystemTag {
 }
 
 impl SystemTag {
-    pub fn from_system() -> std::io::Result<Self> {
+    pub(crate) fn from_system() -> std::io::Result<Self> {
         let username = env::var("USER").unwrap_or_else(|_| "unknown".into());
 
         let hostname = fs::read_to_string("/etc/hostname")
@@ -67,7 +67,8 @@ impl SystemTag {
         })
     }
 
-    pub fn to_hash(&self) -> String {
+    #[allow(dead_code)]
+    pub(crate) fn to_hash(&self) -> String {
         let json = serde_json::to_string(self).expect("Unexpected");
 
         let mut hasher = Sha256::new();

@@ -12,22 +12,20 @@ use std::{thread, time::Duration};
 fn monitor_scan(
     exe_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
-    sfs_previous_option: Arc<Mutex<Option<ScanFS>>>,
+    sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
     force_usite: bool,
     log: bool,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
-
-    let mut sfs_previous = sfs_previous_option.lock().unwrap();
-
     let sfs =
         ScanFS::from_exes(&exe_paths, force_usite, log).expect("from_exes() failed.");
 
-    if sfs_previous.as_ref() == Some(&sfs) {
+    let mut sfs_prev = sfs_prev_mutex.lock().unwrap();
+    if sfs_prev.as_ref() == Some(&sfs) {
         logger!(log, module_path!(), "No change in scan results.");
     } else {
-        *sfs_previous = Some(sfs); // move into Arc<Mutex<Option<ScanFS>>>
-        let sfs_ref = sfs_previous.as_ref().unwrap();
+        *sfs_prev = Some(sfs); // move into Arc<Mutex<Option<ScanFS>>>
+        let sfs_ref = sfs_prev.as_ref().unwrap();
 
         let duration_since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -45,30 +43,33 @@ fn monitor_scan(
 }
 
 pub(crate) fn monitor_scan_loop(
-    exe_paths: &Vec<PathBuf>,
+    exe_paths: &[PathBuf],
     force_usite: bool,
     period: u64,
     log: bool,
 ) -> ResultDynError<()> {
-    let eps = Arc::new(exe_paths.clone());
+    let eps = Arc::new(exe_paths.to_owned());
     let st = Arc::new(SystemTag::from_system().expect("failed from_system()"));
-    let sfs_previous: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
+    // we hold the owned previous ScanFS
+    let sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
 
     let (tx, rx) = mpsc::channel();
 
     // spawn a single worker thread
     thread::spawn(move || {
-        while let Ok((eps, st, sfs_previous, force_usite, log)) = rx.recv() {
-            monitor_scan(eps, st, sfs_previous, force_usite, log);
+        while let Ok((eps, st, sfs_prev_mutex, force_usite, log)) = rx.recv() {
+            monitor_scan(eps, st, sfs_prev_mutex, force_usite, log);
         }
     });
 
     loop {
-        let eps_move = eps.clone();
-        let st_move = st.clone();
-        let sfsp_move = sfs_previous.clone();
-
-        if let Err(e) = tx.send((eps_move, st_move, sfsp_move, force_usite, log)) {
+        if let Err(e) = tx.send((
+            Arc::clone(&eps),
+            Arc::clone(&st),
+            Arc::clone(&sfs_prev_mutex),
+            force_usite,
+            log,
+        )) {
             logger!(log, module_path!(), "Worker panicked: {}", e);
             return Err(format!("Failed to queue scan: {}", e).into());
         } else {
