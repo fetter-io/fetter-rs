@@ -44,20 +44,12 @@ pub(crate) fn logger_core(module: &str, msg: &str) {
     write_color(
         writer,
         "#3333ff",
-        format!("[{:<22}] ", format!("{:?}", duration_since_epoch)).as_str(),
+        format!("[{:<21}] ", format!("{:?}", duration_since_epoch)).as_str(),
     );
     write_color(writer, "#0033ff", format!("[{}] ", module).as_str());
     write_color(writer, "#336666", format!("[{:?}] ", thread_id).as_str());
     write_color(writer, "#333333", format!("{}\n", msg).as_str());
 }
-
-// #[macro_export]
-// macro_rules! logger {
-//     ($module:expr, $($arg:tt)*) => {{
-//         use $crate::util::logger_core;
-//         logger_core($module, &format!($($arg)*));
-//     }};
-// }
 
 #[macro_export]
 macro_rules! logger {
