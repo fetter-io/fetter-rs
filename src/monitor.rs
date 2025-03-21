@@ -25,7 +25,7 @@ fn monitor_scan(
         logger!(log, module_path!(), "No change in scan results.");
     } else {
         *sfs_prev = Some(sfs); // move into Arc<Mutex<Option<ScanFS>>>
-        let sfs_ref = sfs_prev.as_ref().unwrap();
+        let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
 
         let duration_since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
