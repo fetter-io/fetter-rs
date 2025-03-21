@@ -5,7 +5,6 @@ use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::io::Stderr;
-use std::ops::Deref;
 use std::ops::DerefMut;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::PermissionsExt;
@@ -31,21 +30,21 @@ static LOGGER: OnceLock<Mutex<Stderr>> = OnceLock::new();
 
 pub(crate) fn logger_core(module: &str, msg: &str) {
     let thread_id = thread::current().id();
-    let now = SystemTime::now();
-    let duration_since_epoch =
-        now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    let duration_since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
 
     let mut logger = LOGGER
         .get_or_init(|| Mutex::new(io::stderr())) // Initialize Mutex<Stderr> lazily
         .lock()
         .unwrap();
-    let mut writer = logger.deref_mut();
+    let writer = logger.deref_mut();
 
     write_color(writer, "#333333", "fetter: ");
     write_color(
         writer,
         "#3333ff",
-        format!("[{:?}] ", duration_since_epoch).as_str(),
+        format!("[{:<18}] ", format!("{:?}", duration_since_epoch)).as_str(),
     );
     write_color(writer, "#0033ff", format!("[{}] ", module).as_str());
     write_color(writer, "#336666", format!("[{:?}] ", thread_id).as_str());
