@@ -213,7 +213,7 @@ impl LockFile {
                         deps.iter().filter_map(Value::as_str).find_map(|dep_str| {
                             dep_str
                                 .strip_prefix("python ")
-                                .and_then(|spec| extract_py_marker_from_yaml(spec))
+                                .and_then(extract_py_marker_from_yaml)
                         })
                     })?;
                 Some(format!("{}=={}; {}", package_name, package_version, marker))
