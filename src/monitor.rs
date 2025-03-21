@@ -3,11 +3,11 @@ use crate::system_tag::SystemTag;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use std::{thread, time::Duration};
-use std::sync::Mutex;
 
 fn monitor_scan(
     exe_paths: Arc<Vec<PathBuf>>,
@@ -16,9 +16,7 @@ fn monitor_scan(
     force_usite: bool,
     log: bool,
 ) {
-    if log {
-        logger!(module_path!(), "Calling from_exes().");
-    }
+    logger!(log, module_path!(), "Calling from_exes().");
 
     let mut sfs_previous = sfs_previous_option.lock().unwrap();
 
@@ -26,9 +24,7 @@ fn monitor_scan(
         ScanFS::from_exes(&exe_paths, force_usite, log).expect("from_exes() failed.");
 
     if sfs_previous.as_ref() == Some(&sfs) {
-        if log {
-            logger!(module_path!(), "No change in scan results.");
-        }
+        logger!(log, module_path!(), "No change in scan results.");
     } else {
         *sfs_previous = Some(sfs); // move into Arc<Mutex<Option<ScanFS>>>
         let sfs_ref = sfs_previous.as_ref().unwrap();
@@ -39,13 +35,12 @@ fn monitor_scan(
         let data = (&*system_tag, sfs_ref, &duration_since_epoch);
         let json = serde_json::to_string(&data).expect("serialiation failed.");
 
-        if log {
-            logger!(
-                module_path!(),
-                "Generated JSON: {:?} characters",
-                json.len()
-            );
-        }
+        logger!(
+            log,
+            module_path!(),
+            "Generated JSON: {:?} characters",
+            json.len()
+        );
     }
 }
 
@@ -74,20 +69,14 @@ pub(crate) fn monitor_scan_loop(
         let sfsp_move = sfs_previous.clone();
 
         if let Err(e) = tx.send((eps_move, st_move, sfsp_move, force_usite, log)) {
-            if log {
-                logger!(module_path!(), "Worker panicked: {}", e);
-            }
+            logger!(log, module_path!(), "Worker panicked: {}", e);
             return Err(format!("Failed to queue scan: {}", e).into());
         } else {
             // Ok
-            if log {
-                logger!(module_path!(), "Queued a new scan.");
-            }
+            logger!(log, module_path!(), "Queued a new scan.");
         }
 
-        if log {
-            logger!(module_path!(), "Sleeping {:?}", period);
-        }
+        logger!(log, module_path!(), "Sleeping {:?}", period);
         thread::sleep(Duration::from_secs(period));
     }
 }

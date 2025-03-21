@@ -87,14 +87,14 @@ fn get_site_package_dirs(
             paths
         }
         Err(e) => {
-            if log {
-                logger!(
-                    module_path!(),
-                    "Failed to execute command with {:?}: {}",
-                    executable,
-                    e
-                );
-            }
+            logger!(
+                log,
+                module_path!(),
+                "Failed to execute command with {:?}: {}",
+                executable,
+                e
+            );
+
             Vec::with_capacity(0)
         }
     }
@@ -251,9 +251,8 @@ impl ScanFS {
             let cache_fp = cache_dir.with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
-                if log {
-                    logger!(module_path!(), "Loading cache: {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Loading cache: {:?}", cache_fp);
+
                 let mut file = File::open(cache_fp)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
@@ -338,9 +337,8 @@ impl ScanFS {
 
     // If not set, optionally load EnvMarkerState for each exe
     pub(crate) fn load_env_marker_state(&mut self, log: bool) {
-        if log {
-            logger!(module_path!(), "Fetching EnvMarkerState");
-        }
+        logger!(log, module_path!(), "Fetching EnvMarkerState");
+
         if self.exe_to_ems.is_none() {
             let ems_map: HashMap<PathBuf, EnvMarkerState> = self
                 .exe_to_sites
@@ -389,17 +387,15 @@ impl ScanFS {
 
             // only write if cache does not exist or it is out of duration
             if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                if log {
-                    logger!(module_path!(), "Writing cache: {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Writing cache: {:?}", cache_fp);
+
                 let json = serde_json::to_string(self)?;
                 let mut file = File::create(cache_fp)?;
                 file.write_all(json.as_bytes())?;
                 return Ok(());
             } else {
-                if log {
-                    logger!(module_path!(), "Keeping existing cache {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Keeping existing cache {:?}", cache_fp);
+
                 return Ok(());
             }
         }

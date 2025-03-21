@@ -422,9 +422,7 @@ fn from_cache_or_exes(
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
     ScanFS::from_cache(exe_paths, force_usite, cache_dur, log).or_else(|err| {
-        if log {
-            logger!(module_path!(), "Could not load from cache: {:?}", err);
-        }
+        logger!(log, module_path!(), "Could not load from cache: {:?}", err);
         // full load
         let active = Arc::new(AtomicBool::new(true));
         if animate {

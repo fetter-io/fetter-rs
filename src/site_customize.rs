@@ -132,16 +132,14 @@ pub(crate) fn install_validation(
         cwd_option,
     );
     let fp_validate = site.join(FN_VALIDATE_PY);
-    if log {
-        logger!(module_path!(), "Writing: {}", fp_validate.display());
-    }
+    logger!(log, module_path!(), "Writing: {}", fp_validate.display());
+
     let mut file = File::create(&fp_validate)?;
     writeln!(file, "{}", module_code)?;
 
     let fp_launcher = site.join(FN_LAUNCHER_PTH);
-    if log {
-        logger!(module_path!(), "Writing: {}", fp_launcher.display());
-    }
+    logger!(log, module_path!(), "Writing: {}", fp_launcher.display());
+
     let mut file = File::create(&fp_launcher)?;
     writeln!(file, "import fetter_validate\n")?;
 
@@ -150,14 +148,12 @@ pub(crate) fn install_validation(
 
 pub(crate) fn uninstall_validation(site: &PathShared, log: bool) -> io::Result<()> {
     let fp_launcher = site.join(FN_LAUNCHER_PTH);
-    if log {
-        logger!(module_path!(), "Removing: {}", fp_launcher.display());
-    }
+    logger!(log, module_path!(), "Removing: {}", fp_launcher.display());
+
     let _ = fs::remove_file(fp_launcher);
     let fp_validate = site.join(FN_VALIDATE_PY);
-    if log {
-        logger!(module_path!(), "Removing: {}", fp_validate.display());
-    }
+    logger!(log, module_path!(), "Removing: {}", fp_validate.display());
+
     let _ = fs::remove_file(fp_validate);
     Ok(())
 }
