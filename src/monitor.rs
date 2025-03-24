@@ -33,7 +33,7 @@ fn monitor_scan(
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let data = (&*system_tag, sfs_ref, &duration_since_epoch);
-        let json = serde_json::to_string(&data).expect("serialiation failed.");
+        let json = serde_json::to_string(&data).expect("serialization failed.");
 
         logger!(
             log,
