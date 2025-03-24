@@ -1,5 +1,6 @@
 use crate::scan_fs::ScanFS;
 use crate::system_tag::SystemTag;
+use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ fn monitor_scan(
     exe_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
     sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
+    _client: Arc<dyn UreqClient>,
     force_usite: bool,
     log: bool,
 ) {
@@ -44,6 +46,7 @@ fn monitor_scan(
 
 pub(crate) fn monitor_scan_loop(
     exe_paths: &[PathBuf],
+    client: Arc<dyn UreqClient>,
     force_usite: bool,
     period: u64,
     log: bool,
@@ -57,8 +60,8 @@ pub(crate) fn monitor_scan_loop(
 
     // spawn a single worker thread
     thread::spawn(move || {
-        while let Ok((eps, st, sfs_prev_mutex, force_usite, log)) = rx.recv() {
-            monitor_scan(eps, st, sfs_prev_mutex, force_usite, log);
+        while let Ok((eps, st, sfs_prev_mutex, client, force_usite, log)) = rx.recv() {
+            monitor_scan(eps, st, sfs_prev_mutex, client, force_usite, log);
         }
     });
 
@@ -67,6 +70,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&eps),
             Arc::clone(&st),
             Arc::clone(&sfs_prev_mutex),
+            Arc::clone(&client),
             force_usite,
             log,
         )) {

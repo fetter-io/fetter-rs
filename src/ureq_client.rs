@@ -1,6 +1,6 @@
 #![allow(clippy::result_large_err)]
 
-pub trait UreqClient {
+pub trait UreqClient: Send + Sync {
     /// A post request to the given URL with the provided JSON body.
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
     /// A get request

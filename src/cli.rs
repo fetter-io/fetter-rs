@@ -22,6 +22,7 @@ use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
+use crate::ureq_client::UreqClientLive;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
@@ -705,7 +706,9 @@ where
             );
         }
         Some(Commands::MonitorScan { period }) => {
-            let _ = monitor_scan_loop(&cli.exe, cli.user_site, *period, log);
+            let ureq = Arc::new(UreqClientLive);
+            // let ureq clone for increment ref count
+            let _ = monitor_scan_loop(&cli.exe, ureq, cli.user_site, *period, log);
         }
         None => {}
     }
