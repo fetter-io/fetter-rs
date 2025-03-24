@@ -523,4 +523,15 @@ mod tests {
         assert!(p.clone().unwrap().is_absolute());
         assert!(p.unwrap().ends_with("python3"));
     }
+
+    #[test]
+    fn test_parse_conda_filename() {
+        let filename = "_libgcc_mutex-0.1-conda_forge.tar.bz2";
+        let parsed_filename = parse_conda_filename(filename);
+        
+        assert_eq!(
+            parsed_filename,
+            Some(("_libgcc_mutex".to_string(), "0.1".to_string()))
+        );
+    }
 }

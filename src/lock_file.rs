@@ -194,7 +194,7 @@ impl LockFile {
     // Extracts dependencies from a Pixi Lock file
     fn get_pixi_dep(&self) -> ResultDynError<Vec<String>> {
         let parsed_yaml: Value = serde_yaml::from_str(&self.content)?;
-        let default_packages: Vec<Value> = Vec::new();
+        let default_packages: Vec<Value> = Vec::with_capacity(0);
         let packages = parsed_yaml
             .get("packages")
             .and_then(Value::as_sequence)
