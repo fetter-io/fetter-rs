@@ -294,41 +294,9 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
     })
 }
 
-pub(crate) fn extract_py_marker(
-    package: &TomlValue,
-    py_version_key: &str,
-) -> Vec<String> {
-    let mut em = Vec::new();
-
-    if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
-        let marker_py = pyv
-            .split(',')
-            .map(|s| s.trim())
-            .filter_map(|s| {
-                if s == "*" {
-                    None
-                } else {
-                    let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
-                    let (op, ver) = s.split_at(pos);
-                    if ver.trim().is_empty() {
-                        None
-                    } else {
-                        Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
-                    }
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" and ");
-        if !marker_py.is_empty() {
-            em.push(marker_py);
-        }
-    }
-    em
-}
-
-pub(crate) fn extract_py_marker_from_yaml(specifiers: &str) -> Option<String> {
-    let marker = specifiers
-        .split(',')
+// Builds py markers for `extract_py_marker` functions
+pub(crate) fn build_py_marker(s: &str) -> String {
+    s.split(',')
         .map(str::trim)
         .filter_map(|s| {
             if s == "*" {
@@ -344,7 +312,27 @@ pub(crate) fn extract_py_marker_from_yaml(specifiers: &str) -> Option<String> {
             }
         })
         .collect::<Vec<_>>()
-        .join(" and ");
+        .join(" and ")
+}
+
+pub(crate) fn extract_py_marker(
+    package: &TomlValue,
+    py_version_key: &str,
+) -> Vec<String> {
+    if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
+        let marker = build_py_marker(pyv);
+        if !marker.is_empty() {
+            vec![marker]
+        } else {
+            Vec::with_capacity(0)
+        }
+    } else {
+        Vec::with_capacity(0)
+    }
+}
+
+pub(crate) fn extract_py_marker_from_yaml(specifiers: &str) -> Option<String> {
+    let marker = build_py_marker(specifiers);
     if marker.is_empty() {
         None
     } else {
