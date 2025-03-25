@@ -22,7 +22,7 @@ use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
-use crate::ureq_client::UreqClientLive;
+use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
@@ -448,7 +448,7 @@ fn from_cache_or_exes(
 }
 
 //------------------------------------------------------------------------------
-pub fn run_cli<I, T>(args: I) -> ResultDynError<()>
+pub fn run_cli<I, T>(args: I, client: Arc<dyn UreqClient>) -> ResultDynError<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -711,10 +711,8 @@ where
             );
         }
         Some(Commands::MonitorScan { period, url }) => {
-            // TODO: let the user provide a Ureq as an argument above
-            let ureq = Arc::new(UreqClientLive);
             // let ureq clone for increment ref count
-            let _ = monitor_scan_loop(&cli.exe, ureq, url, cli.user_site, *period, log);
+            let _ = monitor_scan_loop(&cli.exe, client, url, cli.user_site, *period, log);
         }
         None => {}
     }

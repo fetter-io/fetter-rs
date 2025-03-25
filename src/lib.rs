@@ -28,4 +28,5 @@ mod version_spec;
 mod write_color;
 
 pub use cli::run_cli;
+pub use ureq_client::UreqClientLive;
 pub use write_color::write_color;
