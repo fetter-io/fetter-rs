@@ -386,9 +386,17 @@ repos:
 ## What is New in Fetter
 
 
-### 1.9.0-dev
+### 1.9.0
 
 Environment markers in `Pipfile.lock` files are now imported.
+
+Support for lock files created by Pixi.
+
+Added the `exit` subcommand to the `audit` command.
+
+Implemented `SystemTag`
+
+Implemented the `monitor-scan` command.
 
 
 ### 1.8.0
