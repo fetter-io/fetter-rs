@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -62,8 +64,8 @@ struct OSVResponse {
 //------------------------------------------------------------------------------
 
 // Function to send a single batch of queries to the OSV API
-fn query_osv_batch<U: UreqClient + std::marker::Sync>(
-    client: &U,
+fn query_osv_batch(
+    client: Arc<dyn UreqClient>,
     packages: &[OSVPackageQuery],
 ) -> Vec<Option<Vec<String>>> {
     let url = "https://api.osv.dev/v1/querybatch";
@@ -95,8 +97,8 @@ fn query_osv_batch<U: UreqClient + std::marker::Sync>(
     }
 }
 
-pub(crate) fn query_osv_batches<U: UreqClient + std::marker::Sync>(
-    client: &U,
+pub(crate) fn query_osv_batches(
+    client: Arc<dyn UreqClient>,
     packages: &[Package],
 ) -> Vec<Option<Vec<String>>> {
     // prepare query structs from Package
@@ -106,7 +108,7 @@ pub(crate) fn query_osv_batches<U: UreqClient + std::marker::Sync>(
     // par_chunks sends groups of 4 to batch query
     let results: Vec<Option<Vec<String>>> = packages_osv
         .par_chunks(4)
-        .flat_map(|chunk| query_osv_batch(client, chunk))
+        .flat_map(|chunk| query_osv_batch(client.clone(), chunk))
         .collect();
     results
 }
@@ -122,17 +124,17 @@ mod tests {
 
     #[test]
     fn test_osv_querybatch_a() {
-        let client = UreqClientMock {
+        let client = Arc::new(UreqClientMock {
             mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-34rf-p3r3-58x2\",\"modified\":\"2024-05-06T14:46:47.572046Z\"},{\"id\":\"GHSA-3f95-mxq2-2f63\",\"modified\":\"2024-04-10T22:19:39.095481Z\"},{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]},{\"vulns\":[{\"id\":\"GHSA-pmv9-3xqp-8w42\",\"modified\":\"2024-09-18T19:36:03.377591Z\"}]}]}".to_string()),
             mock_get : None,
-        };
+        });
         // let client = UreqClientLive;
         let packages = vec![
             Package::from_name_version_durl("gradio", "4.0.0", None).unwrap(),
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
         ];
 
-        let results = query_osv_batches(&client, &packages);
+        let results = query_osv_batches(client, &packages);
 
         assert_eq!(results.len(), 2);
         assert_eq!(

@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Duration;
 
 use rayon::prelude::*;
@@ -28,7 +29,7 @@ use crate::scan_report::ScanReport;
 use crate::site_customize::install_validation;
 use crate::site_customize::uninstall_validation;
 use crate::unpack_report::UnpackReport;
-use crate::ureq_client::UreqClientLive;
+use crate::ureq_client::UreqClient;
 use crate::util::exe_path_normalize;
 use crate::util::hash_paths;
 use crate::util::logger;
@@ -511,10 +512,11 @@ impl ScanFS {
     pub(crate) fn to_audit_report(
         &self,
         pattern: &str,
+        client: Arc<dyn UreqClient>,
         case_insensitive: bool,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(&UreqClientLive, &packages)
+        AuditReport::from_packages(client, &packages)
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned
