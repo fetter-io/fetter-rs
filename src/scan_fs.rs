@@ -119,7 +119,7 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 
 // The result of a file-system scan.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ScanFS {
+pub struct ScanFS {
     // NOTE: these attributes are used by reporters
     /// A mapping of exe path to site packages paths
     pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
