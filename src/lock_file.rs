@@ -1,5 +1,5 @@
 use crate::util::ResultDynError;
-use crate::util::{conda_fn_to_name_version, extract_py_marker, str_to_py_marker};
+use crate::util::{conda_fn_to_name_version, str_to_py_marker, toml_to_py_marker};
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use toml::Value as TomlValue;
@@ -112,7 +112,7 @@ impl LockFile {
                     package.get("name").and_then(|n| n.as_str()),
                     package.get("version").and_then(|v| v.as_str()),
                 ) {
-                    let mut em = extract_py_marker(package, "python-versions");
+                    let mut em = toml_to_py_marker(package, "python-versions");
                     // look for both marker and markers
                     if let Some(markers) = package
                         .get("markers")
@@ -146,7 +146,7 @@ impl LockFile {
                     package.get("name").and_then(|n| n.as_str()),
                     package.get("version").and_then(|v| v.as_str()),
                 ) {
-                    let mut em = extract_py_marker(package, "requires-python");
+                    let mut em = toml_to_py_marker(package, "requires-python");
                     if let Some(marker) = package.get("marker").and_then(|m| m.as_str()) {
                         em.push(marker.to_string());
                     }

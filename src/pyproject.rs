@@ -1,4 +1,4 @@
-use crate::util::extract_py_marker;
+use crate::util::toml_to_py_marker;
 use crate::util::ResultDynError;
 use toml::Value;
 
@@ -123,7 +123,7 @@ impl PyProjectInfo {
         {
             // get one value or None
             let py_em =
-                extract_py_marker(&toml::Value::Table(dependencies.clone()), "python")
+                toml_to_py_marker(&toml::Value::Table(dependencies.clone()), "python")
                     .into_iter()
                     .next();
 

@@ -315,7 +315,7 @@ pub(crate) fn str_to_py_marker(s: &str) -> String {
         .join(" and ")
 }
 
-pub(crate) fn extract_py_marker(
+pub(crate) fn toml_to_py_marker(
     package: &TomlValue,
     py_version_key: &str,
 ) -> Vec<String> {
