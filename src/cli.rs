@@ -259,8 +259,13 @@ enum Commands {
     },
     /// Periodically scan system and post JSON output to a URL.
     MonitorScan {
+        /// Set the period of scan in seconds.
         #[arg(short, long, default_value = "120")]
         period: u64,
+
+        /// Provide the URL to which to post results.
+        #[arg(short, long)]
+        url: String,
     },
 }
 
@@ -705,10 +710,11 @@ where
                 log,
             );
         }
-        Some(Commands::MonitorScan { period }) => {
+        Some(Commands::MonitorScan { period, url }) => {
+            // TODO: let the user provide a Ureq as an argument above
             let ureq = Arc::new(UreqClientLive);
             // let ureq clone for increment ref count
-            let _ = monitor_scan_loop(&cli.exe, ureq, cli.user_site, *period, log);
+            let _ = monitor_scan_loop(&cli.exe, ureq, url, cli.user_site, *period, log);
         }
         None => {}
     }

@@ -14,7 +14,8 @@ fn monitor_scan(
     exe_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
     sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
-    _client: Arc<dyn UreqClient>,
+    client: Arc<dyn UreqClient>,
+    url: Arc<String>,
     force_usite: bool,
     log: bool,
 ) {
@@ -33,25 +34,25 @@ fn monitor_scan(
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let data = (&*system_tag, sfs_ref, &duration_since_epoch);
-        let json = serde_json::to_string(&data).expect("serialization failed.");
+        let body = serde_json::to_string(&data).expect("serialization failed.");
 
-        logger!(
-            log,
-            module_path!(),
-            "Generated JSON: {:?} characters",
-            json.len()
-        );
+        logger!(log, module_path!(), "Sending {:?} characters", body.len());
+        let response: Result<String, ureq::Error> = client.post(&url, &body);
+        logger!(log, module_path!(), "Got response: {:?}", response);
     }
 }
 
 pub(crate) fn monitor_scan_loop(
     exe_paths: &[PathBuf],
     client: Arc<dyn UreqClient>,
+    url: &String,
     force_usite: bool,
     period: u64,
     log: bool,
 ) -> ResultDynError<()> {
     let eps = Arc::new(exe_paths.to_owned());
+    let url_arc = Arc::new(url.to_owned());
+
     let st = Arc::new(SystemTag::from_system().expect("failed from_system()"));
     // we hold the owned previous ScanFS
     let sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
@@ -60,8 +61,9 @@ pub(crate) fn monitor_scan_loop(
 
     // spawn a single worker thread
     thread::spawn(move || {
-        while let Ok((eps, st, sfs_prev_mutex, client, force_usite, log)) = rx.recv() {
-            monitor_scan(eps, st, sfs_prev_mutex, client, force_usite, log);
+        while let Ok((eps, st, sfs_prev_mutex, client, url, force_usite, log)) = rx.recv()
+        {
+            monitor_scan(eps, st, sfs_prev_mutex, client, url, force_usite, log);
         }
     });
 
@@ -71,6 +73,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&st),
             Arc::clone(&sfs_prev_mutex),
             Arc::clone(&client),
+            Arc::clone(&url_arc),
             force_usite,
             log,
         )) {
