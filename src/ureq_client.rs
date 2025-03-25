@@ -7,6 +7,7 @@ pub trait UreqClient: Send + Sync {
     fn get(&self, url: &str) -> Result<String, ureq::Error>;
 }
 
+#[derive(Debug)]
 pub struct UreqClientLive;
 
 impl UreqClient for UreqClientLive {
@@ -22,6 +23,7 @@ impl UreqClient for UreqClientLive {
     }
 }
 
+#[derive(Debug)]
 pub struct UreqClientMock {
     pub mock_post: Option<String>,
     pub mock_get: Option<String>,
