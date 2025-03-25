@@ -22,7 +22,7 @@ Additionally, `fetter` can configure a virtual environment to validate package a
 
 
 * 🔎 System Scanning: Finds Python packages across system environments.
-* ⚖️ Package Validation: Checks installed packages against requirements.txt, pyproject.toml, or lock files created by `uv`, `poetry`, `pipenv`, or `pip-tools` that are sourced locally, via URLs, or via `git` repositories.
+* ⚖️ Package Validation: Checks installed packages against requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools` that are sourced locally, via URLs, or via `git` repositories.
 * 🔒 Locked & Reproducible Environments: Automatically validate packages against a lock file before every Python run.
 * 🛡️ Vulnerability Audit: Scans packages for security vulnerabilites in the Open Source Vulnerability database.
 * ⚙️ CI Integration: Validate and audit with `pre-commit` [hooks](#Using-fetter-with-pre-commit).
@@ -215,7 +215,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.8.0
+  rev: v1.9.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -231,7 +231,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.8.0
+  rev: v1.9.0
   hooks:
     - id: fetter-audit
 ```
