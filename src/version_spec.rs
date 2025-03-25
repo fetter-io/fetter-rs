@@ -14,7 +14,7 @@ enum VersionPart {
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
-pub(crate) struct VersionSpec(Vec<VersionPart>);
+pub struct VersionSpec(Vec<VersionPart>);
 
 impl Serialize for VersionSpec {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

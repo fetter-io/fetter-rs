@@ -44,11 +44,11 @@ fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
 #[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub(crate) struct Package {
-    pub(crate) name: String,
-    pub(crate) key: String,
-    pub(crate) version: VersionSpec,
-    pub(crate) direct_url: Option<DirectURL>,
+pub struct Package {
+    pub name: String,
+    pub key: String,
+    pub version: VersionSpec,
+    pub direct_url: Option<DirectURL>,
 }
 impl Package {
     pub(crate) fn from_name_version_durl(

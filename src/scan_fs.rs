@@ -122,14 +122,14 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 pub struct ScanFS {
     // NOTE: these attributes are used by reporters
     /// A mapping of exe path to site packages paths
-    pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
+    pub exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
     /// A mapping of Package tp a site package paths
-    pub(crate) package_to_sites: HashMap<Package, Vec<PathShared>>,
+    pub package_to_sites: HashMap<Package, Vec<PathShared>>,
     // A mapping of site package to exe paths
-    pub(crate) site_to_exe: HashMap<PathShared, PathBuf>,
+    pub site_to_exe: HashMap<PathShared, PathBuf>,
 
     /// Optionally populate EnvMarkerState for all exe, only if env markers are found
-    pub(crate) exe_to_ems: Option<HashMap<PathBuf, EnvMarkerState>>,
+    pub exe_to_ems: Option<HashMap<PathBuf, EnvMarkerState>>,
     /// Optionally force usage of user site
     force_usite: bool,
     /// Store the hash of the un-normalized exe inputs for cache lookup.
@@ -372,7 +372,7 @@ impl ScanFS {
     }
 
     /// Return sorted packages.
-    pub(crate) fn get_packages(&self) -> Vec<Package> {
+    pub fn get_packages(&self) -> Vec<Package> {
         let mut packages: Vec<Package> = self.package_to_sites.keys().cloned().collect();
         packages.sort();
         packages

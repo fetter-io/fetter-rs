@@ -43,16 +43,16 @@ const PY_ENV_MARKERS: &str = "import os;import sys;import platform;print(os.name
 
 // NOTE: not implementing "implementation_version", "platform.version", or "extra"
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EnvMarkerState {
-    os_name: String,
-    sys_platform: String,
-    platform_machine: String,
-    platform_python_implementation: String,
-    platform_release: String,
-    platform_system: String,
-    python_version: String,
-    python_full_version: String,
-    implementation_name: String,
+pub struct EnvMarkerState {
+    pub os_name: String,
+    pub sys_platform: String,
+    pub platform_machine: String,
+    pub platform_python_implementation: String,
+    pub platform_release: String,
+    pub platform_system: String,
+    pub python_version: String,
+    pub python_full_version: String,
+    pub implementation_name: String,
 }
 
 enum EvalType {

@@ -68,7 +68,7 @@ impl SystemTag {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn to_hash(&self) -> String {
+    pub fn to_hash(&self) -> String {
         let json = serde_json::to_string(self).expect("Unexpected");
 
         let mut hasher = Sha256::new();

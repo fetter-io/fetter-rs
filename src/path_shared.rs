@@ -11,7 +11,7 @@ use crate::util::path_home;
 
 /// As a normal Arc-wrapped PathBuf cannot be a key in a mapping or set, we create this wrapped Arc PathBuf that implements hashability. Cloning this type will increment the reference count.
 #[derive(Debug, Clone)]
-pub(crate) struct PathShared(Arc<PathBuf>);
+pub struct PathShared(Arc<PathBuf>);
 
 impl PathShared {
     pub(crate) fn from_path_buf(path: PathBuf) -> Self {

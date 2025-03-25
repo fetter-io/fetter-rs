@@ -28,5 +28,12 @@ mod version_spec;
 mod write_color;
 
 pub use cli::run_cli;
+pub use env_marker::EnvMarkerState;
+pub use package::Package;
+pub use package_durl::DirectURL;
+pub use path_shared::PathShared;
+pub use scan_fs::ScanFS;
+pub use system_tag::SystemTag;
 pub use ureq_client::UreqClientLive;
+pub use version_spec::VersionSpec;
 pub use write_color::write_color;
