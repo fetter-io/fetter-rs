@@ -32,6 +32,7 @@ static LOCK_PRIORITY: &[&str] = &[
     "poetry.lock",
     "Pipfile.lock",
     "requirements.lock",
+    "pixi.lock",
     "requirements.txt",
     "pyproject.toml",
 ];

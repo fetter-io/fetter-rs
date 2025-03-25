@@ -302,36 +302,60 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
     })
 }
 
-pub(crate) fn extract_py_marker(
+// Converts a version constraint string into a PEP 508-compatible py marker string
+pub(crate) fn str_to_py_marker(s: &str) -> String {
+    s.split(',')
+        .map(str::trim)
+        .filter_map(|s| {
+            if s == "*" {
+                None
+            } else {
+                let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
+                let (op, ver) = s.split_at(pos);
+                if ver.trim().is_empty() {
+                    None
+                } else {
+                    Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" and ")
+}
+
+pub(crate) fn toml_to_py_marker(
     package: &TomlValue,
     py_version_key: &str,
 ) -> Vec<String> {
-    let mut em = Vec::new();
-
     if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
-        let marker_py = pyv
-            .split(',')
-            .map(|s| s.trim())
-            .filter_map(|s| {
-                if s == "*" {
-                    None
-                } else {
-                    let pos = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
-                    let (op, ver) = s.split_at(pos);
-                    if ver.trim().is_empty() {
-                        None
-                    } else {
-                        Some(format!("python_version {} '{}'", op.trim(), ver.trim()))
-                    }
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" and ");
-        if !marker_py.is_empty() {
-            em.push(marker_py);
+        let marker = str_to_py_marker(pyv);
+        if !marker.is_empty() {
+            vec![marker]
+        } else {
+            Vec::with_capacity(0)
         }
+    } else {
+        Vec::with_capacity(0)
     }
-    em
+}
+
+// Helper to extract name and version from conda package filenames in Pixi lock files
+pub(crate) fn conda_fn_to_name_version(filename: &str) -> Option<(String, String)> {
+    let filename = filename.strip_suffix(".conda").unwrap_or(filename);
+    let tokens: Vec<&str> = filename.split('-').collect();
+    let version_index = tokens.iter().position(|token| {
+        token
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+    })?;
+    if version_index == 0 {
+        return None;
+    }
+    let name = tokens[..version_index].join("-");
+    let version = tokens[version_index].to_string();
+    Some((name, version))
 }
 
 //------------------------------------------------------------------------------
@@ -485,5 +509,16 @@ mod tests {
         let p = get_absolute_path_from_exe("python3");
         assert!(p.clone().unwrap().is_absolute());
         assert!(p.unwrap().ends_with("python3"));
+    }
+
+    #[test]
+    fn test_conda_fn_to_name_version() {
+        let filename = "_libgcc_mutex-0.1-conda_forge.tar.bz2";
+        let parsed_filename = conda_fn_to_name_version(filename);
+
+        assert_eq!(
+            parsed_filename,
+            Some(("_libgcc_mutex".to_string(), "0.1".to_string()))
+        );
     }
 }
