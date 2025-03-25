@@ -63,7 +63,7 @@ struct OSVResponse {
 
 //------------------------------------------------------------------------------
 
-// Function to send a single batch of queries to the OSV API
+/// Function to send a single batch of queries to the OSV API
 fn query_osv_batch(
     client: Arc<dyn UreqClient>,
     packages: &[OSVPackageQuery],
