@@ -24,8 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # ensure full history
 
       - name: Git commit info
         run: git log -n 1
