@@ -1,5 +1,5 @@
 use crate::util::ResultDynError;
-use crate::util::{extract_py_marker, extract_py_marker_from_yaml, parse_conda_filename};
+use crate::util::{conda_fn_to_name_version, extract_py_marker, str_to_py_marker};
 use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use toml::Value as TomlValue;
@@ -204,16 +204,14 @@ impl LockFile {
             .filter_map(|package| {
                 let url = package.get("conda")?.as_str()?;
                 let filename = url.split('/').last()?;
-                let (package_name, package_version) = parse_conda_filename(filename)?;
+                let (package_name, package_version) = conda_fn_to_name_version(filename)?;
 
                 let marker = package
                     .get("depends")
                     .and_then(Value::as_sequence)
                     .and_then(|deps| {
                         deps.iter().filter_map(Value::as_str).find_map(|dep_str| {
-                            dep_str
-                                .strip_prefix("python ")
-                                .and_then(extract_py_marker_from_yaml)
+                            dep_str.strip_prefix("python ").map(str_to_py_marker)
                         })
                     })?;
                 Some(format!("{}=={}; {}", package_name, package_version, marker))

@@ -294,8 +294,8 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
     })
 }
 
-// Builds py markers for `extract_py_marker` functions
-pub(crate) fn build_py_marker(s: &str) -> String {
+// Converts a version constraint string into a PEP 508-compatible py marker string
+pub(crate) fn str_to_py_marker(s: &str) -> String {
     s.split(',')
         .map(str::trim)
         .filter_map(|s| {
@@ -320,7 +320,7 @@ pub(crate) fn extract_py_marker(
     py_version_key: &str,
 ) -> Vec<String> {
     if let Some(pyv) = package.get(py_version_key).and_then(|v| v.as_str()) {
-        let marker = build_py_marker(pyv);
+        let marker = str_to_py_marker(pyv);
         if !marker.is_empty() {
             vec![marker]
         } else {
@@ -331,17 +331,8 @@ pub(crate) fn extract_py_marker(
     }
 }
 
-pub(crate) fn extract_py_marker_from_yaml(specifiers: &str) -> Option<String> {
-    let marker = build_py_marker(specifiers);
-    if marker.is_empty() {
-        None
-    } else {
-        Some(marker)
-    }
-}
-
 // Helper to extract name and version from conda package filenames in Pixi lock files
-pub(crate) fn parse_conda_filename(filename: &str) -> Option<(String, String)> {
+pub(crate) fn conda_fn_to_name_version(filename: &str) -> Option<(String, String)> {
     let filename = filename.strip_suffix(".conda").unwrap_or(filename);
     let tokens: Vec<&str> = filename.split('-').collect();
     let version_index = tokens.iter().position(|token| {
@@ -513,9 +504,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_conda_filename() {
+    fn test_conda_fn_to_name_version() {
         let filename = "_libgcc_mutex-0.1-conda_forge.tar.bz2";
-        let parsed_filename = parse_conda_filename(filename);
+        let parsed_filename = conda_fn_to_name_version(filename);
 
         assert_eq!(
             parsed_filename,
