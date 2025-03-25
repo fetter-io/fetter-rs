@@ -159,7 +159,8 @@ mod tests {
         let packages =
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
-        let ar = AuditReport::from_packages(client, &packages);
+        // client is Arc
+        let ar = AuditReport::from_packages(client.clone(), &packages);
 
         let dir = tempdir().unwrap();
         let fp = dir.path().join("report.txt");
