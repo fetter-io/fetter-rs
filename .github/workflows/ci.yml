@@ -24,6 +24,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # ensure full history
+
+      - name: Git commit info
+        run: git log -n 1
 
       - uses: actions/setup-python@master
         with:
@@ -31,6 +36,9 @@ jobs:
 
       - name: Install Rust
         run: rustup install --no-self-update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+
+      - name: Clean
+        run: cargo clean
 
       - name: Build
         run: cargo build --verbose
