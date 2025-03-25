@@ -68,22 +68,23 @@ impl Artifacts {
         for (fp, exists) in &self.files {
             if *exists {
                 if let Err(e) = fs::remove_file(fp) {
-                    logger!(module_path!(), "Failed to remove file {:?}: {}", fp, e);
-                } else if log {
-                    logger!(module_path!(), "Removing file: {:?}", fp);
+                    logger!(log, module_path!(), "Failed to remove file {:?}: {}", fp, e);
+                } else {
+                    logger!(log, module_path!(), "Removing file: {:?}", fp);
                 }
             }
         }
         for dir in &self.dirs {
             if let Err(e) = fs::remove_dir_all(dir) {
                 logger!(
+                    log,
                     module_path!(),
                     "Failed to remove directory {:?}: {}",
                     dir,
                     e
                 );
-            } else if log {
-                logger!(module_path!(), "Removing directory: {:?}", dir);
+            } else {
+                logger!(log, module_path!(), "Removing directory: {:?}", dir);
             }
         }
         Ok(())
@@ -204,7 +205,12 @@ where
                 if let Ok(artifacts) = Artifacts::from_package(package, site) {
                     Some(R::new(package.clone(), site.clone(), artifacts))
                 } else {
-                    logger!(module_path!(), "Failed to read artifacts: {:?}", package);
+                    logger!(
+                        true, // might pass this in
+                        module_path!(),
+                        "Failed to read artifacts: {:?}",
+                        package
+                    );
                     None
                 }
             })

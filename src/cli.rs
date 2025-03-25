@@ -16,11 +16,13 @@ use std::thread;
 use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
+use crate::monitor::monitor_scan_loop;
 use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
+use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
@@ -255,6 +257,16 @@ enum Commands {
         #[arg(long)]
         superset: bool,
     },
+    /// Periodically scan system and post JSON output to a URL.
+    MonitorScan {
+        /// Set the period of scan in seconds.
+        #[arg(short, long, default_value = "120")]
+        period: u64,
+
+        /// Provide the URL to which to post results.
+        #[arg(short, long)]
+        url: String,
+    },
 }
 
 impl fmt::Display for Commands {
@@ -272,6 +284,7 @@ impl fmt::Display for Commands {
             Commands::UnpackFiles { .. } => "unpack-files",
             Commands::PurgePattern { .. } => "purge-pattern",
             Commands::PurgeInvalid { .. } => "purge-invalid",
+            Commands::MonitorScan { .. } => "monitor-scan",
         };
         write!(f, "{}", op_str)
     }
@@ -410,11 +423,11 @@ enum UnpackFilesSubcommand {
 }
 
 //------------------------------------------------------------------------------
-// Utility constructors specialized fro CLI contexts
+// Utility constructors specialized for CLI contexts
 
 // Provided `exe_paths` are not normalize.
-fn get_scan(
-    exe_paths: &Vec<PathBuf>, // could be a ref
+fn from_cache_or_exes(
+    exe_paths: &Vec<PathBuf>,
     force_usite: bool,
     animate: bool,
     cache_dur: Duration,
@@ -422,29 +435,27 @@ fn get_scan(
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
     ScanFS::from_cache(exe_paths, force_usite, cache_dur, log).or_else(|err| {
-        if log {
-            logger!(module_path!(), "Could not load from cache: {:?}", err);
-        }
+        logger!(log, module_path!(), "Could not load from cache: {:?}", err);
         // full load
         let active = Arc::new(AtomicBool::new(true));
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfsl = ScanFS::from_exes(exe_paths, force_usite, log)?;
+        let sfs = ScanFS::from_exes(exe_paths, force_usite, log)?;
 
         if cache_dur > DURATION_0 {
-            sfsl.to_cache(cache_dur, log)?;
+            sfs.to_cache(cache_dur, log)?;
         }
         if animate {
             active.store(false, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(100));
         }
-        Ok(sfsl)
+        Ok(sfs)
     })
 }
 
 //------------------------------------------------------------------------------
-pub fn run_cli<I, T>(args: I) -> ResultDynError<()>
+pub fn run_cli<I, T>(args: I, client: Arc<dyn UreqClient>) -> ResultDynError<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -462,22 +473,26 @@ where
     let banner = cli.banner;
 
     // do a fresh scan or load a cached scan
-    let mut sfs = get_scan(
-        &cli.exe,
-        cli.user_site,
-        !quiet,
-        Duration::from_secs(cli.cache_duration),
-        log,
-        stderr,
-    )?;
+    let get_sfs = || -> ResultDynError<ScanFS> {
+        from_cache_or_exes(
+            &cli.exe,
+            cli.user_site,
+            !quiet,
+            Duration::from_secs(cli.cache_duration),
+            log,
+            stderr,
+        )
+    };
 
     match &cli.command {
         Some(Commands::Scan { subcommands }) => match subcommands {
             Some(ScanSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_file(output, *delimiter);
             }
             Some(ScanSubcommand::Display) | None => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_writer(stderr);
             }
@@ -488,22 +503,26 @@ where
             case,
         }) => match subcommands {
             Some(SearchSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let sr = sfs.to_search_report(pattern, !case);
                 let _ = sr.to_file(output, *delimiter);
             }
             Some(SearchSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let sr = sfs.to_search_report(pattern, !case);
                 let _ = sr.to_writer(stderr);
             }
         },
         Some(Commands::Count { subcommands }) => match subcommands {
             Some(CountSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
                 let cr = sfs.to_count_report();
                 let _ = cr.to_file(output, *delimiter);
             }
             Some(CountSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let cr = sfs.to_count_report();
                 let _ = cr.to_writer(stderr);
             }
@@ -513,12 +532,14 @@ where
             anchor,
         }) => match subcommands {
             Some(DeriveSubcommand::Write { output }) => {
+                let sfs = get_sfs()?;
                 let dm = sfs.to_dep_manifest((*anchor).into())?;
                 let dmr = dm.to_dep_manifest_report();
                 let _ = dmr.to_file(output, ' ');
             }
             Some(DeriveSubcommand::Display) | None => {
                 // default
+                let sfs = get_sfs()?;
                 let dm = sfs.to_dep_manifest((*anchor).into())?;
                 let dmr = dm.to_dep_manifest_report();
                 let _ = dmr.to_writer(stderr);
@@ -533,6 +554,7 @@ where
             subcommands,
         }) => {
             // a DepManifest can be specialized for different python versions; if any DepManifest constituents have
+            let mut sfs = get_sfs()?;
             let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
             let permit_superset = *superset;
             let permit_subset = *subset;
@@ -583,6 +605,7 @@ where
             superset,
             subcommands,
         }) => {
+            let sfs = get_sfs()?;
             let vf = ValidationFlags {
                 permit_superset: *superset,
                 permit_subset: *subset,
@@ -601,6 +624,7 @@ where
             )?;
         }
         Some(Commands::SiteUninstall {}) => {
+            let sfs = get_sfs()?;
             sfs.site_validate_uninstall(log)?;
         }
         Some(Commands::Audit {
@@ -608,7 +632,8 @@ where
             pattern,
             case,
         }) => {
-            // network look makes this potentially slow
+            let sfs = get_sfs()?;
+            // network lookup makes this potentially slow
             let active = Arc::new(AtomicBool::new(true));
             if !quiet {
                 spin(
@@ -617,7 +642,7 @@ where
                     stderr,
                 );
             }
-            let ar = sfs.to_audit_report(pattern, !case);
+            let ar = sfs.to_audit_report(pattern, client, !case);
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
@@ -644,6 +669,7 @@ where
             pattern,
             case,
         }) => {
+            let sfs = get_sfs()?;
             let count = true;
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
@@ -661,6 +687,7 @@ where
             pattern,
             case,
         }) => {
+            let sfs = get_sfs()?;
             let count = false;
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
@@ -674,6 +701,7 @@ where
             }
         }
         Some(Commands::PurgePattern { pattern, case }) => {
+            let sfs = get_sfs()?;
             let _ = sfs.to_purge_pattern(pattern, !case, log);
         }
         Some(Commands::PurgeInvalid {
@@ -682,6 +710,7 @@ where
             subset,
             superset,
         }) => {
+            let mut sfs = get_sfs()?;
             let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
             let permit_superset = *superset;
             let permit_subset = *subset;
@@ -693,6 +722,10 @@ where
                 },
                 log,
             );
+        }
+        Some(Commands::MonitorScan { period, url }) => {
+            // let ureq clone for increment ref count
+            let _ = monitor_scan_loop(&cli.exe, client, url, cli.user_site, *period, log);
         }
         None => {}
     }

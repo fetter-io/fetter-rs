@@ -1,12 +1,13 @@
 #![allow(clippy::result_large_err)]
 
-pub trait UreqClient {
+pub trait UreqClient: Send + Sync {
     /// A post request to the given URL with the provided JSON body.
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
     /// A get request
     fn get(&self, url: &str) -> Result<String, ureq::Error>;
 }
 
+#[derive(Debug)]
 pub struct UreqClientLive;
 
 impl UreqClient for UreqClientLive {
@@ -22,6 +23,7 @@ impl UreqClient for UreqClientLive {
     }
 }
 
+#[derive(Debug)]
 pub struct UreqClientMock {
     pub mock_post: Option<String>,
     pub mock_get: Option<String>,

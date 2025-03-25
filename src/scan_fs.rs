@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Duration;
 
 use rayon::prelude::*;
@@ -28,7 +29,7 @@ use crate::scan_report::ScanReport;
 use crate::site_customize::install_validation;
 use crate::site_customize::uninstall_validation;
 use crate::unpack_report::UnpackReport;
-use crate::ureq_client::UreqClientLive;
+use crate::ureq_client::UreqClient;
 use crate::util::exe_path_normalize;
 use crate::util::hash_paths;
 use crate::util::logger;
@@ -87,14 +88,14 @@ fn get_site_package_dirs(
             paths
         }
         Err(e) => {
-            if log {
-                logger!(
-                    module_path!(),
-                    "Failed to execute command with {:?}: {}",
-                    executable,
-                    e
-                );
-            }
+            logger!(
+                log,
+                module_path!(),
+                "Failed to execute command with {:?}: {}",
+                executable,
+                e
+            );
+
             Vec::with_capacity(0)
         }
     }
@@ -117,8 +118,8 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 
 // The result of a file-system scan.
-#[derive(Clone, Debug)]
-pub(crate) struct ScanFS {
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScanFS {
     // NOTE: these attributes are used by reporters
     /// A mapping of exe path to site packages paths
     pub(crate) exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
@@ -251,9 +252,8 @@ impl ScanFS {
             let cache_fp = cache_dir.with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
-                if log {
-                    logger!(module_path!(), "Loading cache: {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Loading cache: {:?}", cache_fp);
+
                 let mut file = File::open(cache_fp)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
@@ -338,9 +338,8 @@ impl ScanFS {
 
     // If not set, optionally load EnvMarkerState for each exe
     pub(crate) fn load_env_marker_state(&mut self, log: bool) {
-        if log {
-            logger!(module_path!(), "Fetching EnvMarkerState");
-        }
+        logger!(log, module_path!(), "Fetching EnvMarkerState");
+
         if self.exe_to_ems.is_none() {
             let ems_map: HashMap<PathBuf, EnvMarkerState> = self
                 .exe_to_sites
@@ -389,17 +388,15 @@ impl ScanFS {
 
             // only write if cache does not exist or it is out of duration
             if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                if log {
-                    logger!(module_path!(), "Writing cache: {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Writing cache: {:?}", cache_fp);
+
                 let json = serde_json::to_string(self)?;
                 let mut file = File::create(cache_fp)?;
                 file.write_all(json.as_bytes())?;
                 return Ok(());
             } else {
-                if log {
-                    logger!(module_path!(), "Keeping existing cache {:?}", cache_fp);
-                }
+                logger!(log, module_path!(), "Keeping existing cache {:?}", cache_fp);
+
                 return Ok(());
             }
         }
@@ -515,10 +512,11 @@ impl ScanFS {
     pub(crate) fn to_audit_report(
         &self,
         pattern: &str,
+        client: Arc<dyn UreqClient>,
         case_insensitive: bool,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(&UreqClientLive, &packages)
+        AuditReport::from_packages(client, &packages)
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned

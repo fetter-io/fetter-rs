@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Git commit info
+        run: git log -n 1
+
       - uses: actions/setup-python@master
         with:
           python-version: ${{ matrix.python }}

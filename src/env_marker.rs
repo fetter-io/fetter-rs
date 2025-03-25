@@ -42,7 +42,7 @@ impl EnvMarkerExpr {
 const PY_ENV_MARKERS: &str = "import os;import sys;import platform;print(os.name);print(sys.platform);print(platform.machine());print(platform.python_implementation());print(platform.release());print(platform.system());print('.'.join(platform.python_version_tuple()[:2]));print(platform.python_version());print(sys.implementation.name)";
 
 // NOTE: not implementing "implementation_version", "platform.version", or "extra"
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EnvMarkerState {
     os_name: String,
     sys_platform: String,

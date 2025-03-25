@@ -1,0 +1,136 @@
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::env;
+use std::fs;
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct SystemTag {
+    username: String,
+    hostname: String,
+    os_name: String,
+    os_version: String,
+    architecture: String,
+    logical_cores: usize,
+}
+
+impl SystemTag {
+    pub(crate) fn from_system() -> std::io::Result<Self> {
+        let username = env::var("USER").unwrap_or_else(|_| "unknown".into());
+
+        let hostname = fs::read_to_string("/etc/hostname")
+            .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        let os_name = env::consts::OS.to_string();
+
+        let os_version = if os_name == "macos" {
+            fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
+                .ok()
+                .and_then(|content| {
+                    content
+                        .lines()
+                        .find(|line| line.contains("<key>ProductVersion</key>"))
+                        .map(|line| line.to_string())
+                })
+                .unwrap_or_else(|| "unknown".to_string())
+        } else {
+            fs::read_to_string("/etc/os-release")
+                .ok()
+                .and_then(|content| {
+                    content
+                        .lines()
+                        .find(|line| line.starts_with("VERSION_ID="))
+                        .map(|line| {
+                            line.replace("VERSION_ID=", "")
+                                .replace('"', "")
+                                .trim()
+                                .to_string()
+                        })
+                })
+                .unwrap_or_else(|| "unknown".to_string())
+        };
+
+        let architecture = env::consts::ARCH.to_string();
+
+        let logical_cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+
+        Ok(Self {
+            username,
+            hostname,
+            os_name,
+            os_version,
+            architecture,
+            logical_cores,
+        })
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn to_hash(&self) -> String {
+        let json = serde_json::to_string(self).expect("Unexpected");
+
+        let mut hasher = Sha256::new();
+        hasher.update(json.as_bytes());
+        let hash = hasher.finalize();
+
+        hash.iter().fold(String::new(), |mut acc, byte| {
+            use std::fmt::Write;
+            write!(&mut acc, "{:02x}", byte).unwrap();
+            acc
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_system_tag_json_a() {
+        let original = SystemTag {
+            username: "testuser".to_string(),
+            hostname: "testhost".to_string(),
+            os_name: "linux".to_string(),
+            os_version: "5.10.0".to_string(),
+            architecture: "x86_64".to_string(),
+            logical_cores: 8,
+        };
+
+        let json = serde_json::to_string(&original).expect("Serialization failed");
+        assert_eq!(json, "{\"username\":\"testuser\",\"hostname\":\"testhost\",\"os_name\":\"linux\",\"os_version\":\"5.10.0\",\"architecture\":\"x86_64\",\"logical_cores\":8}");
+
+        let deserialized: SystemTag =
+            serde_json::from_str(&json).expect("Deserialization failed");
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_system_tag_hash_a() {
+        let tag = SystemTag {
+            username: "testuser".to_string(),
+            hostname: "testhost".to_string(),
+            os_name: "linux".to_string(),
+            os_version: "5.10.0".to_string(),
+            architecture: "x86_64".to_string(),
+            logical_cores: 8,
+        };
+
+        let hash1 = tag.to_hash();
+        let hash2 = tag.to_hash();
+        assert_eq!(hash1, hash2);
+        assert_eq!(
+            hash1,
+            "cfd43732505b2af92e28dc350f1f59ecdd000e5f03dd9ecb5fef250c7b4dcf53"
+        )
+    }
+
+    #[test]
+    fn test_system_tag_live_a() {
+        let st = SystemTag::from_system();
+        println!("{:?}", st);
+    }
+}

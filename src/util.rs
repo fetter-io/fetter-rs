@@ -4,11 +4,14 @@ use std::env;
 use std::fmt::Write;
 use std::fs;
 use std::io;
+use std::io::Stderr;
+use std::ops::DerefMut;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,33 +25,38 @@ pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
 //------------------------------------------------------------------------------
 
+// Global Mutex to ensure thread-safe logging
+static LOGGER: OnceLock<Mutex<Stderr>> = OnceLock::new();
+
 pub(crate) fn logger_core(module: &str, msg: &str) {
     let thread_id = thread::current().id();
-    let now = SystemTime::now();
-    let duration_since_epoch =
-        now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    let duration_since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
 
-    let mut writer = io::stderr();
-    write_color(&mut writer, "#333333", "fetter: ");
+    let mut logger = LOGGER
+        .get_or_init(|| Mutex::new(io::stderr())) // Initialize Mutex<Stderr> lazily
+        .lock()
+        .unwrap();
+    let writer = logger.deref_mut();
+
+    write_color(writer, "#333333", "fetter: ");
     write_color(
-        &mut writer,
+        writer,
         "#3333ff",
-        format!("[{:?}] ", duration_since_epoch).as_str(),
+        format!("[{:<21}] ", format!("{:?}", duration_since_epoch)).as_str(),
     );
-    write_color(&mut writer, "#0033ff", format!("[{}] ", module).as_str());
-    write_color(
-        &mut writer,
-        "#336666",
-        format!("[{:?}] ", thread_id).as_str(),
-    );
-    write_color(&mut writer, "#333333", format!("{}\n", msg).as_str());
+    write_color(writer, "#0033ff", format!("[{}] ", module).as_str());
+    write_color(writer, "#336666", format!("[{:?}] ", thread_id).as_str());
+    write_color(writer, "#333333", format!("{}\n", msg).as_str());
 }
 
 #[macro_export]
 macro_rules! logger {
-    ($module:expr, $($arg:tt)*) => {{
-        use $crate::util::logger_core;
-        logger_core($module, &format!($($arg)*));
+    ($log:expr, $module:expr, $($arg:tt)*) => {{
+        if $log {
+            $crate::util::logger_core($module, &format!($($arg)*));
+        }
     }};
 }
 
