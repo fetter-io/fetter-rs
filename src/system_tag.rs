@@ -5,12 +5,12 @@ use std::fs;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
-    username: String,
-    hostname: String,
-    os_name: String,
-    os_version: String,
-    architecture: String,
-    logical_cores: usize,
+    pub username: String,
+    pub hostname: String,
+    pub os_name: String,
+    pub os_version: String,
+    pub architecture: String,
+    pub logical_cores: usize,
 }
 
 impl SystemTag {
