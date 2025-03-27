@@ -215,7 +215,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.9.0
+  rev: v1.10.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -231,7 +231,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.9.0
+  rev: v1.10.0
   hooks:
     - id: fetter-audit
 ```
@@ -335,9 +335,12 @@ repos:
   - `--case`: Enable case-sensitive pattern matching.
 - Subcommands
   - `display`: Show audit results in the terminal.
+  - `json`: Print validation results in JSON format.
   - `write`: Save audit results to a file.
     - `--output, -o <FILE>`: Specify the output file.
     - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
+  - `exit`: Return an exit code (0 for success, customizable for errors).
+    - `--code, -c <INT>`: Specify the error code (default: `3`).
 
 ### Command: `fetter unpack-count`
 
@@ -384,6 +387,10 @@ repos:
 
 
 ## What is New in Fetter
+
+### 1.10.0
+
+Extension to the public library interface.
 
 
 ### 1.9.0
