@@ -31,6 +31,7 @@ pub use cli::run_cli;
 pub use env_marker::EnvMarkerState;
 pub use package::Package;
 pub use package_durl::DirectURL;
+pub use package_durl::VcsInfo;
 pub use path_shared::PathShared;
 pub use scan_fs::ScanFS;
 pub use system_tag::SystemTag;

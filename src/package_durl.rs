@@ -14,11 +14,11 @@ use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
 pub struct VcsInfo {
-    commit_id: String,
-    vcs: String,
+    pub commit_id: String,
+    pub vcs: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    requested_revision: Option<String>,
+    pub requested_revision: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
