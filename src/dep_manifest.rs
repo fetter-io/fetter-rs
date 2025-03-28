@@ -1524,10 +1524,10 @@ numpy>= 2.0
         // if we install as "packaging @ git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407"
         // in site packages we get packaging-24.2.dev0.dist-info
         // and writes this in direct_url.json
-        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
 
         let json_str = r#"
-        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =
@@ -1552,10 +1552,10 @@ numpy>= 2.0
         // if we install as "packaging @ git+https://foo@github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407"
         // in site packages we get packaging-24.2.dev0.dist-info
         // and writes this in direct_url.json, without the user part of the url
-        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        // {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
 
         let json_str = r#"
-        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "requested_revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
+        {"url": "https://github.com/pypa/packaging.git", "vcs_info": {"commit_id": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "revision": "cf2cbe2aec28f87c6228a6fb136c27931c9af407", "vcs": "git"}}
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 =

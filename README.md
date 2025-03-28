@@ -525,7 +525,7 @@ Support `--requirement` in requirements files.
 
 Package and DepSpec comparisons now remove user.
 
-Package and DepSpec comparisons now accept matching either on requested_revision or commit_id.
+Package and DepSpec comparisons now accept matching either on revision or commit_id.
 
 URLs are now shown in DepSpec displays.
 

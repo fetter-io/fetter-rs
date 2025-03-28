@@ -214,13 +214,13 @@ mod tests {
     #[test]
     fn test_package_json_b() {
         let json_str = r#"
-            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
             "#;
 
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
         let json = serde_json::to_string(&p1).unwrap();
-        assert_eq!(json, "{\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"requested_revision\":\"0.3.8\"}}}");
+        assert_eq!(json, "{\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"revision\":\"0.3.8\"}}}");
 
         let p2: Package = serde_json::from_str(&json).unwrap();
         assert_eq!(p2.to_string(), "dill-0.3.8");

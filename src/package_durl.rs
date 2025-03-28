@@ -18,7 +18,7 @@ pub struct VcsInfo {
     pub vcs: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub requested_revision: Option<String>,
+    pub revision: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
@@ -47,7 +47,7 @@ impl DirectURL {
             Some(VcsInfo {
                 vcs,
                 commit_id,
-                requested_revision: None,
+                revision: None,
             })
         } else {
             None
@@ -64,11 +64,9 @@ impl DirectURL {
         let url_durl = url_strip_user(&self.url);
 
         if let Some(vcs_info) = &self.vcs_info {
-            // use requested_revision if defined, else commit_id
-            if let Some(requested_revision) = &vcs_info.requested_revision {
-                if format!("{}+{}@{}", vcs_info.vcs, url_durl, requested_revision)
-                    == url_dep_spec
-                {
+            // use revision if defined, else commit_id
+            if let Some(revision) = &vcs_info.revision {
+                if format!("{}+{}@{}", vcs_info.vcs, url_durl, revision) == url_dep_spec {
                     return true;
                 }
             }
@@ -111,14 +109,14 @@ mod tests {
             "15d7c6d6ccf4781c624ffbf54c90d23c6e94dc52",
             durl.vcs_info.as_ref().unwrap().commit_id
         );
-        assert!(durl.vcs_info.as_ref().unwrap().requested_revision.is_none());
+        assert!(durl.vcs_info.as_ref().unwrap().revision.is_none());
     }
 
     #[test]
     fn test_durl_b() {
         // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
         let json_str = r#"
-        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
         "#;
 
         let durl: DirectURL =
@@ -131,12 +129,7 @@ mod tests {
         );
         assert_eq!(
             "0.3.8",
-            durl.vcs_info
-                .as_ref()
-                .unwrap()
-                .requested_revision
-                .as_ref()
-                .unwrap()
+            durl.vcs_info.as_ref().unwrap().revision.as_ref().unwrap()
         );
     }
 
@@ -164,7 +157,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let fp_durl = temp_dir.path().join("direct_url.json");
         let content = r#"
-        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
         "#;
         let mut file = File::create(&fp_durl).unwrap();
         write!(file, "{}", content).unwrap();
@@ -178,7 +171,7 @@ mod tests {
     fn test_validate_a() {
         // from pip3 install "git+ssh://git@github.com/uqfoundation/dill.git@0.3.8"
         let json_str = r#"
-        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+        {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         assert_eq!(

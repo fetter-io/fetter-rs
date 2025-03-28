@@ -883,7 +883,7 @@ mod tests {
         );
 
         let json_str = r#"
-            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "requested_revision": "0.3.8", "vcs": "git"}}
+            {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
             "#;
 
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
