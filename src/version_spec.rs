@@ -37,7 +37,7 @@ impl<'de> Deserialize<'de> for VersionSpec {
 
 impl VersionSpec {
     /// Main constructor.
-    pub(crate) fn new(version_str: &str) -> Self {
+    pub fn new(version_str: &str) -> Self {
         let parts = version_str
             .split('.')
             .map(|part| {

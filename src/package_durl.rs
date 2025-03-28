@@ -26,7 +26,7 @@ pub struct DirectURL {
     pub url: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    vcs_info: Option<VcsInfo>,
+    pub vcs_info: Option<VcsInfo>,
 }
 
 impl DirectURL {
