@@ -14,11 +14,11 @@ use crate::util::path_home;
 pub struct PathShared(Arc<PathBuf>);
 
 impl PathShared {
-    pub(crate) fn from_path_buf(path: PathBuf) -> Self {
+    pub fn from_path_buf(path: PathBuf) -> Self {
         PathShared(Arc::new(path))
     }
 
-    pub(crate) fn from_str(path: &str) -> Self {
+    pub fn from_str(path: &str) -> Self {
         PathShared::from_path_buf(PathBuf::from(path))
     }
 
