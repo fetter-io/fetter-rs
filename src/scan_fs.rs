@@ -78,7 +78,7 @@ fn get_site_package_dirs(
                 if i == 0 {
                     usite_enabled = line.trim() == "True";
                 } else {
-                    paths.push(PathShared::from_str(line.trim()));
+                    paths.push(PathShared::from(line.trim()));
                 }
             }
             // if necessary, remove the usite
@@ -1805,8 +1805,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
     #[test]
     fn test_site_install_a() {
-        let site_shared1 = PathShared::from_str("foo");
-        let site_shared2 = PathShared::from_str("bar");
+        let site_shared1 = PathShared::from("foo");
+        let site_shared2 = PathShared::from("bar");
         let exe1 = PathBuf::from("a");
         let exe2 = PathBuf::from("b");
 

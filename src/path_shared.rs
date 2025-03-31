@@ -18,9 +18,9 @@ impl PathShared {
         PathShared(Arc::new(path))
     }
 
-    pub fn from_str(path: &str) -> Self {
-        PathShared::from_path_buf(PathBuf::from(path))
-    }
+    // pub fn from(path: &str) -> Self {
+    //     PathShared::from_path_buf(PathBuf::from(path))
+    // }
 
     #[allow(dead_code)]
     pub(crate) fn strong_count(&self) -> usize {
@@ -33,6 +33,12 @@ impl PathShared {
 
     pub(crate) fn join(&self, part: &str) -> PathBuf {
         self.0.join(part)
+    }
+}
+
+impl From<&str> for PathShared {
+    fn from(s: &str) -> Self {
+        PathShared::from_path_buf(PathBuf::from(s))
     }
 }
 
@@ -113,13 +119,13 @@ mod tests {
 
     #[test]
     fn test_b() {
-        let path1 = PathShared::from_str("/home/user1");
+        let path1 = PathShared::from("/home/user1");
         assert_eq!(format!("{}", path1.to_string()), "/home/user1");
     }
 
     #[test]
     fn test_c() {
-        let path1 = PathShared::from_str("/home/user1");
+        let path1 = PathShared::from("/home/user1");
         assert_eq!(path1.as_path(), Path::new("/home/user1"));
     }
 
@@ -150,8 +156,8 @@ mod tests {
     #[test]
     fn test_serialization_c() {
         let v: Vec<PathShared> = vec![
-            PathShared::from_str("/some/ex/a"),
-            PathShared::from_str("/some/ex/b"),
+            PathShared::from("/some/ex/a"),
+            PathShared::from("/some/ex/b"),
         ];
         let mut hm: HashMap<PathBuf, Vec<PathShared>> = HashMap::new();
         hm.insert(PathBuf::from("/usr/bin/py"), v.clone());
