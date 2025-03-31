@@ -385,7 +385,6 @@ repos:
 
 
 
-
 ## What is New in Fetter
 
 ### 1.12.0
