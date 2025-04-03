@@ -47,7 +47,7 @@ fn optimize_widths(
         _ => 0,
     };
 
-    if !ellipsisable_any || w_total <= w_terminal.into() || w_terminal == 0 {
+    if !ellipsisable_any || w_total <= (w_terminal as usize) || w_terminal == 0 {
         return widths_max
             .iter()
             .map(|e| WidthFormat {

@@ -30,6 +30,7 @@ tempfile = "=3.11.0" # lock to align windows-sys requirements
 toml = "0.8.19"
 sha2 = "0.10.8"
 serde_yaml = "0.9.34"
+plist = "1.2"
 
 [profile.release]
 debug = false

@@ -1,7 +1,7 @@
+use plist::Value;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::env;
-use std::fs;
+use std::{env, fs, io};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
@@ -15,14 +15,42 @@ pub struct SystemTag {
 
 impl SystemTag {
     pub(crate) fn from_system() -> std::io::Result<Self> {
+        fn get_hostname(os_name: &str) -> Result<String, io::Error> {
+            if os_name == "macos" {
+                let data = fs::read_to_string(
+                    "/Library/Preferences/SystemConfiguration/preferences.plist",
+                )?;
+                let plist_value =
+                    Value::from_reader_xml(data.as_bytes()).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+                    })?;
+                let hostname = plist_value
+                    .as_dictionary()
+                    .and_then(|dict| dict.get("System"))
+                    .and_then(|v| v.as_dictionary())
+                    .and_then(|dict| dict.get("System"))
+                    .and_then(|v| v.as_dictionary())
+                    .and_then(|dict| dict.get("ComputerName"))
+                    .and_then(|v| v.as_string())
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "ComputerName key not found",
+                        )
+                    })?;
+                Ok(hostname.to_string())
+            } else {
+                fs::read_to_string("/etc/hostname")
+                    .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
+                    .map(|s| s.trim().to_string())
+            }
+        }
+
         let username = env::var("USER").unwrap_or_else(|_| "unknown".into());
 
-        let hostname = fs::read_to_string("/etc/hostname")
-            .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-
         let os_name = env::consts::OS.to_string();
+
+        let hostname = get_hostname(&os_name).unwrap_or_else(|_| "unknown".to_string());
 
         let os_version = if os_name == "macos" {
             fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
