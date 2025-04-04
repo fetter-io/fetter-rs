@@ -203,7 +203,7 @@ impl LockFile {
             .iter()
             .filter_map(|package| {
                 let url = package.get("conda")?.as_str()?;
-                let filename = url.split('/').last()?;
+                let filename = url.split('/').next_back()?;
                 let (package_name, package_version) = conda_fn_to_name_version(filename)?;
 
                 let marker = package

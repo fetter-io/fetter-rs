@@ -278,7 +278,7 @@ impl fmt::Display for Commands {
             Commands::Derive { .. } => "derive",
             Commands::Validate { .. } => "validate",
             Commands::SiteInstall { .. } => "site-install",
-            Commands::SiteUninstall { .. } => "site-uninstall",
+            Commands::SiteUninstall => "site-uninstall",
             Commands::Audit { .. } => "audit",
             Commands::UnpackCount { .. } => "unpack-count",
             Commands::UnpackFiles { .. } => "unpack-files",
@@ -623,7 +623,7 @@ where
                 log,
             )?;
         }
-        Some(Commands::SiteUninstall {}) => {
+        Some(Commands::SiteUninstall) => {
             let sfs = get_sfs()?;
             sfs.site_validate_uninstall(log)?;
         }
