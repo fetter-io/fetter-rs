@@ -215,7 +215,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.12.0
+  rev: v1.13.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -231,7 +231,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.12.0
+  rev: v1.13.0
   hooks:
     - id: fetter-audit
 ```
@@ -386,6 +386,11 @@ repos:
 
 
 ## What is New in Fetter
+
+### 1.13.0
+
+`SystemTag` now properly captures hostname and OS version.
+
 
 ### 1.12.0
 
