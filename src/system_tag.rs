@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::env;
-use std::fs;
+use std::process::Command;
+use std::{env, fs};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
@@ -17,23 +17,44 @@ impl SystemTag {
     pub(crate) fn from_system() -> std::io::Result<Self> {
         let username = env::var("USER").unwrap_or_else(|_| "unknown".into());
 
-        let hostname = fs::read_to_string("/etc/hostname")
-            .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-
         let os_name = env::consts::OS.to_string();
 
+        let hostname = if os_name == "macos" {
+            Command::new("scutil")
+                .arg("--get")
+                .arg("ComputerName")
+                .output()
+                .map_or_else(
+                    |_| "unknown".to_string(),
+                    |output| {
+                        if output.status.success() {
+                            String::from_utf8_lossy(&output.stdout).trim().to_string()
+                        } else {
+                            "unknown".to_string()
+                        }
+                    },
+                )
+        } else {
+            fs::read_to_string("/etc/hostname")
+                .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "unknown".to_string())
+        };
+
         let os_version = if os_name == "macos" {
-            fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
-                .ok()
-                .and_then(|content| {
-                    content
-                        .lines()
-                        .find(|line| line.contains("<key>ProductVersion</key>"))
-                        .map(|line| line.to_string())
-                })
-                .unwrap_or_else(|| "unknown".to_string())
+            Command::new("sw_vers")
+                .arg("--productVersion")
+                .output()
+                .map_or_else(
+                    |_| "unknown".to_string(),
+                    |output| {
+                        if output.status.success() {
+                            String::from_utf8_lossy(&output.stdout).trim().to_string()
+                        } else {
+                            "unknown".to_string()
+                        }
+                    },
+                )
         } else {
             fs::read_to_string("/etc/os-release")
                 .ok()
