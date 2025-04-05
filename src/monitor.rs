@@ -23,23 +23,28 @@ fn monitor_scan(
     let sfs =
         ScanFS::from_exes(&exe_paths, force_usite, log).expect("from_exes() failed.");
 
+    let duration_since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
     let mut sfs_prev = sfs_prev_mutex.lock().unwrap();
+    let data;
+
     if sfs_prev.as_ref() == Some(&sfs) {
-        logger!(log, module_path!(), "No change in scan results.");
+        logger!(log, module_path!(), "Scan results unchanged.");
+        data = (&*system_tag, None, &duration_since_epoch);
     } else {
-        *sfs_prev = Some(sfs); // move into Arc<Mutex<Option<ScanFS>>>
+        logger!(log, module_path!(), "Scan results new.");
+        *sfs_prev = Some(sfs);
         let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
-
-        let duration_since_epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let data = (&*system_tag, sfs_ref, &duration_since_epoch);
-        let body = serde_json::to_string(&data).expect("serialization failed.");
-
-        logger!(log, module_path!(), "Sending {:?} characters", body.len());
-        let response: Result<String, ureq::Error> = client.post(&url, &body);
-        logger!(log, module_path!(), "Got response: {:?}", response);
+        data = (&*system_tag, Some(sfs_ref), &duration_since_epoch);
     }
+
+    let body = serde_json::to_string(&data).expect("serialization failed.");
+
+    logger!(log, module_path!(), "Sending {:?} characters.", body.len());
+    let response: Result<String, ureq::Error> = client.post(&url, &body);
+    logger!(log, module_path!(), "Got response: {:?}", response);
 }
 
 pub(crate) fn monitor_scan_loop(
