@@ -111,6 +111,10 @@ impl AuditReport {
     pub fn len(&self) -> usize {
         self.records.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
 }
 
 impl Tableable<AuditRecord> for AuditReport {

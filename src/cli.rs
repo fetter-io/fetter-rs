@@ -655,12 +655,12 @@ where
                     let _ = ar.to_file(output, *delimiter);
                 }
                 Some(AuditSubcommand::Exit { code }) => {
-                    process::exit(if ar.len() > 0 { *code } else { 0 });
+                    process::exit(if !ar.is_empty() { *code } else { 0 });
                 }
                 Some(AuditSubcommand::Display) | None => {
                     // default
                     let _ = ar.to_writer(stderr);
-                    process::exit(if ar.len() > 0 { ERROR_EXIT_CODE } else { 0 });
+                    process::exit(if !ar.is_empty() { ERROR_EXIT_CODE } else { 0 });
                 }
             }
         }
