@@ -84,7 +84,7 @@ impl Rowable for AuditRecord {
 // Complete report of a validation process.
 #[derive(Debug, Serialize)]
 pub struct AuditReport {
-    records: Vec<AuditRecord>,
+    pub records: Vec<AuditRecord>,
 }
 
 /// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB

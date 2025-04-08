@@ -32,6 +32,10 @@ Additionally, `fetter` can configure a virtual environment to validate package a
 * 🧩 Flexible Output: Display results in terminal or export to delimited files.
 
 
+## Articles
+
+* [System-Wide Python Package Control: Enforce Allow Lists & Find Vulnerabilities](https://levelup.gitconnected.com/system-wide-python-package-control-enforce-allow-lists-find-vulnerabilities-35f3daeb44a8)
+* [Guarantee a Locked & Reproducible Environment with Every Python Run](https://medium.com/data-science-collective/guarantee-a-locked-reproducible-environment-with-every-python-run-c0e2bf19fb53)
 
 
 ## Installing the `fetter` Command Line Application
@@ -166,11 +170,6 @@ zipp-3.18.1        GHSA-jfmj-5v4g-7637  URL        https://osv.dev/vulnerability
                                         Severity   CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA
 ```
 
-For additional discussion and examples of `fetter` commands and functionality, see [System-Wide Python Package Control](https://github.com/fetter-io/fetter-rs/blob/default/doc/articles/swppc/swppc.md).
-
-
-
-
 
 ## Installing Automatic Environment Validation
 
@@ -215,7 +214,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.14.0
+  rev: v1.15.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -231,7 +230,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.14.0
+  rev: v1.15.0
   hooks:
     - id: fetter-audit
 ```
@@ -386,6 +385,11 @@ repos:
 
 
 ## What is New in Fetter
+
+### 1.15.0
+
+Extension to the public library interface.
+
 
 ### 1.14.0
 
