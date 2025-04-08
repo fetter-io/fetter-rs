@@ -13,7 +13,7 @@ use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct OSVVulnReference {
+pub struct OSVVulnReference {
     url: String,
     r#type: String,
 }
@@ -26,11 +26,11 @@ impl fmt::Display for OSVVulnReference {
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct OSVReferences(Vec<OSVVulnReference>);
+pub struct OSVReferences(Vec<OSVVulnReference>);
 
 impl OSVReferences {
     /// Return a primary value for this collection.
-    pub(crate) fn get_prime(&self) -> String {
+    pub fn get_prime(&self) -> String {
         for s in self.0.iter() {
             if s.r#type == "ADVISORY" {
                 return s.url.clone();
@@ -57,7 +57,7 @@ impl fmt::Display for OSVReferences {
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize, Ord, Eq, PartialEq, PartialOrd)]
-struct OSVSeverity {
+pub struct OSVSeverity {
     r#type: String,
     score: String,
 }
@@ -70,10 +70,10 @@ impl fmt::Display for OSVSeverity {
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct OSVSeverities(Vec<OSVSeverity>);
+pub struct OSVSeverities(Vec<OSVSeverity>);
 
 impl OSVSeverities {
-    pub(crate) fn get_prime(&self) -> String {
+    pub fn get_prime(&self) -> String {
         // want to find the highest cvss...
         let mut priority: VecDeque<&String> = VecDeque::new();
         for s in self.0.iter() {
@@ -107,17 +107,17 @@ impl fmt::Display for OSVSeverities {
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct OSVVulnInfo {
-    pub(crate) id: String,
-    pub(crate) summary: Option<String>,
-    pub(crate) references: OSVReferences,
-    pub(crate) severity: Option<OSVSeverities>,
+pub struct OSVVulnInfo {
+    pub id: String,
+    pub summary: Option<String>,
+    pub references: OSVReferences,
+    pub severity: Option<OSVSeverities>,
     // details: String,
     // affected: Vec<OSVAffected>,
 }
 
 impl OSVVulnInfo {
-    pub(crate) fn get_url(&self) -> String {
+    pub fn get_url(&self) -> String {
         format!("https://osv.dev/vulnerability/{}", self.id)
     }
 }
@@ -136,7 +136,7 @@ fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnI
     }
 }
 
-pub(crate) fn query_osv_vulns(
+pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
 ) -> HashMap<String, OSVVulnInfo> {

@@ -15,10 +15,10 @@ use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Serialize)]
-pub(crate) struct AuditRecord {
-    package: Package,
-    vuln_ids: Vec<String>,
-    vuln_infos: HashMap<String, OSVVulnInfo>,
+pub struct AuditRecord {
+    pub package: Package,
+    pub vuln_ids: Vec<String>,
+    pub vuln_infos: HashMap<String, OSVVulnInfo>,
 }
 
 impl Rowable for AuditRecord {
@@ -89,10 +89,7 @@ pub struct AuditReport {
 
 /// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB
 impl AuditReport {
-    pub(crate) fn from_packages(
-        client: Arc<dyn UreqClient>,
-        packages: &[Package],
-    ) -> Self {
+    pub fn from_packages(client: Arc<dyn UreqClient>, packages: &[Package]) -> Self {
         let vulns: Vec<Option<Vec<String>>> = query_osv_batches(client.clone(), packages);
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
@@ -111,7 +108,7 @@ impl AuditReport {
         AuditReport { records }
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.records.len()
     }
 }

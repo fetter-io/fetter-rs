@@ -27,8 +27,15 @@ mod validation_report;
 mod version_spec;
 mod write_color;
 
+pub use audit_report::AuditRecord;
+pub use audit_report::AuditReport;
 pub use cli::run_cli;
 pub use env_marker::EnvMarkerState;
+pub use osv_vulns::OSVReferences;
+pub use osv_vulns::OSVSeverities;
+pub use osv_vulns::OSVSeverity;
+pub use osv_vulns::OSVVulnInfo;
+pub use osv_vulns::OSVVulnReference;
 pub use package::Package;
 pub use package_durl::DirectURL;
 pub use package_durl::VcsInfo;
