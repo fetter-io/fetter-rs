@@ -11,7 +11,7 @@ use crate::table::RowableContext;
 use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
-enum ValidationExplain {
+pub enum ValidationExplain {
     Missing,
     Unrequired,
     Misdefined,
@@ -32,20 +32,20 @@ impl fmt::Display for ValidationExplain {
 
 //------------------------------------------------------------------------------
 #[derive(Debug)]
-pub(crate) struct ValidationFlags {
-    pub(crate) permit_superset: bool,
-    pub(crate) permit_subset: bool,
+pub struct ValidationFlags {
+    pub permit_superset: bool,
+    pub permit_subset: bool,
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ValidationRecord {
-    pub(crate) package: Option<Package>,
+pub struct ValidationRecord {
+    pub package: Option<Package>,
     dep_spec: Option<DepSpec>,
     sites: Option<Vec<PathShared>>,
 }
 
 impl ValidationRecord {
-    pub(crate) fn new(
+    pub fn new(
         package: Option<Package>,
         dep_spec: Option<DepSpec>,
         sites: Option<Vec<PathShared>>,
@@ -57,7 +57,7 @@ impl ValidationRecord {
         }
     }
 
-    fn explain(&self) -> ValidationExplain {
+    pub fn explain(&self) -> ValidationExplain {
         match (&self.package, &self.dep_spec) {
             (Some(_), Some(_)) => ValidationExplain::Misdefined,
             (None, Some(_)) => ValidationExplain::Missing,
@@ -118,8 +118,13 @@ pub struct ValidationReport {
 }
 
 impl ValidationReport {
-    pub(crate) fn len(&self) -> usize {
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
         self.records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
     }
 
     pub(crate) fn to_validation_digest(&self) -> ValidationDigest {

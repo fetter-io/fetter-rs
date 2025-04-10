@@ -571,7 +571,7 @@ where
                 log,
             );
             // we only print the banner on failure for now
-            if vr.len() > 0 && banner.is_some() {
+            if !vr.is_empty() && banner.is_some() {
                 print_banner(true, banner, stderr);
             }
             match subcommands {
@@ -582,11 +582,11 @@ where
                     let _ = vr.to_file(output, *delimiter);
                 }
                 Some(ValidateSubcommand::Exit { code }) => {
-                    process::exit(if vr.len() > 0 { *code } else { 0 });
+                    process::exit(if !vr.is_empty() { *code } else { 0 });
                 }
                 Some(ValidateSubcommand::Display { code }) => {
                     vr.to_writer(stderr)?;
-                    if vr.len() > 0 {
+                    if !vr.is_empty() {
                         if let Some(e) = code {
                             process::exit(*e);
                         }
