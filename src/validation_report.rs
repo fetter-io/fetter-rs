@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 // use std::cmp;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
+use std::path::PathBuf;
 
+use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
 use crate::package::Package;
 use crate::path_shared::PathShared;
@@ -9,6 +13,7 @@ use crate::table::ColumnFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
+use crate::EnvMarkerState;
 
 //------------------------------------------------------------------------------
 pub enum ValidationExplain {
@@ -114,10 +119,114 @@ pub(crate) type ValidationDigest = Vec<ValidationDigestRecord>;
 //------------------------------------------------------------------------------
 // Complete report of a validation process.
 pub struct ValidationReport {
-    pub(crate) records: Vec<ValidationRecord>,
+    pub records: Vec<ValidationRecord>,
 }
 
 impl ValidationReport {
+    pub fn from_components(
+        packages: &Vec<Package>,
+        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        site_to_exe: &HashMap<PathShared, PathBuf>,
+        exe_to_ems: &Option<HashMap<PathBuf, EnvMarkerState>>,
+        dm: &DepManifest,
+        vf: &ValidationFlags,
+        ignore: Option<&HashSet<String>>,
+    ) -> ValidationReport {
+        let mut records: Vec<ValidationRecord> = Vec::new();
+        // We collect all DS keys matched to package, regardless of if the version matches; we can then (if we do not permit_subset) find all the DS definitions that were not satisfied
+        let mut ds_keys_matched: HashSet<&String> = HashSet::new();
+
+        // if dm.env_marker_active {
+        //     self.load_env_marker_state(log);
+        // }
+
+        // iterate over found packages in order for better reporting
+        for package in packages {
+            if ignore.is_some_and(|i| i.contains(&package.name)) {
+                continue;
+            }
+            if !dm.has_package(&package) {
+                if !vf.permit_superset {
+                    let sites = package_to_sites.get(&package).cloned();
+                    // Add records if package is not in the DM and do not permit superset
+                    records.push(ValidationRecord::new(
+                        Some(package.clone()),
+                        None,
+                        sites,
+                    ));
+                }
+                // else do not add record
+            } else if let Some(exe_to_ems) = exe_to_ems {
+                // For each package, if the DepManifest has env_marker_active, we have already loaded EnvMarkerState
+                for site in package_to_sites.get(&package).unwrap() {
+                    let exe = site_to_exe.get(site).unwrap();
+                    let ems = exe_to_ems.get(exe); // validate() expects Option
+                    let (valid, ds) = dm.validate(&package, vf.permit_superset, ems);
+                    if let Some(ds) = ds {
+                        ds_keys_matched.insert(&ds.key);
+                    }
+                    if !valid {
+                        records.push(ValidationRecord::new(
+                            Some(package.clone()),
+                            ds.cloned(),
+                            Some(vec![site.clone()]),
+                        ));
+                    }
+                }
+            } else {
+                // env_marker_active is False
+                let (valid, ds) = dm.validate(&package, vf.permit_superset, None);
+                if let Some(ds) = ds {
+                    ds_keys_matched.insert(&ds.key);
+                }
+                if !valid {
+                    let sites = package_to_sites.get(&package).cloned();
+                    // ds is an Option type, might be None
+                    records.push(ValidationRecord::new(
+                        Some(package.clone()),
+                        ds.cloned(),
+                        sites,
+                    ));
+                }
+            }
+        }
+        if !vf.permit_subset {
+            // find DS in DM that are not in packages; if any DS has env_marker relevant to the known environments, report it.
+            // NOTE: this is sorted, but not sorted with the other records
+            for key in dm.get_dep_spec_difference(&ds_keys_matched) {
+                if let Some(iter) = dm.get_dep_specs(key) {
+                    for ds in iter {
+                        if ignore.is_some_and(|i| i.contains(&ds.name)) {
+                            continue;
+                        }
+                        // if a DS has an env_marker, that env_marker must be valid for at least one of our exe environents
+                        if !ds.env_marker.is_empty() {
+                            if let Some(exe_to_ems) = exe_to_ems {
+                                if exe_to_ems
+                                    .values()
+                                    .any(|ems| ds.validate_env_marker(ems))
+                                {
+                                    records.push(ValidationRecord::new(
+                                        None,
+                                        Some(ds.clone()),
+                                        None,
+                                    ));
+                                }
+                            }
+                        } else {
+                            records.push(ValidationRecord::new(
+                                None,
+                                Some(ds.clone()),
+                                None,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        ValidationReport { records }
+    }
+
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.records.len()
