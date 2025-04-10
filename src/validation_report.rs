@@ -126,7 +126,7 @@ impl ValidationReport {
     pub fn from_components(
         packages: &Vec<Package>,
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-        site_to_exe: &HashMap<PathShared, PathBuf>,
+        site_to_exe: &HashMap<PathShared, PathBuf>, // only needed if exe_to_ems is Some
         exe_to_ems: &Option<HashMap<PathBuf, EnvMarkerState>>,
         dm: &DepManifest,
         vf: &ValidationFlags,
@@ -136,18 +136,14 @@ impl ValidationReport {
         // We collect all DS keys matched to package, regardless of if the version matches; we can then (if we do not permit_subset) find all the DS definitions that were not satisfied
         let mut ds_keys_matched: HashSet<&String> = HashSet::new();
 
-        // if dm.env_marker_active {
-        //     self.load_env_marker_state(log);
-        // }
-
         // iterate over found packages in order for better reporting
         for package in packages {
             if ignore.is_some_and(|i| i.contains(&package.name)) {
                 continue;
             }
-            if !dm.has_package(&package) {
+            if !dm.has_package(package) {
                 if !vf.permit_superset {
-                    let sites = package_to_sites.get(&package).cloned();
+                    let sites = package_to_sites.get(package).cloned();
                     // Add records if package is not in the DM and do not permit superset
                     records.push(ValidationRecord::new(
                         Some(package.clone()),
@@ -158,10 +154,10 @@ impl ValidationReport {
                 // else do not add record
             } else if let Some(exe_to_ems) = exe_to_ems {
                 // For each package, if the DepManifest has env_marker_active, we have already loaded EnvMarkerState
-                for site in package_to_sites.get(&package).unwrap() {
+                for site in package_to_sites.get(package).unwrap() {
                     let exe = site_to_exe.get(site).unwrap();
                     let ems = exe_to_ems.get(exe); // validate() expects Option
-                    let (valid, ds) = dm.validate(&package, vf.permit_superset, ems);
+                    let (valid, ds) = dm.validate(package, vf.permit_superset, ems);
                     if let Some(ds) = ds {
                         ds_keys_matched.insert(&ds.key);
                     }
@@ -175,12 +171,12 @@ impl ValidationReport {
                 }
             } else {
                 // env_marker_active is False
-                let (valid, ds) = dm.validate(&package, vf.permit_superset, None);
+                let (valid, ds) = dm.validate(package, vf.permit_superset, None);
                 if let Some(ds) = ds {
                     ds_keys_matched.insert(&ds.key);
                 }
                 if !valid {
-                    let sites = package_to_sites.get(&package).cloned();
+                    let sites = package_to_sites.get(package).cloned();
                     // ds is an Option type, might be None
                     records.push(ValidationRecord::new(
                         Some(package.clone()),
