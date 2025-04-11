@@ -38,7 +38,7 @@ fn monitor_scan(
         logger!(log, module_path!(), "Scan results new.");
         *sfs_prev = Some(sfs);
         let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
-        data = (&*system_tag, Some(sfs_ref), &duration_since_epoch);
+        data = (&tenant, &*system_tag, Some(sfs_ref), &duration_since_epoch);
     }
 
     let body = serde_json::to_string(&data).expect("serialization failed.");
