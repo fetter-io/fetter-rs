@@ -10,6 +10,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use std::{thread, time::Duration};
 
+#[allow(clippy::too_many_arguments)]
 fn monitor_scan(
     exe_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
@@ -33,12 +34,12 @@ fn monitor_scan(
 
     if sfs_prev.as_ref() == Some(&sfs) {
         logger!(log, module_path!(), "Scan results unchanged.");
-        data = (&*system_tag, None, &duration_since_epoch);
+        data = (&*tenant, &*system_tag, None, &duration_since_epoch);
     } else {
         logger!(log, module_path!(), "Scan results new.");
         *sfs_prev = Some(sfs);
         let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
-        data = (&tenant, &*system_tag, Some(sfs_ref), &duration_since_epoch);
+        data = (&*tenant, &*system_tag, Some(sfs_ref), &duration_since_epoch);
     }
 
     let body = serde_json::to_string(&data).expect("serialization failed.");
