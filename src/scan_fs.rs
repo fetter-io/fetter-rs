@@ -297,7 +297,7 @@ impl ScanFS {
     }
 
     /// Alternative constructor from in-memory objects, only for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn from_exe_site_packages(
         exe: PathBuf,
         site: PathBuf,

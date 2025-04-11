@@ -65,7 +65,7 @@ impl Package {
         })
     }
     /// Create a Package from a dist-info string. As the name of the package / source dir may be different than the dist-info representation, optionall provide a `name`
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn from_dist_info(
         file_name: &str,
         name: Option<&str>,

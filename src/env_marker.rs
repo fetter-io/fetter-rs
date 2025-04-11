@@ -17,7 +17,7 @@ pub(crate) struct EnvMarkerExpr {
 
 impl EnvMarkerExpr {
     /// Used for testing.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new(left: &str, operator: &str, right: &str) -> Self {
         Self {
             left: left.to_string(),
@@ -108,7 +108,7 @@ impl EnvMarkerState {
     }
 
     // Constructor for testing.
-    #[allow(dead_code)]
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_str(
         os_name: &str,

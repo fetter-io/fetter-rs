@@ -37,7 +37,7 @@ impl DirectURL {
     }
 
     // Alternate constructor for test.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn from_url_vcs_cid(
         url: String,
         vcs: Option<String>,

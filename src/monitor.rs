@@ -16,6 +16,7 @@ fn monitor_scan(
     sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
     client: Arc<dyn UreqClient>,
     url: Arc<String>,
+    tenant: Arc<String>,
     force_usite: bool,
     log: bool,
 ) {
@@ -51,12 +52,14 @@ pub(crate) fn monitor_scan_loop(
     exe_paths: &[PathBuf],
     client: Arc<dyn UreqClient>,
     url: &String,
+    tenant: &String,
     force_usite: bool,
     period: u64,
     log: bool,
 ) -> ResultDynError<()> {
     let eps = Arc::new(exe_paths.to_owned());
     let url_arc = Arc::new(url.to_owned());
+    let tenant_arc = Arc::new(tenant.to_owned());
 
     let st = Arc::new(SystemTag::from_system().expect("failed from_system()"));
     // we hold the owned previous ScanFS
@@ -66,9 +69,19 @@ pub(crate) fn monitor_scan_loop(
 
     // spawn a single worker thread
     thread::spawn(move || {
-        while let Ok((eps, st, sfs_prev_mutex, client, url, force_usite, log)) = rx.recv()
+        while let Ok((eps, st, sfs_prev_mutex, client, url, tenant, force_usite, log)) =
+            rx.recv()
         {
-            monitor_scan(eps, st, sfs_prev_mutex, client, url, force_usite, log);
+            monitor_scan(
+                eps,
+                st,
+                sfs_prev_mutex,
+                client,
+                url,
+                tenant,
+                force_usite,
+                log,
+            );
         }
     });
 
@@ -79,6 +92,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&sfs_prev_mutex),
             Arc::clone(&client),
             Arc::clone(&url_arc),
+            Arc::clone(&tenant_arc),
             force_usite,
             log,
         )) {

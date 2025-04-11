@@ -223,7 +223,7 @@ impl ValidationReport {
         ValidationReport { records }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.records.len()
     }

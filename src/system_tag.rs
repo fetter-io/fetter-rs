@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::process::Command;
 use std::{env, fs};
+
+#[cfg(test)]
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
@@ -88,7 +90,7 @@ impl SystemTag {
         })
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn to_hash(&self) -> String {
         let json = serde_json::to_string(self).expect("Unexpected");
 

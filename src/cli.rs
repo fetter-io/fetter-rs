@@ -266,6 +266,10 @@ enum Commands {
         /// Provide the URL to which to post results.
         #[arg(short, long)]
         url: String,
+
+        /// Provide the tenant key.
+        #[arg(short, long)]
+        tenant: String,
     },
 }
 
@@ -723,9 +727,21 @@ where
                 log,
             );
         }
-        Some(Commands::MonitorScan { period, url }) => {
+        Some(Commands::MonitorScan {
+            period,
+            url,
+            tenant,
+        }) => {
             // let ureq clone for increment ref count
-            let _ = monitor_scan_loop(&cli.exe, client, url, cli.user_site, *period, log);
+            let _ = monitor_scan_loop(
+                &cli.exe,
+                client,
+                url,
+                tenant,
+                cli.user_site,
+                *period,
+                log,
+            );
         }
         None => {}
     }
