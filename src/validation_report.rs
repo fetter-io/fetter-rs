@@ -300,7 +300,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         // hyphen / underscore are normalized
-        let dm = DepManifest::from_iter(
+        let dm = DepManifest::try_from_iter(
             vec!["numpy==2.1.0", "flask>1,<2", "static_frame==2.1.0"].iter(),
         )
         .unwrap();

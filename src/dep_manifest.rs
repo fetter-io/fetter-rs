@@ -101,7 +101,7 @@ impl DepManifest {
     // constructors from internal structs
 
     /// Core constructor that all constructors must delegate to.
-    pub fn from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
+    pub fn try_from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -182,7 +182,7 @@ impl DepManifest {
                 }
             }
         }
-        Self::from_iter(dep_specs.iter())
+        Self::try_from_iter(dep_specs.iter())
     }
 
     pub(crate) fn from_pyproject(
@@ -190,7 +190,7 @@ impl DepManifest {
         options: Option<&Vec<String>>,
     ) -> ResultDynError<Self> {
         let ppi = PyProjectInfo::new(content)?;
-        Self::from_iter(ppi.get_dependencies(options)?.iter())
+        Self::try_from_iter(ppi.get_dependencies(options)?.iter())
     }
 
     pub(crate) fn from_pyproject_file(
@@ -215,7 +215,7 @@ impl DepManifest {
         } else {
             // handle any lock file format, or requirements.txt
             let lf = LockFile::new(content);
-            Self::from_iter(lf.get_dependencies(bound_options)?)
+            Self::try_from_iter(lf.get_dependencies(bound_options)?)
         }
     }
 
@@ -237,7 +237,7 @@ impl DepManifest {
                     .map_err(|e| format!("Failed to read file: {}", e))?;
                 // handle uv.lock, poetry.lock, requirements.lock, Pipfile.lock, or a requirements.txt format (via uv or pip-compile)
                 let lf = LockFile::new(content);
-                Self::from_iter(lf.get_dependencies(bound_options)?)
+                Self::try_from_iter(lf.get_dependencies(bound_options)?)
             }
             None => Err("Path contains invalid UTF-8".into()),
         }
@@ -439,8 +439,8 @@ mod tests {
 
     #[test]
     fn test_dep_spec_a() {
-        let dm =
-            DepManifest::from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
+        let dm = DepManifest::try_from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter())
+            .unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p1, false, None).0, true);
