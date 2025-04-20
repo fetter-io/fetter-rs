@@ -131,7 +131,7 @@ fn extract_marker_expr(
 
 // Dependency Specification: A model of a specification for one package with pairs of versions and operators, such as "numpy>1.18,<2.0".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct DepSpec {
+pub struct DepSpec {
     pub(crate) name: String,
     pub(crate) key: String,
     pub(crate) url: Option<String>,

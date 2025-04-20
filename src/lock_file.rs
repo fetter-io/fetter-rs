@@ -5,7 +5,7 @@ use serde_yaml::Value;
 use toml::Value as TomlValue;
 
 #[derive(Debug, PartialEq)]
-enum LockFileType {
+pub enum LockFileType {
     Requirements, // requirements.txt style, used by uv pip and pip-tools
     UvLock,       // uv.lock native TOML style
     Poetry,       // poetry.lock
@@ -15,13 +15,13 @@ enum LockFileType {
 }
 
 #[derive(Debug)]
-pub(crate) struct LockFile {
-    file_type: LockFileType,
-    content: String,
+pub struct LockFile {
+    pub file_type: LockFileType,
+    pub content: String,
 }
 
 impl LockFile {
-    pub(crate) fn new(content: String) -> Self {
+    pub fn new(content: String) -> Self {
         let file_type = Self::detect_type(&content);
         Self { file_type, content }
     }
@@ -222,7 +222,7 @@ impl LockFile {
     }
 
     /// Extracts dependency specifications from the lock file.
-    pub(crate) fn get_dependencies(
+    pub fn get_dependencies(
         &self,
         options: Option<&Vec<String>>,
     ) -> ResultDynError<Vec<String>> {

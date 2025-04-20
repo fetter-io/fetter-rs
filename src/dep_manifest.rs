@@ -38,7 +38,7 @@ static LOCK_PRIORITY: &[&str] = &[
 ];
 
 //------------------------------------------------------------------------------
-pub(crate) struct DepManifestRecord {
+pub struct DepManifestRecord {
     dep_spec: DepSpec,
 }
 
@@ -91,7 +91,7 @@ impl DepSpecOOM {
 //------------------------------------------------------------------------------
 // A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
 #[derive(Debug, Clone)]
-pub(crate) struct DepManifest {
+pub struct DepManifest {
     dep_specs: HashMap<String, DepSpecOOM>,
     pub(crate) env_marker_active: bool,
 }
@@ -101,7 +101,7 @@ impl DepManifest {
     // constructors from internal structs
 
     /// Core constructor that all constructors must delegate to.
-    pub(crate) fn from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
+    pub fn from_iter<I, S>(ds_iter: I) -> ResultDynError<Self>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -203,7 +203,7 @@ impl DepManifest {
     }
 
     // Create a DepManifest from a URL point to a requirements.txt or pyproject.toml file.
-    pub(crate) fn from_url<U: UreqClient>(
+    pub fn from_url<U: UreqClient>(
         client: &U,
         url: &Path,
         bound_options: Option<&Vec<String>>,
@@ -260,7 +260,7 @@ impl DepManifest {
         }
     }
 
-    pub(crate) fn from_git_repo(
+    pub fn from_git_repo(
         url: &Path,
         bound_options: Option<&Vec<String>>,
     ) -> ResultDynError<Self> {
@@ -404,7 +404,7 @@ impl DepManifest {
 
     //--------------------------------------------------------------------------
 
-    pub(crate) fn to_dep_manifest_report(&self) -> DepManifestReport {
+    pub fn to_dep_manifest_report(&self) -> DepManifestReport {
         let mut records = Vec::new();
         for key in self.keys() {
             if let Some(dsoom) = self.dep_specs.get(&key) {
