@@ -124,7 +124,7 @@ pub struct ValidationReport {
 
 impl ValidationReport {
     pub fn from_components(
-        packages: &Vec<Package>,
+        packages: &Vec<Package>, // ordered for reporting
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
         site_to_exe: &HashMap<PathShared, PathBuf>, // only needed if exe_to_ems is Some
         exe_to_ems: &Option<HashMap<PathBuf, EnvMarkerState>>,
