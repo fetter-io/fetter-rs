@@ -19,7 +19,7 @@ use toml::Value as TomlValue;
 
 //------------------------------------------------------------------------------
 
-pub(crate) type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
+pub type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
