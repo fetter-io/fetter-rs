@@ -45,8 +45,8 @@ pub struct ValidationFlags {
 #[derive(Debug, PartialEq)]
 pub struct ValidationRecord {
     pub package: Option<Package>,
-    dep_spec: Option<DepSpec>,
-    sites: Option<Vec<PathShared>>,
+    pub dep_spec: Option<DepSpec>,
+    pub sites: Option<Vec<PathShared>>,
 }
 
 impl ValidationRecord {
