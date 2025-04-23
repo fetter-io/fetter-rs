@@ -147,7 +147,9 @@ impl Serialize for ScanFS {
         let mut package_to_sites: Vec<_> = self.package_to_sites.iter().collect();
         package_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
 
-        let site_to_exe: Vec<_> = self.site_to_exe.iter().collect();
+        let mut site_to_exe: Vec<_> = self.site_to_exe.iter().collect();
+        site_to_exe.sort_by_key(|(k, _)| k.to_string());
+
         // site_to_exe.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
 
         // Serialize as tuple of sorted vectors
@@ -710,6 +712,8 @@ mod tests {
     use super::*;
     use std::fs::File;
     use tempfile::tempdir;
+    // use rand::seq::SliceRandom;
+    // use rand::rng;
 
     #[test]
     fn test_get_site_package_dirs_a() {
@@ -1877,5 +1881,29 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let post = ScanFS::from_exes(&exes, false, false);
         // error for bad exe
         assert!(post.is_err());
+    }
+
+    #[test]
+    fn test_from_exes_equality_comparison() {
+        let exe1 = PathBuf::from("/usr/bin/python3");
+        let exe2 = PathBuf::from("/usr/bin/python3");
+
+        let exes = vec![exe1.clone(), exe2.clone()];
+
+        let scan1 = ScanFS::from_exes(&exes, false, false)
+            .expect("Failed to build ScanFS from the first ordering");
+        let scan2 = ScanFS::from_exes(&exes, false, false)
+            .expect("Failed to build ScanFS from the shuffled executables");
+
+        let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");
+        let json2 = serde_json::to_string(&scan2).expect("Failed to serialize scan2");
+
+        assert_eq!(
+            json1, json2,
+            "Non-deterministic serialization! ScanFS outputs differ between runs.
+             json1: {}
+             json2: {}",
+            json1, json2
+        );
     }
 }
