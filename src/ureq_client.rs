@@ -12,14 +12,14 @@ pub struct UreqClientLive;
 
 impl UreqClient for UreqClientLive {
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error> {
-        let response = ureq::post(url)
-            .set("Content-Type", "application/json")
-            .send_string(body)?;
-        Ok(response.into_string()?)
+        let mut response = ureq::post(url)
+            .header("Content-Type", "application/json")
+            .send(body)?;
+        Ok(response.body_mut().read_to_string()?)
     }
     fn get(&self, url: &str) -> Result<String, ureq::Error> {
-        let response = ureq::get(url).call()?;
-        Ok(response.into_string()?)
+        let mut response = ureq::get(url).call()?;
+        Ok(response.body_mut().read_to_string()?)
     }
 }
 

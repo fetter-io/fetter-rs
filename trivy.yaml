@@ -1,0 +1,4 @@
+scan:
+  skip-files:
+    - "doc/articles/**/requirements.txt" # examples are outdated and vulnerable on purpose
+    # Trivy doesn't know requirements.uv.lock files

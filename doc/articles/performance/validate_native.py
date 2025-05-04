@@ -57,7 +57,7 @@ if __name__ == '__main__':
 # user    0m0.254s
 # sys     0m0.040s
 
-# unlike pip-audit, fetter searches all installed packages, not just what is in requirmeents.
+# unlike pip-audit, fetter searches all installed packages, not just what is in requirements.
 # takes 14% time for osv, or 7.14 times faster
 
 # {.env311-fetter-bench}{default} % time pip-audit -s osv
@@ -183,4 +183,3 @@ if __name__ == '__main__':
 # real    0m6.817s
 # user    0m0.106s
 # sys     0m0.100s
-
