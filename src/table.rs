@@ -1,9 +1,6 @@
 use crossterm::terminal;
 use crossterm::tty::IsTty;
-// use crossterm::{
-//     execute,
-//     style::{Attribute, Color, Print, SetAttribute, SetForegroundColor},
-// };
+
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
@@ -85,6 +82,7 @@ fn optimize_widths(
     widths
 }
 
+/// Given a string field, trim and ellipse, as well as possible pad field.
 fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     if value.len() <= widths.width_chars {
         format!("{:<w$}", value, w = widths.width_pad)

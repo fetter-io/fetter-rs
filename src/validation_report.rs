@@ -105,7 +105,7 @@ impl Rowable for ValidationRecord {
 }
 
 //------------------------------------------------------------------------------
-// A summary of validation results suitable for JSON serialization to naive readers that need lablled fields.
+// A summary of validation results suitable for JSON serialization to naive readers that need labelled fields.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ValidationDigestRecord {
     package: Option<String>,
