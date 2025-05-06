@@ -62,6 +62,45 @@ jobs:
           cargo clippy -- -D warnings
 
   #-----------------------------------------------------------------------------
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # https://github.com/aquasecurity/trivy-action?tab=readme-ov-file#skipping-setup-when-calling-trivy-action-multiple-times
+      # The first call to the action will invoke setup-trivy and install trivy
+      - name: Generate Trivy vulnerability report
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          output: trivy-report.json
+          format: json
+          scan-ref: .
+          exit-code: 0
+          trivy-config: trivy.yaml
+
+      - name: Upload vulnerability report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.json
+          retention-days: 30
+
+      - name: Fail build on high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          format: table
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+          # On a subsequent call trivy is already installed so we can skip setup
+          skip-setup-trivy: true
+          trivy-config: trivy.yaml
+
+  #-----------------------------------------------------------------------------
 #   coverage:
 #     name: Coverage
 #     runs-on: ubuntu-latest
