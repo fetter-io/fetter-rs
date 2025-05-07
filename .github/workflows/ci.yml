@@ -40,6 +40,25 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Build auditable
+        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        run: | # https://github.com/rust-secure-code/cargo-auditable#usage
+          cargo install cargo-auditable cargo-audit
+          cargo auditable build
+
+      - name: Fail auditable build on high/critical vulnerabilities
+        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: rootfs # https://trivy.dev/latest/docs/coverage/language/rust/#binaries
+          format: table
+          scan-ref: target/debug/fetter
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          ignore-unfixed: true
+          exit-code: 1
+          trivy-config: trivy.yaml
+
   #-----------------------------------------------------------------------------
   quality:
     name: Quality
@@ -73,7 +92,7 @@ jobs:
       - name: Generate Trivy vulnerability report
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: "fs"
+          scan-type: fs
           output: trivy-report.json
           format: json
           scan-ref: .
@@ -90,7 +109,7 @@ jobs:
       - name: Fail build on high/critical vulnerabilities
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: "fs"
+          scan-type: fs
           format: table
           scan-ref: .
           severity: HIGH,CRITICAL
