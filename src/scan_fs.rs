@@ -140,6 +140,7 @@ impl Serialize for ScanFS {
     where
         S: Serializer,
     {
+        
         // Collect and sort by keys for stable ordering
         let mut exe_to_sites: Vec<_> = self.exe_to_sites.iter().collect();
         exe_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
@@ -150,13 +151,62 @@ impl Serialize for ScanFS {
         let mut site_to_exe: Vec<_> = self.site_to_exe.iter().collect();
         site_to_exe.sort_by_key(|(k, _)| k.to_string());
 
-        // site_to_exe.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        // dictionary mapping
+        let mut path_to_index: HashMap<String, usize> = HashMap::new();
+        let mut paths: Vec<String> = Vec::new();
 
-        // Serialize as tuple of sorted vectors
+        let mut index_of = |p: &Path| -> Result<usize, S::Error> {
+            let s = p
+                .to_str()
+                .ok_or_else(|| serde::ser::Error::custom("Invalid UTF-8 in path"))?;
+            if let Some(idx) = path_to_index.get(s) {
+                Ok(*idx)
+            } else {
+                let idx = paths.len();
+                path_to_index.insert(s.to_string(), idx);
+                paths.push(s.to_string());
+                Ok(idx)
+            }
+        };
+
+        let exe_to_sites_idx: Vec<(usize, Vec<usize>)> = exe_to_sites
+            .into_iter()
+            .map(|(exe, sites)| {
+                let exe_i = index_of(exe).unwrap();
+                let site_idx = sites
+                    .iter()
+                    .map(|s| index_of(s.as_path()).unwrap())
+                    .collect();
+                (exe_i, site_idx)
+            })
+            .collect();
+
+        let package_to_sites_idx: Vec<(Package, Vec<usize>)> = package_to_sites
+            .into_iter()
+            .map(|(pkg, sites)| {
+                let site_idx = sites
+                    .iter()
+                    .map(|s| index_of(s.as_path()).unwrap())
+                    .collect();
+                (pkg.clone(), site_idx)
+            })
+            .collect();
+
+        let site_to_exe_idx: Vec<(usize, usize)> = site_to_exe
+            .into_iter()
+            .map(|(site, exe)| {
+                let site_i = index_of(site.as_path()).unwrap();
+                let exe_i = index_of(exe).unwrap();
+                (site_i, exe_i)
+            })
+            .collect();
+
+        // Serialize as tuple of sorted vectors with dictionary
         let data = (
-            &exe_to_sites,
-            &package_to_sites,
-            &site_to_exe,
+            paths,
+            exe_to_sites_idx,
+            package_to_sites_idx,
+            site_to_exe_idx,
             self.force_usite,
             &self.exes_hash,
         );
@@ -164,13 +214,14 @@ impl Serialize for ScanFS {
     }
 }
 
-/// Flattened data representation used for serialization.
+/// Flattened data representation used for serialization with path dictionary.
 type ScanFSData = (
-    Vec<(PathBuf, Vec<PathShared>)>,
-    Vec<(Package, Vec<PathShared>)>,
-    Vec<(PathShared, PathBuf)>,
-    bool,   // force_usite
-    String, // exes hash
+    Vec<String>,
+    Vec<(usize, Vec<usize>)>,
+    Vec<(Package, Vec<usize>)>,
+    Vec<(usize, usize)>,
+    bool,
+    String,
 );
 
 impl<'de> Deserialize<'de> for ScanFS {
@@ -178,12 +229,49 @@ impl<'de> Deserialize<'de> for ScanFS {
     where
         D: Deserializer<'de>,
     {
-        let (exe_to_sites, package_to_sites, site_to_exe, force_usite, exes_hash): ScanFSData =
-            Deserialize::deserialize(deserializer)?;
+        let (
+            paths,
+            exe_to_sites_idx,
+            package_to_sites_idx,
+            site_to_exe_idx,
+            force_usite,
+            exes_hash,
+        ): ScanFSData = Deserialize::deserialize(deserializer)?;
 
-        let exe_to_sites = exe_to_sites.into_iter().collect();
-        let site_to_exe = site_to_exe.into_iter().collect();
-        let package_to_sites = package_to_sites.into_iter().collect();
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+
+        let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exe_to_sites_idx
+            .into_iter()
+            .map(|(exe_i, site_is)| {
+                let exe = paths[exe_i].clone();
+                let sites = site_is
+                    .into_iter()
+                    .map(|i| PathShared::from_path_buf(paths[i].clone()))
+                    .collect();
+                (exe, sites)
+            })
+            .collect();
+
+        let package_to_sites: HashMap<Package, Vec<PathShared>> = package_to_sites_idx
+            .into_iter()
+            .map(|(pkg, site_is)| {
+                let sites = site_is
+                    .into_iter()
+                    .map(|i| PathShared::from_path_buf(paths[i].clone()))
+                    .collect();
+                (pkg, sites)
+            })
+            .collect();
+
+        let site_to_exe: HashMap<PathShared, PathBuf> = site_to_exe_idx
+            .into_iter()
+            .map(|(site_i, exe_i)| {
+                (
+                    PathShared::from_path_buf(paths[site_i].clone()),
+                    paths[exe_i].clone(),
+                )
+            })
+            .collect();
 
         Ok(ScanFS {
             exe_to_sites,
@@ -1784,7 +1872,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[[\"/usr/bin/python3\",[\"/usr/lib/python3/site-packages\"]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[\"/usr/lib/python3/site-packages\"]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[\"/usr/lib/python3/site-packages\"]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[\"/usr/lib/python3/site-packages\"]]],[[\"/usr/lib/python3/site-packages\",\"/usr/bin/python3\"]],false,\"35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,0]],false,\"35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.exe_to_sites.len(), 1);
