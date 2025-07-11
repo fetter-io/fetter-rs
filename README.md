@@ -386,6 +386,12 @@ repos:
 
 ## What is New in Fetter
 
+
+### dev
+
+Optimized JSON by mapping all paths to integers.
+
+
 ### 1.19.0
 
 Extension to the public library interface.
