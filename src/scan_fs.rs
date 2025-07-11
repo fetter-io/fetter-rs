@@ -516,6 +516,7 @@ impl ScanFS {
             &vf,
             ignore,
         )
+    }
 
     pub(crate) fn to_audit_report(
         &self,
