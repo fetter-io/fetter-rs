@@ -646,7 +646,7 @@ where
                     stderr,
                 );
             }
-            let ar = sfs.to_audit_report(pattern, client, !case);
+            let ar = sfs.to_audit_report(pattern, client, !case, log);
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));

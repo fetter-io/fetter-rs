@@ -1,3 +1,5 @@
+use crate::util::logger;
+use crate::util::path_cache;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -124,26 +126,113 @@ impl OSVVulnInfo {
 
 //------------------------------------------------------------------------------
 
-fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnInfo> {
-    let url = format!("https://api.osv.dev/v1/vulns/{vuln_id}");
+// fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnInfo> {
+//     let url = format!("https://api.osv.dev/v1/vulns/{vuln_id}");
 
-    match client.get(&url) {
-        Ok(body_str) => {
-            let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
-            Some(osv_vuln)
+//     match client.get(&url) {
+//         Ok(body_str) => {
+//             let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
+//             Some(osv_vuln)
+//         }
+//         Err(_) => None,
+//     }
+// }
+
+fn query_osv_vuln(
+    client: Arc<dyn UreqClient>,
+    vuln_id: &str,
+    log: bool,
+) -> Option<OSVVulnInfo> {
+    let cache_dir = match path_cache(true) {
+        Some(dir) => dir,
+        None => {
+            logger!(
+                log,
+                module_path!(),
+                "cache directory not available, skipping cache"
+            );
+            return None;
         }
-        Err(_) => None,
+    };
+
+    let cache_path = cache_dir.join(format!("{vuln_id}.json"));
+
+    // Try reading from cache
+    if cache_path.exists() {
+        match std::fs::read_to_string(&cache_path) {
+            Ok(cached_data) => {
+                if let Ok(osv_vuln) = serde_json::from_str(&cached_data) {
+                    logger!(log, module_path!(), "loaded {vuln_id} from cache");
+                    return Some(osv_vuln);
+                } else {
+                    logger!(
+                        log,
+                        module_path!(),
+                        "failed to deserialize cached {vuln_id}, refetching"
+                    );
+                }
+            }
+            Err(e) => {
+                logger!(
+                    log,
+                    module_path!(),
+                    "failed to read cache file {:?}: {}, refetching",
+                    cache_path,
+                    e
+                );
+            }
+        }
+    }
+
+    // Fetch from API
+    match client.get(&format!("https://api.osv.dev/v1/vulns/{vuln_id}")) {
+        Ok(body_str) => match serde_json::from_str(&body_str) {
+            Ok(osv_vuln) => {
+                if let Err(e) = std::fs::write(&cache_path, &body_str) {
+                    logger!(
+                        log,
+                        module_path!(),
+                        "failed to write cache file {:?}: {}",
+                        cache_path,
+                        e
+                    );
+                } else {
+                    logger!(log, module_path!(), "cached response for {vuln_id}");
+                }
+                Some(osv_vuln)
+            }
+            Err(e) => {
+                logger!(
+                    log,
+                    module_path!(),
+                    "failed to deserialize OSV response for {vuln_id}: {}",
+                    e
+                );
+                None
+            }
+        },
+        Err(e) => {
+            logger!(
+                log,
+                module_path!(),
+                "HTTP request failed for {vuln_id}: {}",
+                e
+            );
+            None
+        }
     }
 }
 
 pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
+    log: bool,
 ) -> HashMap<String, OSVVulnInfo> {
     let results: Vec<(String, OSVVulnInfo)> = vuln_ids
         .par_iter()
         .filter_map(|vuln_id| {
-            query_osv_vuln(client.clone(), vuln_id).map(|info| (vuln_id.clone(), info))
+            query_osv_vuln(client.clone(), vuln_id, log)
+                .map(|info| (vuln_id.clone(), info))
         })
         .collect();
     results.into_iter().collect() // to HashMap
@@ -169,7 +258,7 @@ mod tests {
             mock_post: None,
         });
 
-        let result_map = query_osv_vulns(client, &vuln_ids);
+        let result_map = query_osv_vulns(client, &vuln_ids, false);
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();

@@ -523,9 +523,10 @@ impl ScanFS {
         pattern: &str,
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
+        log: bool,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(client, &packages)
+        AuditReport::from_packages(client, &packages, log)
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned

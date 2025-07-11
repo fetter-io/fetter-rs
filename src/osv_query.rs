@@ -63,7 +63,7 @@ struct OSVResponse {
 
 //------------------------------------------------------------------------------
 
-/// Function to send a single batch of queries to the OSV API
+/// Function to send a single batch of queries to the OSV API, and return a Vec of vulnerabilities per package.
 fn query_osv_batch(
     client: Arc<dyn UreqClient>,
     packages: &[OSVPackageQuery],
@@ -97,6 +97,7 @@ fn query_osv_batch(
     }
 }
 
+/// Given a slice of Package refs, get all vulnerabilities known for each package.
 pub(crate) fn query_osv_batches(
     client: Arc<dyn UreqClient>,
     packages: &[Package],
@@ -105,9 +106,11 @@ pub(crate) fn query_osv_batches(
     let packages_osv: Vec<OSVPackageQuery> =
         packages.iter().map(OSVPackageQuery::from_package).collect();
 
+    // avoid pagination from api by keeping chunk size under 1000
+    let chunk_size = 64.min(packages_osv.len());
     // par_chunks sends groups of 4 to batch query
     let results: Vec<Option<Vec<String>>> = packages_osv
-        .par_chunks(4)
+        .par_chunks(chunk_size)
         .flat_map(|chunk| query_osv_batch(client.clone(), chunk))
         .collect();
     results
