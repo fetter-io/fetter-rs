@@ -25,6 +25,21 @@ pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
 //------------------------------------------------------------------------------
 
+#[derive(Clone, Copy, Debug)]
+pub struct LogFlag(pub bool);
+
+impl From<bool> for LogFlag {
+    fn from(value: bool) -> Self {
+        LogFlag(value)
+    }
+}
+
+impl From<LogFlag> for bool {
+    fn from(val: LogFlag) -> Self {
+        val.0
+    }
+}
+
 // Global Mutex to ensure thread-safe logging
 static LOGGER: OnceLock<Mutex<Stderr>> = OnceLock::new();
 
@@ -54,7 +69,7 @@ pub(crate) fn logger_core(module: &str, msg: &str) {
 #[macro_export]
 macro_rules! logger {
     ($log:expr, $module:expr, $($arg:tt)*) => {{
-        if $log {
+        if ::core::convert::Into::<bool>::into($log) {
             $crate::util::logger_core($module, &format!($($arg)*));
         }
     }};

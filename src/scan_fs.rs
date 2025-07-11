@@ -37,10 +37,12 @@ use crate::util::path_cache;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
+use crate::util::LogFlag;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
+
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Anchor {
@@ -57,7 +59,7 @@ const PY_SITE_PACKAGES: &str = "import sys;import site;import types;sys.modules[
 fn get_site_package_dirs(
     executable: &Path,
     force_usite: bool,
-    log: bool,
+    log: LogFlag,
 ) -> Vec<PathShared> {
     match Command::new(executable)
         .arg("-S") // disable site on startup
@@ -330,7 +332,7 @@ impl ScanFS {
         exes: &[PathBuf],
         force_usite: bool,
         cache_dur: Duration,
-        log: bool,
+        log: LogFlag,
     ) -> ResultDynError<Self> {
         if cache_dur == DURATION_0 {
             Err("Cache disabled by duration".into())
@@ -361,7 +363,7 @@ impl ScanFS {
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
         force_usite: bool,
-        log: bool,
+        log: LogFlag,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
         let mut exes_norm = Vec::new();
@@ -425,7 +427,7 @@ impl ScanFS {
     //--------------------------------------------------------------------------
 
     // If not set, optionally load EnvMarkerState for each exe
-    pub(crate) fn load_env_marker_state(&mut self, log: bool) {
+    pub(crate) fn load_env_marker_state(&mut self, log: LogFlag) {
         logger!(log, module_path!(), "Fetching EnvMarkerState");
 
         if self.exe_to_ems.is_none() {
@@ -468,7 +470,11 @@ impl ScanFS {
 
     //--------------------------------------------------------------------------
 
-    pub(crate) fn to_cache(&self, cache_dur: Duration, log: bool) -> ResultDynError<()> {
+    pub(crate) fn to_cache(
+        &self,
+        cache_dur: Duration,
+        log: LogFlag,
+    ) -> ResultDynError<()> {
         if let Some(mut cache_dir) = path_cache(true) {
             // use hash of exes observed at initialization
             cache_dir.push(self.exes_hash.clone());
@@ -500,7 +506,7 @@ impl ScanFS {
         dm: DepManifest,
         vf: ValidationFlags,
         ignore: Option<&HashSet<String>>,
-        log: bool,
+        log: LogFlag,
     ) -> ValidationReport {
         if dm.env_marker_active {
             self.load_env_marker_state(log);
@@ -523,7 +529,7 @@ impl ScanFS {
         pattern: &str,
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
-        log: bool,
+        log: LogFlag,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
         AuditReport::from_packages(client, &packages, log)
@@ -615,7 +621,7 @@ impl ScanFS {
         &self,
         pattern: &Option<String>,
         case_insensitive: bool,
-        log: bool,
+        log: LogFlag,
     ) -> io::Result<()> {
         let packages = match pattern {
             Some(p) => self.search_by_match(p, case_insensitive),
@@ -636,9 +642,9 @@ impl ScanFS {
         &mut self,
         dm: DepManifest,
         vf: ValidationFlags,
-        log: bool,
+        log: LogFlag,
     ) -> io::Result<()> {
-        let vr = self.to_validation_report(dm, vf, None, false);
+        let vr = self.to_validation_report(dm, vf, None, log);
         let packages: Vec<Package> = vr
             .records
             .iter()
@@ -661,7 +667,7 @@ impl ScanFS {
         ignore: &[String],
         vf: &ValidationFlags,
         exit_else_warn: Option<i32>,
-        log: bool,
+        log: LogFlag,
     ) -> ResultDynError<()> {
         if self.exe_to_sites.len() > 1 {
             return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.exe_to_sites.len()).into());
@@ -687,7 +693,7 @@ impl ScanFS {
         Ok(())
     }
 
-    pub(crate) fn site_validate_uninstall(&self, log: bool) -> ResultDynError<()> {
+    pub(crate) fn site_validate_uninstall(&self, log: LogFlag) -> ResultDynError<()> {
         if self.exe_to_sites.len() > 1 {
             return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.exe_to_sites.len()).into());
         }
@@ -712,9 +718,9 @@ mod tests {
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths1 = get_site_package_dirs(p1, true, false);
+        let paths1 = get_site_package_dirs(p1, true, LogFlag(false));
         assert_eq!(paths1.len() > 0, true);
-        let paths2 = get_site_package_dirs(p1, false, false);
+        let paths2 = get_site_package_dirs(p1, false, LogFlag(false));
         assert!(paths1.len() >= paths2.len());
     }
     #[test]
@@ -750,7 +756,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(invalid1.len(), 0);
 
@@ -762,7 +768,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(invalid2.len(), 1);
     }
@@ -810,7 +816,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr.len(), 0);
     }
@@ -836,7 +842,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
 
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
@@ -868,7 +874,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(sfs.exe_to_sites.get(&exe).unwrap()[0].strong_count(), 8);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
@@ -899,7 +905,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -930,7 +936,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr.len(), 0);
     }
@@ -956,7 +962,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr.len(), 1);
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
@@ -982,7 +988,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr1.len(), 1);
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
@@ -998,7 +1004,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr2.len(), 0);
     }
@@ -1024,7 +1030,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1039,7 +1045,7 @@ mod tests {
                 permit_subset: true,
             },
             None,
-            false,
+            LogFlag(false),
         );
         assert_eq!(vr2.len(), 0);
     }
@@ -1079,7 +1085,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1113,7 +1119,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1150,7 +1156,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1184,7 +1190,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1218,7 +1224,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1255,7 +1261,7 @@ mod tests {
                 permit_subset: true,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1292,7 +1298,7 @@ mod tests {
                 permit_subset: true,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1327,7 +1333,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1362,7 +1368,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1400,7 +1406,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1438,7 +1444,7 @@ mod tests {
                 permit_subset: true,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1472,7 +1478,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1509,7 +1515,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1538,7 +1544,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1567,7 +1573,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1634,7 +1640,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(json, r#"[]"#);
@@ -1665,7 +1671,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json1 = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1683,7 +1689,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
                 permit_subset: false,
             },
             Some(&ignore),
-            false,
+            LogFlag(false),
         );
         let json2 = serde_json::to_string(&vr2.to_validation_digest()).unwrap();
         assert_eq!(json2, r#"[]"#);
@@ -1712,7 +1718,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
         let json1 = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
@@ -1730,7 +1736,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
                 permit_subset: false,
             },
             Some(&ignore),
-            false,
+            LogFlag(false),
         );
         let json2 = serde_json::to_string(&vr2.to_validation_digest()).unwrap();
         assert_eq!(json2, r#"[]"#);
@@ -1933,7 +1939,14 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let ignore = vec![];
         // ensure this retruns an error when multiple exe are defined
         assert!(sfs
-            .site_validate_install(&bound, &bound_options, &ignore, &vf, None, false)
+            .site_validate_install(
+                &bound,
+                &bound_options,
+                &ignore,
+                &vf,
+                None,
+                LogFlag(false)
+            )
             .is_err());
     }
 
@@ -1942,7 +1955,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exe1 = PathBuf::from("a");
         let exe2 = PathBuf::from("b");
         let exes = vec![exe1, exe2];
-        let post = ScanFS::from_exes(&exes, false, false);
+        let post = ScanFS::from_exes(&exes, false, LogFlag(false));
         // error for bad exe
         assert!(post.is_err());
     }
@@ -1954,9 +1967,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
         let exes = vec![exe1.clone(), exe2.clone()];
 
-        let scan1 = ScanFS::from_exes(&exes, false, false)
+        let scan1 = ScanFS::from_exes(&exes, false, LogFlag(false))
             .expect("Failed to build ScanFS from the first ordering");
-        let scan2 = ScanFS::from_exes(&exes, false, false)
+        let scan2 = ScanFS::from_exes(&exes, false, LogFlag(false))
             .expect("Failed to build ScanFS from the shuffled executables");
 
         let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");

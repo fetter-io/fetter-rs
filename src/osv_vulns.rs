@@ -1,5 +1,6 @@
 use crate::util::logger;
 use crate::util::path_cache;
+use crate::util::LogFlag;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -141,7 +142,7 @@ impl OSVVulnInfo {
 fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
     vuln_id: &str,
-    log: bool,
+    log: LogFlag,
 ) -> Option<OSVVulnInfo> {
     let cache_dir = match path_cache(true) {
         Some(dir) => dir,
@@ -226,7 +227,7 @@ fn query_osv_vuln(
 pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
-    log: bool,
+    log: LogFlag,
 ) -> HashMap<String, OSVVulnInfo> {
     let results: Vec<(String, OSVVulnInfo)> = vuln_ids
         .par_iter()
@@ -258,7 +259,7 @@ mod tests {
             mock_post: None,
         });
 
-        let result_map = query_osv_vulns(client, &vuln_ids, false);
+        let result_map = query_osv_vulns(client, &vuln_ids, LogFlag(false));
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();

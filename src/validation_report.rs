@@ -278,6 +278,7 @@ mod tests {
     use super::*;
     use crate::dep_manifest::DepManifest;
     use crate::scan_fs::ScanFS;
+    use crate::util::LogFlag;
     use std::fs::File;
     use std::io;
     use std::io::BufRead;
@@ -308,7 +309,7 @@ mod tests {
                 permit_subset: false,
             },
             None,
-            false,
+            LogFlag(false),
         );
 
         let dir = tempdir().unwrap();
