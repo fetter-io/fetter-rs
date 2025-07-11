@@ -135,12 +135,39 @@ pub struct ScanFS {
     exes_hash: String,
 }
 
+struct PathIndexer {
+    path_to_index: HashMap<PathBuf, usize>,
+    paths: Vec<String>,
+}
+
+impl PathIndexer {
+    fn new() -> Self {
+        Self {
+            path_to_index: HashMap::new(),
+            paths: Vec::new(),
+        }
+    }
+
+    fn get_index<S: serde::ser::Error>(&mut self, p: &Path) -> Result<usize, S> {
+        if let Some(&idx) = self.path_to_index.get(p) {
+            Ok(idx)
+        } else {
+            let idx = self.paths.len();
+            let s = p
+                .to_str()
+                .ok_or_else(|| S::custom("Invalid UTF-8 in path"))?;
+            self.path_to_index.insert(p.to_owned(), idx);
+            self.paths.push(s.to_string());
+            Ok(idx)
+        }
+    }
+}
+
 impl Serialize for ScanFS {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        
         // Collect and sort by keys for stable ordering
         let mut exe_to_sites: Vec<_> = self.exe_to_sites.iter().collect();
         exe_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
@@ -151,62 +178,42 @@ impl Serialize for ScanFS {
         let mut site_to_exe: Vec<_> = self.site_to_exe.iter().collect();
         site_to_exe.sort_by_key(|(k, _)| k.to_string());
 
-        // dictionary mapping
-        let mut path_to_index: HashMap<String, usize> = HashMap::new();
-        let mut paths: Vec<String> = Vec::new();
+        let mut pi = PathIndexer::new();
 
-        let mut index_of = |p: &Path| -> Result<usize, S::Error> {
-            let s = p
-                .to_str()
-                .ok_or_else(|| serde::ser::Error::custom("Invalid UTF-8 in path"))?;
-            if let Some(idx) = path_to_index.get(s) {
-                Ok(*idx)
-            } else {
-                let idx = paths.len();
-                path_to_index.insert(s.to_string(), idx);
-                paths.push(s.to_string());
-                Ok(idx)
-            }
-        };
-
-        let exe_to_sites_idx: Vec<(usize, Vec<usize>)> = exe_to_sites
+        let exe_to_sites_idx: Result<Vec<_>, S::Error> = exe_to_sites
             .into_iter()
             .map(|(exe, sites)| {
-                let exe_i = index_of(exe).unwrap();
-                let site_idx = sites
-                    .iter()
-                    .map(|s| index_of(s.as_path()).unwrap())
-                    .collect();
-                (exe_i, site_idx)
+                let exe_i = pi.get_index(exe)?;
+                let site_idx: Result<Vec<_>, S::Error> =
+                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                Ok((exe_i, site_idx?))
             })
             .collect();
 
-        let package_to_sites_idx: Vec<(Package, Vec<usize>)> = package_to_sites
+        let package_to_sites_idx: Result<Vec<_>, S::Error> = package_to_sites
             .into_iter()
             .map(|(pkg, sites)| {
-                let site_idx = sites
-                    .iter()
-                    .map(|s| index_of(s.as_path()).unwrap())
-                    .collect();
-                (pkg.clone(), site_idx)
+                let site_idx: Result<Vec<_>, S::Error> =
+                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                Ok((pkg, site_idx?))
             })
             .collect();
 
-        let site_to_exe_idx: Vec<(usize, usize)> = site_to_exe
+        let site_to_exe_idx: Result<Vec<_>, S::Error> = site_to_exe
             .into_iter()
             .map(|(site, exe)| {
-                let site_i = index_of(site.as_path()).unwrap();
-                let exe_i = index_of(exe).unwrap();
-                (site_i, exe_i)
+                let site_i = pi.get_index(site.as_path())?;
+                let exe_i = pi.get_index(exe)?;
+                Ok((site_i, exe_i))
             })
             .collect();
 
         // Serialize as tuple of sorted vectors with dictionary
         let data = (
-            paths,
-            exe_to_sites_idx,
-            package_to_sites_idx,
-            site_to_exe_idx,
+            pi.paths,
+            exe_to_sites_idx?,
+            package_to_sites_idx?,
+            site_to_exe_idx?,
             self.force_usite,
             &self.exes_hash,
         );
@@ -238,16 +245,14 @@ impl<'de> Deserialize<'de> for ScanFS {
             exes_hash,
         ): ScanFSData = Deserialize::deserialize(deserializer)?;
 
-        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        // let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let ps: Vec<PathShared> = paths.into_iter().map(PathShared::from).collect();
 
         let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exe_to_sites_idx
             .into_iter()
             .map(|(exe_i, site_is)| {
-                let exe = paths[exe_i].clone();
-                let sites = site_is
-                    .into_iter()
-                    .map(|i| PathShared::from_path_buf(paths[i].clone()))
-                    .collect();
+                let exe = ps[exe_i].as_path().to_path_buf();
+                let sites = site_is.into_iter().map(|i| ps[i].clone()).collect();
                 (exe, sites)
             })
             .collect();
@@ -255,10 +260,7 @@ impl<'de> Deserialize<'de> for ScanFS {
         let package_to_sites: HashMap<Package, Vec<PathShared>> = package_to_sites_idx
             .into_iter()
             .map(|(pkg, site_is)| {
-                let sites = site_is
-                    .into_iter()
-                    .map(|i| PathShared::from_path_buf(paths[i].clone()))
-                    .collect();
+                let sites = site_is.into_iter().map(|i| ps[i].clone()).collect();
                 (pkg, sites)
             })
             .collect();
@@ -266,10 +268,7 @@ impl<'de> Deserialize<'de> for ScanFS {
         let site_to_exe: HashMap<PathShared, PathBuf> = site_to_exe_idx
             .into_iter()
             .map(|(site_i, exe_i)| {
-                (
-                    PathShared::from_path_buf(paths[site_i].clone()),
-                    paths[exe_i].clone(),
-                )
+                (ps[site_i].clone(), ps[exe_i].as_path().to_path_buf())
             })
             .collect();
 
