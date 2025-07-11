@@ -48,6 +48,12 @@ impl From<String> for PathShared {
     }
 }
 
+impl From<PathBuf> for PathShared {
+    fn from(p: PathBuf) -> Self {
+        PathShared::from_path_buf(p)
+    }
+}
+
 impl Serialize for PathShared {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

@@ -1785,6 +1785,77 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
     }
 
     #[test]
+    fn test_serialize_b() {
+        let exe1 = PathBuf::from("/usr/bin/python3");
+        let exe2 = PathBuf::from("/opt/venv/bin/python");
+        let site1 = PathBuf::from("/usr/lib/python3/site-packages");
+        let site2 = PathBuf::from("/opt/venv/lib/python3.9/site-packages");
+
+        let pkg_numpy = Package::from_name_version_durl("numpy", "1.21.0", None).unwrap();
+        let pkg_pandas =
+            Package::from_name_version_durl("pandas", "1.3.0", None).unwrap();
+        let pkg_flask = Package::from_name_version_durl("flask", "2.0.1", None).unwrap();
+        let pkg_requests =
+            Package::from_name_version_durl("requests", "2.25.1", None).unwrap();
+
+        let mut sfs = ScanFS {
+            exe_to_sites: HashMap::new(),
+            package_to_sites: HashMap::new(),
+            site_to_exe: HashMap::new(),
+            exe_to_ems: None,
+            force_usite: false,
+            exes_hash: "hash".to_string(),
+        };
+
+        // Populate exe_to_sites
+        sfs.exe_to_sites
+            .insert(exe1.clone(), vec![site1.clone().into()]);
+        sfs.exe_to_sites.insert(
+            exe2.clone(),
+            vec![site1.clone().into(), site2.clone().into()],
+        );
+
+        // Populate package_to_sites
+        sfs.package_to_sites.insert(
+            pkg_numpy.clone(),
+            vec![site1.clone().into(), site2.clone().into()],
+        );
+        sfs.package_to_sites
+            .insert(pkg_pandas.clone(), vec![site2.clone().into()]);
+        sfs.package_to_sites
+            .insert(pkg_flask.clone(), vec![site1.clone().into()]);
+        sfs.package_to_sites
+            .insert(pkg_requests.clone(), vec![site2.clone().into()]);
+
+        // Populate site_to_exe
+        sfs.site_to_exe.insert(site1.clone().into(), exe1.clone());
+        sfs.site_to_exe.insert(site2.clone().into(), exe2.clone());
+
+        let json = serde_json::to_string(&sfs).unwrap();
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,0],[1,3]],false,"hash"]"#;
+        assert_eq!(json, expected_json);
+
+
+        let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
+        // Check deserialized sizes
+        assert_eq!(sfsd.exe_to_sites.len(), 2);
+        assert_eq!(sfsd.package_to_sites.len(), 4);
+        assert_eq!(sfsd.site_to_exe.len(), 2);
+
+        // Check exe_to_sites keys
+        assert!(sfsd.exe_to_sites.contains_key(&exe1));
+        assert!(sfsd.exe_to_sites.contains_key(&exe2));
+
+        // Check that numpy maps to both sites
+        let numpy_sites = sfsd.package_to_sites.get(&pkg_numpy).unwrap();
+        assert_eq!(numpy_sites.len(), 2);
+
+        // Check site_to_exe mapping
+        assert_eq!(sfsd.site_to_exe.get(&site1.into()).unwrap(), &exe1);
+        assert_eq!(sfsd.site_to_exe.get(&site2.into()).unwrap(), &exe2);
+    }
+
+    #[test]
     fn test_to_hash_a() {
         let exe = PathBuf::from("/usr/bin/python3");
         let site = PathBuf::from("/usr/lib/python3/site-packages");
