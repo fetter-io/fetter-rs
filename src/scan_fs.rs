@@ -1835,7 +1835,6 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,0],[1,3]],false,"hash"]"#;
         assert_eq!(json, expected_json);
 
-
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         // Check deserialized sizes
         assert_eq!(sfsd.exe_to_sites.len(), 2);

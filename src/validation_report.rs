@@ -31,7 +31,7 @@ impl fmt::Display for ValidationExplain {
             ValidationExplain::Misdefined => "Misdefined", // found, not matched version
             ValidationExplain::Undefined => "Undefined",
         };
-        write!(f, "{}", value)
+        write!(f, "{value}")
     }
 }
 
@@ -238,14 +238,11 @@ impl ValidationReport {
 
         let mut digests: ValidationDigest = Vec::new();
         for record in &records {
-            let pkg_display = record
-                .package
-                .as_ref()
-                .map(|package| format!("{}", package));
+            let pkg_display = record.package.as_ref().map(|package| format!("{package}"));
             let dep_display = record
                 .dep_spec
                 .as_ref()
-                .map(|dep_spec| format!("{}", dep_spec));
+                .map(|dep_spec| format!("{dep_spec}"));
             let sites = record
                 .sites
                 .as_ref()

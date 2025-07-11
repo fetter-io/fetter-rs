@@ -143,7 +143,7 @@ impl fmt::Display for VersionSpec {
             })
             .collect::<Vec<_>>()
             .join(".");
-        write!(f, "{}", version_string)
+        write!(f, "{version_string}")
     }
 }
 

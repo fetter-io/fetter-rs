@@ -30,8 +30,8 @@ const FRAME_SPIN: [&str; 20] = [
 // vec!["○─•  ", "◉──• ", "◎───•", "◉──• ", "○─•  "];
 
 fn get_banner(message: Option<String>) -> String {
-    let msg = message.map_or(String::new(), |m| format!(": {}", m));
-    format!("fetter {}{}\n", FETTER_VERSION, msg)
+    let msg = message.map_or(String::new(), |m| format!(": {m}"));
+    format!("fetter {FETTER_VERSION}{msg}\n")
 }
 
 pub(crate) fn print_banner(is_failure: bool, message: Option<String>, stderr: bool) {
@@ -58,7 +58,7 @@ pub(crate) fn spin(active: Arc<AtomicBool>, message: String, stderr: bool) {
             while active.load(Ordering::Relaxed) {
                 writer.execute(cursor::MoveToColumn(0)).unwrap();
                 let fs = FRAME_SPIN[frame_idx % FRAME_SPIN.len()];
-                let msg = format!("{} {}... ", fs, message);
+                let msg = format!("{fs} {message}... ");
                 write_color(&mut writer, "#666666", &msg);
                 writer.flush().unwrap();
                 thread::sleep(Duration::from_millis(80));

@@ -51,7 +51,7 @@ impl FromStr for DepOperator {
             "===" => Ok(DepOperator::ArbitraryEq),
             "^" => Ok(DepOperator::Caret),
             "~" => Ok(DepOperator::Tilde),
-            _ => Err(format!("Unknown operator: {}", s).into()),
+            _ => Err(format!("Unknown operator: {s}").into()),
         }
     }
 }
@@ -70,7 +70,7 @@ impl fmt::Display for DepOperator {
             DepOperator::Caret => "^",
             DepOperator::Tilde => "~",
         };
-        write!(f, "{}", op_str)
+        write!(f, "{op_str}")
     }
 }
 
@@ -181,7 +181,7 @@ impl DepSpec {
             return Ok(ds);
         }
         let mut parsed = DepSpecParser::parse(Rule::name_req, input).map_err(
-            |e| -> Box<dyn std::error::Error> { format!("Parsing error: {}", e).into() },
+            |e| -> Box<dyn std::error::Error> { format!("Parsing error: {e}").into() },
         )?;
 
         let parse_result = parsed.next().ok_or("Parsing error: No results")?;
@@ -221,7 +221,7 @@ impl DepSpec {
                         }
                         let op = op_pair.as_str().trim().parse::<DepOperator>().map_err(
                             |e| -> Box<dyn std::error::Error> {
-                                format!("Invalid operator: {}", e).into()
+                                format!("Invalid operator: {e}").into()
                             },
                         )?;
                         // version
@@ -393,7 +393,7 @@ impl fmt::Display for DepSpec {
         // if we have versions, we do not need URL
         if !self.versions.is_empty() {
             for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
-                parts.push(format!("{}{}", op, ver));
+                parts.push(format!("{op}{ver}"));
             }
             write!(f, "{}{}{}", self.name, parts.join(","), marker)
         } else if let Some(url) = &self.url {

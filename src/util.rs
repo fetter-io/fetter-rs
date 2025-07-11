@@ -46,9 +46,9 @@ pub(crate) fn logger_core(module: &str, msg: &str) {
         "#3333ff",
         format!("[{:<21}] ", format!("{:?}", duration_since_epoch)).as_str(),
     );
-    write_color(writer, "#0033ff", format!("[{}] ", module).as_str());
-    write_color(writer, "#336666", format!("[{:?}] ", thread_id).as_str());
-    write_color(writer, "#333333", format!("{}\n", msg).as_str());
+    write_color(writer, "#0033ff", format!("[{module}] ").as_str());
+    write_color(writer, "#336666", format!("[{thread_id:?}] ").as_str());
+    write_color(writer, "#333333", format!("{msg}\n").as_str());
 }
 
 #[macro_export]
@@ -213,7 +213,7 @@ pub(crate) fn path_cache(create: bool) -> Option<PathBuf> {
     if create {
         if let Some(ref path) = cache_path {
             if let Err(e) = fs::create_dir_all(path) {
-                eprintln!("Failed to create cache directory: {}", e);
+                eprintln!("Failed to create cache directory: {e}");
                 return None;
             }
         }
@@ -253,11 +253,10 @@ pub(crate) fn exe_path_normalize(path: &Path) -> ResultDynError<PathBuf> {
     // if given a single-component path that is a Python name, call it to get the full path to the exe
     if is_python_exe_file_name(path) && path_is_component(path) {
         fp = match path.file_name().and_then(|f| f.to_str()) {
-            Some(name) => get_absolute_path_from_exe(name).ok_or_else(|| {
-                format!("cannot get absolute path from exe: {:?}", path)
-            })?,
+            Some(name) => get_absolute_path_from_exe(name)
+                .ok_or_else(|| format!("cannot get absolute path from exe: {path:?}"))?,
             None => {
-                let msg = format!("cannot get absolute path from exe: {:?}", path);
+                let msg = format!("cannot get absolute path from exe: {path:?}");
                 return Err(msg.into());
             }
         };
@@ -290,14 +289,14 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let input = format!("{concatenated}\n{}", flag);
+    let input = format!("{concatenated}\n{flag}");
     // println!("hash_paths input: {:?}", input);
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let hash = hasher.finalize();
 
     hash.iter().fold(String::new(), |mut acc, byte| {
-        write!(&mut acc, "{:02x}", byte).unwrap();
+        write!(&mut acc, "{byte:02x}").unwrap();
         acc
     })
 }

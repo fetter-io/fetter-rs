@@ -89,7 +89,7 @@ fn get_validation_module(
         "[{}]",
         cmd_args
             .iter()
-            .map(|v| format!("'{}'", v))
+            .map(|v| format!("'{v}'"))
             .collect::<Vec<_>>()
             .join(", ")
     );
@@ -102,7 +102,7 @@ fn get_validation_module(
         "if sys.argv:",
         "    name = Path(sys.argv[0]).name",
         "    run = not any(name.startswith(n) for n in ('fetter', 'pip', 'poetry', 'uv'))",
-        &format!("if run: fetter.run({})", cmd),
+        &format!("if run: fetter.run({cmd})"),
         "", // force a new line at end
     ].join("\n")
 }
@@ -135,7 +135,7 @@ pub(crate) fn install_validation(
     logger!(log, module_path!(), "Writing: {}", fp_validate.display());
 
     let mut file = File::create(&fp_validate)?;
-    writeln!(file, "{}", module_code)?;
+    writeln!(file, "{module_code}")?;
 
     let fp_launcher = site.join(FN_LAUNCHER_PTH);
     logger!(log, module_path!(), "Writing: {}", fp_launcher.display());

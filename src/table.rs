@@ -197,14 +197,14 @@ impl ColumnFormat {
                 if i > 0 {
                     write_color(writer, "#ff9900", "-");
                 }
-                write!(writer, "{}", part)?;
+                write!(writer, "{part}")?;
             }
         } else if self.header == "Site" {
             write_color(writer, "#999999", &field);
         // } else if message.starts_with("#") {
         //     write_color(writer, "#999999", &field);
         } else {
-            write!(writer, "{}", field)?;
+            write!(writer, "{field}")?;
         }
         Ok(())
     }

@@ -93,7 +93,7 @@ impl LockFile {
                     d.get("name").and_then(|n| n.as_str()),
                     d.get("version").and_then(|v| v.as_str()),
                 ) {
-                    dependencies.push(format!("{}=={}", name, version));
+                    dependencies.push(format!("{name}=={version}"));
                 }
             }
         }
@@ -122,9 +122,10 @@ impl LockFile {
                         em.push(markers.to_string()); // Directly push as String
                     }
                     let dep_string = if em.is_empty() {
-                        format!("{}=={}", name, version)
+                        format!("{name}=={version}")
                     } else {
-                        format!("{}=={}; {}", name, version, em.join(" and "))
+                        let ems = em.join(" and ");
+                        format!("{name}=={version}; {ems}")
                     };
                     dependencies.push(dep_string);
                 }
@@ -151,9 +152,10 @@ impl LockFile {
                         em.push(marker.to_string());
                     }
                     let dep_string = if em.is_empty() {
-                        format!("{}=={}", name, version)
+                        format!("{name}=={version}")
                     } else {
-                        format!("{}=={}; {}", name, version, em.join(" and "))
+                        let ems = em.join(" and ");
+                        format!("{name}=={version}; {ems}")
                     };
                     dependencies.push(dep_string);
                 }
@@ -179,10 +181,10 @@ impl LockFile {
                 for (name, details) in packages.iter() {
                     let em = details
                         .get("markers")
-                        .map_or_else(|| "".to_string(), |v| format!("; {}", v));
+                        .map_or_else(|| "".to_string(), |v| format!("; {v}"));
                     if let Some(version) = details.get("version").and_then(|v| v.as_str())
                     {
-                        dependencies.push(format!("{}{}{}", name, version, em));
+                        dependencies.push(format!("{name}{version}{em}"));
                     }
                 }
             }
@@ -214,7 +216,7 @@ impl LockFile {
                             dep_str.strip_prefix("python ").map(str_to_py_marker)
                         })
                     })?;
-                Some(format!("{}=={}; {}", package_name, package_version, marker))
+                Some(format!("{package_name}=={package_version}; {marker}"))
             })
             .collect();
 

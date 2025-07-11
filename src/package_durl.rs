@@ -31,9 +31,9 @@ pub struct DirectURL {
 
 impl DirectURL {
     pub(crate) fn from_file(path: &PathBuf) -> ResultDynError<Self> {
-        let file = File::open(path).map_err(|e| format!("failed to open file: {}", e));
+        let file = File::open(path).map_err(|e| format!("failed to open file: {e}"));
         serde_json::from_reader(file.unwrap())
-            .map_err(|e| format!("failed to parse JSON: {}", e).into())
+            .map_err(|e| format!("failed to parse JSON: {e}").into())
     }
 
     // Alternate constructor for test.
