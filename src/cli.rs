@@ -290,7 +290,7 @@ impl fmt::Display for Commands {
             Commands::PurgeInvalid { .. } => "purge-invalid",
             Commands::MonitorScan { .. } => "monitor-scan",
         };
-        write!(f, "{}", op_str)
+        write!(f, "{op_str}")
     }
 }
 

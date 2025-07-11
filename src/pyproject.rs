@@ -15,9 +15,9 @@ fn poetry_toml_value_to_string(
         _ => String::new(),
     };
     if let Some(em) = marker {
-        format!("{}{}; {}", name, version, em)
+        format!("{name}{version}; {em}")
     } else {
-        format!("{}{}", name, version)
+        format!("{name}{version}")
     }
 }
 
@@ -105,8 +105,7 @@ impl PyProjectInfo {
                 .collect::<Vec<_>>())
         } else {
             Err(format!(
-                "Could not extract from toml project.optional-dependencies.{}",
-                key
+                "Could not extract from toml project.optional-dependencies.{key}"
             )
             .into())
         }
@@ -156,8 +155,7 @@ impl PyProjectInfo {
                 .collect::<Vec<_>>())
         } else {
             Err(format!(
-                "Could not extract from toml tool.poetry.group.{}.dependencies",
-                key
+                "Could not extract from toml tool.poetry.group.{key}.dependencies"
             )
             .into())
         }

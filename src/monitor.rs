@@ -97,8 +97,8 @@ pub(crate) fn monitor_scan_loop(
             force_usite,
             log,
         )) {
-            logger!(log, module_path!(), "Worker panicked: {}", e);
-            return Err(format!("Failed to queue scan: {}", e).into());
+            logger!(log, module_path!(), "Worker panicked: {e}");
+            return Err(format!("Failed to queue scan: {e}").into());
         } else {
             // Ok
             logger!(log, module_path!(), "Queued a new scan.");

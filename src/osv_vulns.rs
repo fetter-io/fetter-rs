@@ -125,7 +125,7 @@ impl OSVVulnInfo {
 //------------------------------------------------------------------------------
 
 fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnInfo> {
-    let url = format!("https://api.osv.dev/v1/vulns/{}", vuln_id);
+    let url = format!("https://api.osv.dev/v1/vulns/{vuln_id}");
 
     match client.get(&url) {
         Ok(body_str) => {

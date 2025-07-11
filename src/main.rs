@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut stderr = stderr();
         fetter::write_color(&mut stderr, "#666666", "fetter ");
         fetter::write_color(&mut stderr, "#cc0000", "Error: ");
-        eprintln!("{}", e);
+        eprintln!("{e}");
         std::process::exit(1);
     }
     Ok(())

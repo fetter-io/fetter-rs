@@ -14,7 +14,7 @@ fn to_rgb(hex_color: &str) -> (u8, u8, u8) {
             return (r, g, b);
         }
     }
-    panic!("Bad color code: {}", hex_color);
+    panic!("Bad color code: {hex_color}");
 }
 
 pub fn write_color<W: Write + IsTty>(writer: &mut W, hex_color: &str, message: &str) {
@@ -29,6 +29,6 @@ pub fn write_color<W: Write + IsTty>(writer: &mut W, hex_color: &str, message: &
         )
         .unwrap();
     } else {
-        write!(writer, "{}", message).unwrap();
+        write!(writer, "{message}").unwrap();
     }
 }

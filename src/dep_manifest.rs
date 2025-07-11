@@ -162,7 +162,7 @@ impl DepManifest {
         while !files.is_empty() {
             let fp = files.pop_front().unwrap();
             let file = File::open(&fp)
-                .map_err(|e| format!("Failed to open file: {:?} {}", fp, e))?;
+                .map_err(|e| format!("Failed to open file: {fp:?} {e}"))?;
             let lines = io::BufReader::new(file).lines();
             for line in lines.map_while(Result::ok) {
                 let t = line.trim();
@@ -198,7 +198,7 @@ impl DepManifest {
         bound_options: Option<&Vec<String>>,
     ) -> ResultDynError<Self> {
         let content = fs::read_to_string(file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+            .map_err(|e| format!("Failed to read file: {e}"))?;
         Self::from_pyproject(&content, bound_options)
     }
 
@@ -234,7 +234,7 @@ impl DepManifest {
             }
             Some(_) => {
                 let content = fs::read_to_string(fp)
-                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                    .map_err(|e| format!("Failed to read file: {e}"))?;
                 // handle uv.lock, poetry.lock, requirements.lock, Pipfile.lock, or a requirements.txt format (via uv or pip-compile)
                 let lf = LockFile::new(content);
                 Self::try_from_iter(lf.get_dependencies(bound_options)?)
@@ -265,7 +265,7 @@ impl DepManifest {
         bound_options: Option<&Vec<String>>,
     ) -> ResultDynError<Self> {
         let tmp_dir = tempdir()
-            .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
+            .map_err(|e| format!("Failed to create temporary directory: {e}"))?;
         let repo_path = tmp_dir.path().join("repo");
 
         let status = Command::new("git")
@@ -277,7 +277,7 @@ impl DepManifest {
                 repo_path.to_str().unwrap(),
             ])
             .status()
-            .map_err(|e| format!("Failed to execute git: {}", e))?;
+            .map_err(|e| format!("Failed to execute git: {e}"))?;
 
         if !status.success() {
             return Err(format!("Git clone failed: {}", url.display()).into());

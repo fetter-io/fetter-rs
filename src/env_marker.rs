@@ -157,7 +157,7 @@ impl EnvMarkerState {
             "~" => lv.is_tilde(&rv),
             "in" => left_value.contains(right_value),
             "not in" => !left_value.contains(right_value),
-            _ => return Err(format!("Unsupported operator: {}", operator).into()),
+            _ => return Err(format!("Unsupported operator: {operator}").into()),
         };
         Ok(result)
     }
@@ -177,7 +177,7 @@ impl EnvMarkerState {
             ">=" => left_value >= right_value,
             "in" => right_value.contains(left_value),
             "not in" => !right_value.contains(left_value),
-            _ => return Err(format!("Unsupported operator: {}", operator).into()),
+            _ => return Err(format!("Unsupported operator: {operator}").into()),
         };
         Ok(result)
     }

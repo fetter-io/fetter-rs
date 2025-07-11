@@ -59,7 +59,7 @@ fn get_search_origins() -> HashSet<(PathBuf, bool)> {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error reading home: {}", e);
+                    eprintln!("Error reading home: {e}");
                 }
             }
         }
@@ -121,7 +121,7 @@ fn find_exe_inner(
                 }
                 Err(e) => {
                     // log this?
-                    eprintln!("Error reading {:?}: {}", path, e);
+                    eprintln!("Error reading {path:?}: {e}");
                 }
             }
         }
