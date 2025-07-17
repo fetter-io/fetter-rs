@@ -26,19 +26,38 @@ pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 //------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug)]
-pub struct LogFlag(pub bool);
+pub struct FlagLog(pub bool);
 
-impl From<bool> for LogFlag {
+impl From<bool> for FlagLog {
     fn from(value: bool) -> Self {
-        LogFlag(value)
+        FlagLog(value)
     }
 }
 
-impl From<LogFlag> for bool {
-    fn from(val: LogFlag) -> Self {
+impl From<FlagLog> for bool {
+    fn from(val: FlagLog) -> Self {
         val.0
     }
 }
+
+//------------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug)]
+pub struct FlagCacheRefresh(pub bool);
+
+impl From<bool> for FlagCacheRefresh {
+    fn from(value: bool) -> Self {
+        FlagCacheRefresh(value)
+    }
+}
+
+impl From<FlagCacheRefresh> for bool {
+    fn from(val: FlagCacheRefresh) -> Self {
+        val.0
+    }
+}
+
+//------------------------------------------------------------------------------
 
 // Global Mutex to ensure thread-safe logging
 static LOGGER: OnceLock<Mutex<Stderr>> = OnceLock::new();

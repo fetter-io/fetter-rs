@@ -1,6 +1,7 @@
 use crate::util::logger;
 use crate::util::path_cache;
-use crate::util::LogFlag;
+use crate::util::FlagCacheRefresh;
+use crate::util::FlagLog;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -142,16 +143,13 @@ impl OSVVulnInfo {
 fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
     vuln_id: &str,
-    log: LogFlag,
+    cache_refresh: FlagCacheRefresh,
+    log: FlagLog,
 ) -> Option<OSVVulnInfo> {
     let cache_dir = match path_cache(true) {
         Some(dir) => dir,
         None => {
-            logger!(
-                log,
-                module_path!(),
-                "cache directory not available, skipping cache"
-            );
+            logger!(log, module_path!(), "cache directory not available");
             return None;
         }
     };
@@ -159,7 +157,7 @@ fn query_osv_vuln(
     let cache_path = cache_dir.join(format!("{vuln_id}.json"));
 
     // Try reading from cache
-    if cache_path.exists() {
+    if !bool::from(cache_refresh) && cache_path.exists() {
         match std::fs::read_to_string(&cache_path) {
             Ok(cached_data) => {
                 if let Ok(osv_vuln) = serde_json::from_str(&cached_data) {
@@ -177,9 +175,7 @@ fn query_osv_vuln(
                 logger!(
                     log,
                     module_path!(),
-                    "failed to read cache file {:?}: {}, refetching",
-                    cache_path,
-                    e
+                    "failed to read cache file {cache_path:?}: {e}, refetching",
                 );
             }
         }
@@ -193,9 +189,7 @@ fn query_osv_vuln(
                     logger!(
                         log,
                         module_path!(),
-                        "failed to write cache file {:?}: {}",
-                        cache_path,
-                        e
+                        "failed to write cache file {cache_path:?}: {e}"
                     );
                 } else {
                     logger!(log, module_path!(), "cached response for {vuln_id}");
@@ -203,12 +197,7 @@ fn query_osv_vuln(
                 Some(osv_vuln)
             }
             Err(e) => {
-                logger!(
-                    log,
-                    module_path!(),
-                    "failed to deserialize OSV response for {vuln_id}: {}",
-                    e
-                );
+                logger!(log, module_path!(), "failed to deserialize {vuln_id}: {e}");
                 None
             }
         },
@@ -216,8 +205,7 @@ fn query_osv_vuln(
             logger!(
                 log,
                 module_path!(),
-                "HTTP request failed for {vuln_id}: {}",
-                e
+                "HTTP request failed for {vuln_id}: {e}"
             );
             None
         }
@@ -227,12 +215,13 @@ fn query_osv_vuln(
 pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
-    log: LogFlag,
+    cache_refresh: FlagCacheRefresh,
+    log: FlagLog,
 ) -> HashMap<String, OSVVulnInfo> {
     let results: Vec<(String, OSVVulnInfo)> = vuln_ids
         .par_iter()
         .filter_map(|vuln_id| {
-            query_osv_vuln(client.clone(), vuln_id, log)
+            query_osv_vuln(client.clone(), vuln_id, cache_refresh, log)
                 .map(|info| (vuln_id.clone(), info))
         })
         .collect();
@@ -259,7 +248,8 @@ mod tests {
             mock_post: None,
         });
 
-        let result_map = query_osv_vulns(client, &vuln_ids, LogFlag(false));
+        let result_map =
+            query_osv_vulns(client, &vuln_ids, FlagCacheRefresh(true), FlagLog(false));
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();

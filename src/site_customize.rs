@@ -1,6 +1,6 @@
 use crate::path_shared::PathShared;
 use crate::util::logger;
-use crate::util::LogFlag;
+use crate::util::FlagLog;
 use crate::validation_report::ValidationFlags;
 use std::fs;
 use std::fs::File;
@@ -121,7 +121,7 @@ pub(crate) fn install_validation(
     exit_else_warn: Option<i32>,
     site: &PathShared,
     cwd_option: Option<PathBuf>,
-    log: LogFlag,
+    log: FlagLog,
 ) -> io::Result<()> {
     let module_code = get_validation_module(
         executable,
@@ -147,7 +147,7 @@ pub(crate) fn install_validation(
     Ok(())
 }
 
-pub(crate) fn uninstall_validation(site: &PathShared, log: LogFlag) -> io::Result<()> {
+pub(crate) fn uninstall_validation(site: &PathShared, log: FlagLog) -> io::Result<()> {
     let fp_launcher = site.join(FN_LAUNCHER_PTH);
     logger!(log, module_path!(), "Removing: {}", fp_launcher.display());
 
