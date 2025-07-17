@@ -14,6 +14,7 @@ use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
 use crate::util::logger;
+use crate::util::FlagLog;
 use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
@@ -64,7 +65,7 @@ impl Artifacts {
         Ok(Artifacts { files, dirs })
     }
 
-    fn remove(&self, log: bool) -> io::Result<()> {
+    fn remove(&self, log: FlagLog) -> io::Result<()> {
         for (fp, exists) in &self.files {
             if *exists {
                 if let Err(e) = fs::remove_file(fp) {
@@ -289,7 +290,7 @@ impl UnpackReport {
         }
     }
 
-    pub(crate) fn remove(&self, log: bool) -> io::Result<()> {
+    pub(crate) fn remove(&self, log: FlagLog) -> io::Result<()> {
         match self {
             UnpackReport::Full(report) => {
                 report.records.par_iter().for_each(|record| {

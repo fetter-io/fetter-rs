@@ -2,6 +2,7 @@ use crate::scan_fs::ScanFS;
 use crate::system_tag::SystemTag;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
+use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -19,7 +20,7 @@ fn monitor_scan(
     url: Arc<String>,
     tenant: Arc<String>,
     force_usite: bool,
-    log: bool,
+    log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
     let sfs =
@@ -56,7 +57,7 @@ pub(crate) fn monitor_scan_loop(
     tenant: &String,
     force_usite: bool,
     period: u64,
-    log: bool,
+    log: FlagLog,
 ) -> ResultDynError<()> {
     let eps = Arc::new(exe_paths.to_owned());
     let url_arc = Arc::new(url.to_owned());

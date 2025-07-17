@@ -23,9 +23,10 @@ use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
-use crate::util::logger;
+use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
+use crate::util::{logger, FlagCacheRefresh};
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -199,6 +200,10 @@ enum Commands {
         /// Enable case-sensitive pattern matching.
         #[arg(long)]
         case: bool,
+
+        /// Ignore any OSV caches and re-fetch vulnerability details.
+        #[arg(long)]
+        cache_refresh: bool,
 
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
@@ -435,7 +440,7 @@ fn from_cache_or_exes(
     force_usite: bool,
     animate: bool,
     cache_dur: Duration,
-    log: bool,
+    log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
     ScanFS::from_cache(exe_paths, force_usite, cache_dur, log).or_else(|err| {
@@ -471,7 +476,7 @@ where
     if cli.command.is_none() {
         return Err("No command provided. For more information, try '--help'.".into());
     }
-    let log = cli.log;
+    let log = FlagLog(cli.log);
     let quiet = cli.quiet;
     let stderr = cli.stderr;
     let banner = cli.banner;
@@ -635,6 +640,7 @@ where
             subcommands,
             pattern,
             case,
+            cache_refresh,
         }) => {
             let sfs = get_sfs()?;
             // network lookup makes this potentially slow
@@ -646,7 +652,13 @@ where
                     stderr,
                 );
             }
-            let ar = sfs.to_audit_report(pattern, client, !case);
+            let ar = sfs.to_audit_report(
+                pattern,
+                client,
+                !case,
+                FlagCacheRefresh(*cache_refresh),
+                log,
+            );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));

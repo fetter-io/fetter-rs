@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
+use crate::util::logger;
 
 use crate::osv_vulns::OSVVulnInfo;
 use crate::package::Package;
@@ -12,6 +13,8 @@ use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
+use crate::util::FlagCacheRefresh;
+use crate::util::FlagLog;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Serialize)]
@@ -89,13 +92,20 @@ pub struct AuditReport {
 
 /// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB
 impl AuditReport {
-    pub fn from_packages(client: Arc<dyn UreqClient>, packages: &[Package]) -> Self {
+    pub fn from_packages(
+        client: Arc<dyn UreqClient>,
+        packages: &[Package],
+        cache_refresh: FlagCacheRefresh,
+        log: FlagLog,
+    ) -> Self {
         let vulns: Vec<Option<Vec<String>>> = query_osv_batches(client.clone(), packages);
+        logger!(log, module_path!(), "completed query_osv_batch");
+
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
             if let Some(vuln_ids) = vuln_ids {
                 let vuln_infos: HashMap<String, OSVVulnInfo> =
-                    query_osv_vulns(client.clone(), vuln_ids);
+                    query_osv_vulns(client.clone(), vuln_ids, cache_refresh, log);
 
                 let record = AuditRecord {
                     package: package.clone(),
@@ -162,7 +172,12 @@ mod tests {
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
         // client is Arc
-        let ar = AuditReport::from_packages(client.clone(), &packages);
+        let ar = AuditReport::from_packages(
+            client.clone(),
+            &packages,
+            FlagCacheRefresh(true),
+            FlagLog(false),
+        );
 
         let dir = tempdir().unwrap();
         let fp = dir.path().join("report.txt");
@@ -193,7 +208,12 @@ mod tests {
         let packages =
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
-        let ar = AuditReport::from_packages(client, &packages);
+        let ar = AuditReport::from_packages(
+            client,
+            &packages,
+            FlagCacheRefresh(true),
+            FlagLog(false),
+        );
         let ar_json = serde_json::to_string_pretty(&ar).unwrap();
         let expected_json = r#"{"records":[{"package":{"name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}}}]}"#;
 
