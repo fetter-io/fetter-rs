@@ -48,6 +48,8 @@ pub use path_shared::PathShared;
 pub use scan_fs::ScanFS;
 pub use system_tag::SystemTag;
 pub use ureq_client::UreqClientLive;
+pub use util::FlagCacheRefresh;
+pub use util::FlagLog;
 pub use util::ResultDynError;
 pub use validation_report::ValidationExplain;
 pub use validation_report::ValidationFlags;
