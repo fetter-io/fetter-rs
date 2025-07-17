@@ -332,6 +332,7 @@ repos:
 - Options
   - `--pattern, -p <STRING>`: Specify a glob-like pattern to select packages (default: `*`).
   - `--case`: Enable case-sensitive pattern matching.
+  - `--cache-refresh`: Ignore any OSV caches and re-fetch vulnerability details
 - Subcommands
   - `display`: Show audit results in the terminal.
   - `json`: Print validation results in JSON format.
@@ -387,9 +388,13 @@ repos:
 ## What is New in Fetter
 
 
-### dev
+### 1.20.0
 
-Optimized JSON by mapping all paths to integers.
+Added caching of OSV vulnerability data.
+
+Added `--cache-refresh` parameter to `audit` command.
+
+Implemented minimization of file path usage in `ScanFS` JSON representation.
 
 
 ### 1.19.0
