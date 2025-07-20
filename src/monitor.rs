@@ -46,6 +46,8 @@ fn monitor_scan(
     let body = serde_json::to_string(&data).expect("serialization failed.");
 
     logger!(log, module_path!(), "Sending {:?} characters.", body.len());
+    // println!("{}", body);
+
     let response: Result<String, ureq::Error> = client.post(&url, &body);
     logger!(log, module_path!(), "Got response: {:?}", response);
 }
