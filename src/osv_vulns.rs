@@ -233,7 +233,6 @@ pub fn query_osv_vulns(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::ureq_client::UreqClientMock;
 
     #[test]

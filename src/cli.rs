@@ -265,7 +265,7 @@ enum Commands {
     /// Periodically scan system and post JSON output to a URL.
     MonitorScan {
         /// Set the period of scan in seconds.
-        #[arg(short, long, default_value = "120")]
+        #[arg(short, long, default_value = "0")]
         period: u64,
 
         /// Provide the URL to which to post results.
@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn test_run_cli_a() {
-        let _args = vec![OsString::from("fetter"), OsString::from("-h")];
+        let _args = [OsString::from("fetter"), OsString::from("-h")];
         // run_cli(args);
     }
 }

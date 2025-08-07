@@ -299,7 +299,7 @@ mod tests {
 
         // hyphen / underscore are normalized
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==2.1.0", "flask>1,<2", "static_frame==2.1.0"].iter(),
+            ["numpy==2.1.0", "flask>1,<2", "static_frame==2.1.0"].iter(),
         )
         .unwrap();
         let vr1 = sfs.to_validation_report(

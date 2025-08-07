@@ -256,110 +256,60 @@ mod tests {
     #[test]
     fn test_version_spec_c() {
         // NOTE: not sure these falses are what we want
-        assert_eq!(VersionSpec::new("2.*") > VersionSpec::new("2.2.1"), false);
-        assert_eq!(VersionSpec::new("2.2") > VersionSpec::new("2.*"), false);
+        assert!(!(VersionSpec::new("2.*") > VersionSpec::new("2.2.1")),);
+        assert!(!(VersionSpec::new("2.2") > VersionSpec::new("2.*")),);
     }
     #[test]
     fn test_version_spec_d() {
-        assert_eq!(VersionSpec::new("2.1") != VersionSpec::new("2.2"), true);
-        assert_eq!(VersionSpec::new("2.2") != VersionSpec::new("2.2"), false);
-        assert_eq!(VersionSpec::new("2.2.0") != VersionSpec::new("2.2"), false);
+        assert!(VersionSpec::new("2.1") != VersionSpec::new("2.2"));
+        assert!(VersionSpec::new("2.2") == VersionSpec::new("2.2"));
+        assert!(VersionSpec::new("2.2.0") == VersionSpec::new("2.2"));
     }
     #[test]
     fn test_version_spec_e() {
-        assert_eq!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"), true);
-        assert_eq!(VersionSpec::new("1.7.1") < VersionSpec::new("1.8"), true);
-        assert_eq!(
-            VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7"),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"),
-            true
-        );
+        assert!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"));
+        assert!(VersionSpec::new("1.7.1") < VersionSpec::new("1.8"));
+        assert!(!(VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7")));
+        assert!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"));
         // this is supposed to be true: >1.7.post2 will allow 1.7.1 and 1.7.0.post3 but not 1.7.0.
         // assert_eq!(VersionSpec::new("1.7.0") > VersionSpec::new("1.7.post1"), false);
     }
     //--------------------------------------------------------------------------
     #[test]
     fn test_version_is_compatible_a() {
-        assert_eq!(
-            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("3.2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2.3.9")),
-            true
-        );
+        assert!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2")),);
+        assert!(!VersionSpec::new("2.2").is_compatible(&VersionSpec::new("3.2")),);
+        assert!(VersionSpec::new("2.2").is_compatible(&VersionSpec::new("2.2.3.9")),);
     }
     #[test]
     fn test_version_is_compatible_b() {
-        assert_eq!(
-            VersionSpec::new("2.2-2").is_arbitrary_equal(&VersionSpec::new("2.2-2")),
-            true
-        );
-        assert_eq!(
+        assert!(VersionSpec::new("2.2-2").is_arbitrary_equal(&VersionSpec::new("2.2-2")),);
+        assert!(
             VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobar")),
-            true
         );
-        assert_eq!(
-            VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")),
-            false
+        assert!(
+            !VersionSpec::new("foobar").is_arbitrary_equal(&VersionSpec::new("foobars")),
         );
-        assert_eq!(
-            VersionSpec::new("1.0")
-                .is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")),
-            false
-        );
+        assert!(!VersionSpec::new("1.0")
+            .is_arbitrary_equal(&VersionSpec::new("1.0+downstream1")),);
     }
     #[test]
     fn test_version_is_compatible_c() {
-        assert_eq!(
-            VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.2.0")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.2.9")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.3")),
-            false
-        );
+        assert!(!VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.2.0")),);
+        assert!(VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.2.9")),);
+        assert!(!VersionSpec::new("2.2.1").is_compatible(&VersionSpec::new("2.3")),);
     }
     #[test]
     fn test_version_is_compatible_d() {
-        assert_eq!(
-            VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("2.2.0")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("1.4.5.9")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("1.4.6.0")),
-            false
-        );
+        assert!(!VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("2.2.0")),);
+        assert!(VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("1.4.5.9")),);
+        assert!(!VersionSpec::new("1.4.5.0").is_compatible(&VersionSpec::new("1.4.6.0")),);
     }
     #[test]
     fn test_version_is_compatible_e() {
-        assert_eq!(
-            VersionSpec::new("2").is_compatible(&VersionSpec::new("2.0.0.0")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_compatible(&VersionSpec::new("2.1")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_compatible(&VersionSpec::new("3")),
-            false
-        );
+        assert!(VersionSpec::new("2").is_compatible(&VersionSpec::new("2.0.0.0")),);
+        assert!(!VersionSpec::new("2").is_compatible(&VersionSpec::new("2.1")),);
+        assert!(!VersionSpec::new("2").is_compatible(&VersionSpec::new("3")),);
     }
     //--------------------------------------------------------------------------
     #[test]
@@ -374,184 +324,67 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_version_spec_tilde_a() {
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.7.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.7")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.8")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("0.8")),
-            false
-        );
+        assert!(VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.7.2")),);
+        assert!(!VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.7")),);
+        assert!(!VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("1.8")),);
+        assert!(!VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("2")),);
+        assert!(!VersionSpec::new("1.7.1").is_tilde(&VersionSpec::new("0.8")),);
     }
     #[test]
     fn test_version_spec_tilde_b() {
-        assert_eq!(
-            VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.2.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.2.9.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.8")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.2").is_tilde(&VersionSpec::new("2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.3")),
-            false
-        );
+        assert!(VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.2.1")),);
+        assert!(VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.2.9.1")),);
+        assert!(!VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.8")),);
+        assert!(!VersionSpec::new("1.2").is_tilde(&VersionSpec::new("2")),);
+        assert!(!VersionSpec::new("1.2").is_tilde(&VersionSpec::new("1.3")),);
     }
     #[test]
     fn test_version_spec_tilde_c() {
-        assert_eq!(
-            VersionSpec::new("2").is_tilde(&VersionSpec::new("2.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_tilde(&VersionSpec::new("2.9.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_tilde(&VersionSpec::new("1.8")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_tilde(&VersionSpec::new("3")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("2").is_tilde(&VersionSpec::new("4")),
-            false
-        );
+        assert!(VersionSpec::new("2").is_tilde(&VersionSpec::new("2.1")),);
+        assert!(VersionSpec::new("2").is_tilde(&VersionSpec::new("2.9.1")),);
+        assert!(!VersionSpec::new("2").is_tilde(&VersionSpec::new("1.8")),);
+        assert!(!VersionSpec::new("2").is_tilde(&VersionSpec::new("3")),);
+        assert!(!VersionSpec::new("2").is_tilde(&VersionSpec::new("4")),);
     }
 
     //--------------------------------------------------------------------------
     #[test]
     fn test_version_spec_caret_a() {
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.7.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.20")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.6")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("0.8")),
-            false
-        );
+        assert!(VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.7.2")),);
+        assert!(VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.20")),);
+        assert!(!VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("1.6")),);
+        assert!(!VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("2")),);
+        assert!(!VersionSpec::new("1.7.1").is_caret(&VersionSpec::new("0.8")),);
     }
     #[test]
     fn test_version_spec_caret_b() {
-        assert_eq!(
-            VersionSpec::new("1").is_caret(&VersionSpec::new("1.7.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1").is_caret(&VersionSpec::new("1.0.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1").is_caret(&VersionSpec::new("1.6")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("1").is_caret(&VersionSpec::new("2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("1").is_caret(&VersionSpec::new("0.8")),
-            false
-        );
+        assert!(VersionSpec::new("1").is_caret(&VersionSpec::new("1.7.2")),);
+        assert!(VersionSpec::new("1").is_caret(&VersionSpec::new("1.0.1")),);
+        assert!(VersionSpec::new("1").is_caret(&VersionSpec::new("1.6")),);
+        assert!(!VersionSpec::new("1").is_caret(&VersionSpec::new("2")),);
+        assert!(!VersionSpec::new("1").is_caret(&VersionSpec::new("0.8")),);
     }
     #[test]
     fn test_version_spec_caret_c() {
-        assert_eq!(
-            VersionSpec::new("0").is_caret(&VersionSpec::new("1.7.2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0").is_caret(&VersionSpec::new("1.0.1")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0").is_caret(&VersionSpec::new("0.6")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("0").is_caret(&VersionSpec::new("0.1.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("0").is_caret(&VersionSpec::new("0.8")),
-            true
-        );
+        assert!(!VersionSpec::new("0").is_caret(&VersionSpec::new("1.7.2")),);
+        assert!(!VersionSpec::new("0").is_caret(&VersionSpec::new("1.0.1")),);
+        assert!(VersionSpec::new("0").is_caret(&VersionSpec::new("0.6")),);
+        assert!(VersionSpec::new("0").is_caret(&VersionSpec::new("0.1.2")),);
+        assert!(VersionSpec::new("0").is_caret(&VersionSpec::new("0.8")),);
     }
     #[test]
     fn test_version_spec_caret_d() {
-        assert_eq!(
-            VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("1.7.2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.2")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.4")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.3.1")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.3.9")),
-            true
-        );
+        assert!(!VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("1.7.2")),);
+        assert!(!VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.2")),);
+        assert!(!VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.4")),);
+        assert!(VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.3.1")),);
+        assert!(VersionSpec::new("0.0.3").is_caret(&VersionSpec::new("0.0.3.9")),);
     }
     #[test]
     fn test_version_spec_caret_e() {
-        assert_eq!(
-            VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.0.2")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.0.2.5")),
-            true
-        );
-        assert_eq!(
-            VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.1.0")),
-            false
-        );
-        assert_eq!(
-            VersionSpec::new("0.0").is_caret(&VersionSpec::new("1")),
-            false
-        );
+        assert!(VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.0.2")),);
+        assert!(VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.0.2.5")),);
+        assert!(!VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.1.0")),);
+        assert!(!VersionSpec::new("0.0").is_caret(&VersionSpec::new("1")),);
     }
 }
