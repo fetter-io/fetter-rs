@@ -265,7 +265,7 @@ enum Commands {
     /// Periodically scan system and post JSON output to a URL.
     MonitorScan {
         /// Set the period of scan in seconds.
-        #[arg(short, long, default_value = "120")]
+        #[arg(short, long, default_value = "0")]
         period: u64,
 
         /// Provide the URL to which to post results.

@@ -69,6 +69,20 @@ pub(crate) fn monitor_scan_loop(
     // we hold the owned previous ScanFS
     let sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
 
+    if period == 0 {
+        monitor_scan(
+            eps,
+            st,
+            sfs_prev_mutex,
+            client,
+            url_arc,
+            tenant_arc,
+            force_usite,
+            log,
+        );
+        return Ok(());
+    }
+
     let (tx, rx) = mpsc::channel();
 
     // spawn a single worker thread
@@ -106,7 +120,6 @@ pub(crate) fn monitor_scan_loop(
             // Ok
             logger!(log, module_path!(), "Queued a new scan.");
         }
-
         logger!(log, module_path!(), "Sleeping {:?}", period);
         thread::sleep(Duration::from_secs(period));
     }
