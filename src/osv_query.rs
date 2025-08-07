@@ -121,9 +121,7 @@ pub(crate) fn query_osv_batches(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::ureq_client::UreqClientMock;
-    // use crate::ureq_client::UreqClientLive;
 
     #[test]
     fn test_osv_querybatch_a() {

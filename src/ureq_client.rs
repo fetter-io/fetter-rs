@@ -23,12 +23,14 @@ impl UreqClient for UreqClientLive {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub struct UreqClientMock {
     pub mock_post: Option<String>,
     pub mock_get: Option<String>,
 }
 
+#[cfg(test)]
 impl UreqClient for UreqClientMock {
     fn post(&self, _url: &str, _body: &str) -> Result<String, ureq::Error> {
         match &self.mock_post {
