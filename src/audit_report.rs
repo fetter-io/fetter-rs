@@ -100,7 +100,7 @@ impl AuditReport {
     ) -> Self {
         if packages.is_empty() {
             let records: Vec<AuditRecord> = Vec::new();
-            return AuditReport { records }
+            return AuditReport { records };
         }
         let vulns: Vec<Option<Vec<String>>> = query_osv_batches(client.clone(), packages);
         logger!(log, module_path!(), "completed query_osv_batch");
@@ -202,8 +202,8 @@ mod tests {
     #[test]
     fn test_audit_report_b() {
         let client = Arc::new(UreqClientMock {
-            mock_post : Some(String::new()),
-            mock_get : Some(String::new()),
+            mock_post: Some(String::new()),
+            mock_get: Some(String::new()),
         });
 
         let packages: Vec<Package> = vec![];
