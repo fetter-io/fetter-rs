@@ -439,8 +439,8 @@ mod tests {
 
     #[test]
     fn test_dep_spec_a() {
-        let dm = DepManifest::try_from_iter(vec!["pk1>=0.2,<0.3", "pk2>=1,<3"].iter())
-            .unwrap();
+        let dm =
+            DepManifest::try_from_iter(["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info", None, None).unwrap();
         assert_eq!(dm.validate(&p1, false, None).0, true);

@@ -721,7 +721,7 @@ mod tests {
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
         let paths1 = get_site_package_dirs(p1, true, FlagLog(false));
-        assert_eq!(paths1.len() > 0, true);
+        assert!(paths1.len() > 0);
         let paths2 = get_site_package_dirs(p1, false, FlagLog(false));
         assert!(paths1.len() >= paths2.len());
     }
@@ -806,7 +806,7 @@ mod tests {
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
         let dm = DepManifest::try_from_iter(
-            vec!["numpy>1.19", "requests==0.7.6", "flask> 1"].iter(),
+            ["numpy>1.19", "requests==0.7.6", "flask> 1"].iter(),
         )
         .unwrap();
 
@@ -832,7 +832,7 @@ mod tests {
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
         let dm = DepManifest::try_from_iter(
-            vec!["numpy>1.19", "requests==0.7.6", "flask> 2"].iter(),
+            ["numpy>1.19", "requests==0.7.6", "flask> 2"].iter(),
         )
         .unwrap();
 
@@ -863,7 +863,7 @@ mod tests {
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
         let dm = DepManifest::try_from_iter(
-            vec!["numpy>2", "requests==0.7.1", "flask> 2,<3"].iter(),
+            ["numpy>2", "requests==0.7.1", "flask> 2,<3"].iter(),
         )
         .unwrap();
 
@@ -895,8 +895,7 @@ mod tests {
             Package::from_name_version_durl("requests", "0.7.6", None).unwrap(),
             Package::from_name_version_durl("flask", "1.1.3", None).unwrap(),
         ];
-        let dm =
-            DepManifest::try_from_iter(vec!["numpy>2", "flask> 2,<3"].iter()).unwrap();
+        let dm = DepManifest::try_from_iter(["numpy>2", "flask> 2,<3"].iter()).unwrap();
 
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
@@ -928,7 +927,7 @@ mod tests {
 
         // hyphen / underscore are normalized
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+            ["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
         )
         .unwrap();
         let vr = sfs.to_validation_report(
@@ -954,7 +953,7 @@ mod tests {
 
         // hyphen / underscore are normalized
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+            ["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
         )
         .unwrap();
         let vr = sfs.to_validation_report(
@@ -982,7 +981,7 @@ mod tests {
             Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
         ];
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-        let dm = DepManifest::try_from_iter(vec!["numpy==1.19.3"].iter()).unwrap();
+        let dm = DepManifest::try_from_iter(["numpy==1.19.3"].iter()).unwrap();
         let vr1 = sfs.to_validation_report(
             dm.clone(),
             ValidationFlags {
@@ -1022,7 +1021,7 @@ mod tests {
 
         // hyphen / underscore are normalized
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
+            ["numpy==1.19.3", "flask>1,<2", "static_frame==2.13.0"].iter(),
         )
         .unwrap();
         let vr1 = sfs.to_validation_report(
@@ -1072,7 +1071,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; platform_system == 'Darwin'",
                 "numpy==2.1; platform_system == 'Linux'",
                 "static_frame==2.13.0",
@@ -1106,7 +1105,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0",
             ]
@@ -1143,7 +1142,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0",
             ]
@@ -1177,7 +1176,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0; python_version >= '3.0'",
             ]
@@ -1211,7 +1210,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0; python_version >= '20.0'",
             ]
@@ -1248,7 +1247,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0; python_version >= '20.0'",
             ]
@@ -1285,7 +1284,7 @@ mod tests {
 
         // this DM means that we only need NumPy if Python < 3,
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.19.3; python_version < '3.0'",
                 "static_frame==2.13.0; python_version >= '20.0'",
             ]
@@ -1318,7 +1317,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==1.19.3; python_version > '3.0' and python_version < '20'",
                 "numpy==2.0; python_version < '3.0'",
@@ -1353,7 +1352,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==1.19.1; python_version > '3.0' and python_version < '20'",
                 "numpy==2.0; python_version < '3.0'",
@@ -1391,7 +1390,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==1.19.1; python_version > '3.0' and python_version < '20'",
                 "numpy==2.0; python_version < '3.0'",
@@ -1429,7 +1428,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==1.19.1; python_version > '3.0' and python_version < '20'",
                 "numpy==2.0; python_version < '3.0'",
@@ -1464,7 +1463,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==2.0; python_version < '3.0'",
                 "static_frame==2.13.0",
@@ -1501,7 +1500,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec![
+            [
                 "numpy==1.2; python_version > '20'",
                 "numpy==2.0; python_version < '3.0'",
                 "static_frame==2.13.0",
@@ -1535,7 +1534,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.2", "numpy==2.0", "static_frame==2.13.0"].iter(),
+            ["numpy==1.2", "numpy==2.0", "static_frame==2.13.0"].iter(),
         )
         .unwrap();
 
@@ -1564,7 +1563,7 @@ mod tests {
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.2", "numpy==2.0", "static_frame==2.13.0"].iter(),
+            ["numpy==1.2", "numpy==2.0", "static_frame==2.13.0"].iter(),
         )
         .unwrap();
 
@@ -1661,10 +1660,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
 
         // hyphen / underscore are normalized
-        let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.19.3", "static_frame>=2.13.0"].iter(),
-        )
-        .unwrap();
+        let dm =
+            DepManifest::try_from_iter(["numpy==1.19.3", "static_frame>=2.13.0"].iter())
+                .unwrap();
 
         let vr1 = sfs.to_validation_report(
             dm.clone(),
@@ -1709,7 +1707,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
         // hyphen / underscore are normalized
         let dm = DepManifest::try_from_iter(
-            vec!["numpy==1.19.3", "static_frame>=2.13.0", "pip==23.1.2"].iter(),
+            ["numpy==1.19.3", "static_frame>=2.13.0", "pip==23.1.2"].iter(),
         )
         .unwrap();
 

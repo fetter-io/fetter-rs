@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(path1.strong_count(), 2);
         assert_eq!(path2.strong_count(), 2);
 
-        let v = vec![path1.clone(), path1.clone(), path1.clone(), path2.clone()];
+        let v = [path1.clone(), path1.clone(), path1.clone(), path2.clone()];
 
         assert_eq!(map.len(), 2);
         assert_eq!(v.len(), 4);

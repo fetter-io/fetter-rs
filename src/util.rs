@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn test_path_normalize_a() {
         let p1 = Path::new("~/foo/bar");
-        let p2 = path_normalize(&p1, false).unwrap();
+        let p2 = path_normalize(p1, false).unwrap();
         let home = path_home().unwrap();
         assert!(p2.starts_with(home));
     }
@@ -457,7 +457,7 @@ mod tests {
             Component::Normal(name) => name == IO_FETTER,
             _ => false,
         });
-        assert_eq!(result, true);
+        assert!(result);
     }
 
     #[test]
