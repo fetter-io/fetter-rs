@@ -174,31 +174,20 @@ mod tests {
         {"url": "ssh://git@github.com/uqfoundation/dill.git", "vcs_info": {"commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5", "revision": "0.3.8", "vcs": "git"}}
         "#;
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
-        assert_eq!(
-            durl.validate(
-                &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.8".to_string()
-            ),
-            true
-        );
-        assert_eq!(
-            durl.validate(
-                &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.7".to_string()
-            ),
-            false
-        );
-        assert_eq!(
-            durl.validate(
-                &"git+ssh://github.com/uqfoundation/dill.git@0.3.8".to_string()
-            ),
-            true
-        );
-        assert_eq!(
+        assert!(durl.validate(
+            &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.8".to_string()
+        ),);
+        assert!(!durl.validate(
+            &"git+ssh://git@github.com/uqfoundation/dill.git@0.3.7".to_string()
+        ),);
+        assert!(durl
+            .validate(&"git+ssh://github.com/uqfoundation/dill.git@0.3.8".to_string()),);
+        assert!(
             durl.validate(&"git+ssh://github.com/uqfoundation/dill.git@a0a8e86976708d0436eec5c8f7d25329da727cb5".to_string()),
-            true
         );
-        assert_eq!(
-            durl.validate(&"git+ssh://github.com/uqfoundation/dill.git@a0a8e86976708d0436e5c8f7d25329da727cb5".to_string()),
-            false
+        assert!(
+            !durl.validate(&"git+ssh://github.com/uqfoundation/dill.git@a0a8e86976708d0436e5c8f7d25329da727cb5".to_string()),
+
         );
     }
 }

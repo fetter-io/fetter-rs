@@ -379,7 +379,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     #[test]
@@ -396,7 +396,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, true);
+        assert!(result);
     }
 
     #[test]
@@ -413,7 +413,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, true);
+        assert!(result);
     }
 
     #[test]
@@ -444,7 +444,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, true);
+        assert!(result);
     }
 
     #[test]
@@ -458,7 +458,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     #[test]
@@ -477,7 +477,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, true);
+        assert!(result);
     }
 
     #[test]
@@ -496,7 +496,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     #[test]
@@ -513,7 +513,7 @@ mod tests {
 
         let tokens = bexp_tokenize(expression);
         let result = bexp_eval(&tokens, &lookup);
-        assert_eq!(result, false);
+        assert!(!result);
     }
 
     //--------------------------------------------------------------------------
@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn test_emv_a() {
         let emv = EnvMarkerState::from_exe(&PathBuf::from("python3"));
-        assert_eq!(emv.is_ok(), true);
+        assert!(emv.is_ok());
     }
 
     fn get_ems_darwin() -> EnvMarkerState {
@@ -535,44 +535,44 @@ mod tests {
     fn test_emv_eval_a1() {
         let emv = get_ems_darwin();
         let eme1 = EnvMarkerExpr::new("python_version", "<", "3.9");
-        assert_eq!(emv.eval(&eme1).unwrap(), false);
+        assert!(!emv.eval(&eme1).unwrap());
         let eme2 = EnvMarkerExpr::new("python_version", ">=", "3.13");
-        assert_eq!(emv.eval(&eme2).unwrap(), true);
+        assert!(emv.eval(&eme2).unwrap());
         let eme3 = EnvMarkerExpr::new("python_version", ">", "3.12");
-        assert_eq!(emv.eval(&eme3).unwrap(), true);
+        assert!(emv.eval(&eme3).unwrap());
     }
 
     #[test]
     fn test_emv_eval_a2() {
         let emv = get_ems_darwin();
         let eme1 = EnvMarkerExpr::new("python_full_version", ">", "3.13.0");
-        assert_eq!(emv.eval(&eme1).unwrap(), true);
+        assert!(emv.eval(&eme1).unwrap());
         let eme2 = EnvMarkerExpr::new("python_full_version", ">=", "3.13.3");
-        assert_eq!(emv.eval(&eme2).unwrap(), false);
+        assert!(!emv.eval(&eme2).unwrap());
         let eme3 = EnvMarkerExpr::new("python_full_version", "==", "3.13.*");
-        assert_eq!(emv.eval(&eme3).unwrap(), true);
+        assert!(emv.eval(&eme3).unwrap());
     }
 
     #[test]
     fn test_emv_eval_b() {
         let emv = get_ems_darwin();
         let eme1 = EnvMarkerExpr::new("platform_machine", "in", "arm64");
-        assert_eq!(emv.eval(&eme1).unwrap(), true);
+        assert!(emv.eval(&eme1).unwrap());
         let eme2 = EnvMarkerExpr::new("platform_machine", "==", "arm64");
-        assert_eq!(emv.eval(&eme2).unwrap(), true);
+        assert!(emv.eval(&eme2).unwrap());
         let eme3 = EnvMarkerExpr::new("platform_machine", "not in", "unarm64");
-        assert_eq!(emv.eval(&eme3).unwrap(), false);
+        assert!(!emv.eval(&eme3).unwrap());
     }
 
     #[test]
     fn test_emv_eval_c() {
         let emv = get_ems_darwin();
         let eme1 = EnvMarkerExpr::new("os_name", "in", "posix");
-        assert_eq!(emv.eval(&eme1).unwrap(), true);
+        assert!(emv.eval(&eme1).unwrap());
         let eme2 = EnvMarkerExpr::new("os_name", "==", "posix");
-        assert_eq!(emv.eval(&eme2).unwrap(), true);
+        assert!(emv.eval(&eme2).unwrap());
         let eme3 = EnvMarkerExpr::new("os_name", "!=", "nt");
-        assert_eq!(emv.eval(&eme3).unwrap(), true);
+        assert!(emv.eval(&eme3).unwrap());
     }
 
     //--------------------------------------------------------------------------
@@ -580,30 +580,21 @@ mod tests {
     fn test_marker_eval_a1() {
         let ds = DepSpec::from_string("foo >= 3.4 ;(python_version > '2.0' and python_version < '2.7.9') or python_version >= '3.0'").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_a2() {
         let ds = DepSpec::from_string("foo >= 3.4 ;(python_version > '2.0' and python_version < '2.7.9') or python_version >= '3.15'").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            false
-        )
+        assert!(!marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_a3() {
         let ds = DepSpec::from_string("foo >= 3.4 ;(python_version > '2.0' and python_version < '2.7.9') or python_version < '3.5' or python_version >= '3.13'").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
@@ -613,59 +604,41 @@ mod tests {
         )
         .unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_b2() {
         let ds = DepSpec::from_string("foo >= 3.4;   sys_platform == 'darwin' and platform_machine == 'arm64' and   platform_system   == 'foo' ").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            false
-        )
+        assert!(!marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_b3() {
         let ds = DepSpec::from_string("foo >= 3.4;   sys_platform == 'darwin' and platform_machine == 'arm64' and   platform_system   == 'Darwin' ").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_c1() {
         let ds = DepSpec::from_string("foo >= 3.4;   os_name == 'posix' and platform_python_implementation == 'CPython' and   platform_release  == '23.*' ").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_c2() {
         let ds = DepSpec::from_string("foo >= 3.4;   os_name == 'posix' and platform_python_implementation == 'foo' and   platform_release  == '23.*' ").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            false
-        )
+        assert!(!marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 
     #[test]
     fn test_marker_eval_c3() {
         let ds = DepSpec::from_string("foo >= 3.4;   os_name == 'posix' and platform_python_implementation == 'CPython' and  implementation_name  == 'cpython' ").unwrap();
         let ems = get_ems_darwin();
-        assert_eq!(
-            marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),
-            true
-        )
+        assert!(marker_eval(&ds.env_marker, &ds.env_marker_expr.unwrap(), &ems).unwrap(),)
     }
 }

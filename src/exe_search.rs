@@ -157,13 +157,13 @@ mod tests {
     #[test]
     fn test_get_search_exclude_paths_a() {
         let post = get_search_exclude_paths();
-        assert_eq!(post.len() > 2, true);
+        assert!(post.len() > 2);
     }
 
     #[test]
     fn test_get_search_origins_a() {
         let post = get_search_origins();
-        assert_eq!(post.len() > 6, true);
+        assert!(post.len() > 6);
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod tests {
         let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
         perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
         fs::set_permissions(fp.clone(), perms).unwrap();
-        assert_eq!(is_python_exe(&fp), false);
+        assert!(!is_python_exe(&fp));
     }
 
     #[test]
@@ -185,7 +185,7 @@ mod tests {
         let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
         perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
         fs::set_permissions(fp.clone(), perms).unwrap();
-        assert_eq!(is_python_exe(&fp), true);
+        assert!(is_python_exe(&fp));
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod tests {
         let mut perms = fs::metadata(fp.clone()).unwrap().permissions();
         perms.set_mode(0o755); // rwxr-xr-x (755) for an executable script
         fs::set_permissions(fp.clone(), perms).unwrap();
-        assert_eq!(is_python_exe(&fp), true);
+        assert!(is_python_exe(&fp));
     }
 
     #[test]
@@ -206,8 +206,8 @@ mod tests {
         let _ = File::create(fp1.clone()).unwrap();
         let fp2 = temp_dir.path().join("link.txt");
         let _ = symlink(fp1.clone(), fp2.clone());
-        assert_eq!(is_symlink(&fp1), false);
-        assert_eq!(is_symlink(&fp2), true);
+        assert!(!is_symlink(&fp1));
+        assert!(is_symlink(&fp2));
     }
 
     #[test]
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let fp_found: PathBuf = result.pop().unwrap();
-        let pcv = fp_found.into_iter().rev().take(2).collect::<Vec<_>>();
+        let pcv = fp_found.iter().rev().take(2).collect::<Vec<_>>();
         let pcp = pcv.iter().rev().collect::<PathBuf>();
         assert_eq!(pcp, PathBuf::from("bin/python3"));
     }

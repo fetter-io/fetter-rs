@@ -107,7 +107,6 @@ impl Hash for PathShared {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
     use std::collections::HashMap;
 
     #[test]
@@ -132,7 +131,7 @@ mod tests {
     #[test]
     fn test_b() {
         let path1 = PathShared::from("/home/user1");
-        assert_eq!(format!("{}", path1.to_string()), "/home/user1");
+        assert_eq!(format!("{}", path1), "/home/user1");
     }
 
     #[test]

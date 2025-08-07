@@ -240,7 +240,6 @@ impl Eq for VersionSpec {}
 mod tests {
 
     use super::*;
-    use serde_json;
 
     #[test]
     fn test_version_spec_a() {
@@ -256,8 +255,8 @@ mod tests {
     #[test]
     fn test_version_spec_c() {
         // NOTE: not sure these falses are what we want
-        assert!(!(VersionSpec::new("2.*") > VersionSpec::new("2.2.1")),);
-        assert!(!(VersionSpec::new("2.2") > VersionSpec::new("2.*")),);
+        assert!(VersionSpec::new("2.*") <= VersionSpec::new("2.2.1"));
+        assert!(VersionSpec::new("2.2") <= VersionSpec::new("2.*"));
     }
     #[test]
     fn test_version_spec_d() {
@@ -269,7 +268,7 @@ mod tests {
     fn test_version_spec_e() {
         assert!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7"));
         assert!(VersionSpec::new("1.7.1") < VersionSpec::new("1.8"));
-        assert!(!(VersionSpec::new("1.7.0.post1") > VersionSpec::new("1.7")));
+        assert!(VersionSpec::new("1.7.0.post1") <= VersionSpec::new("1.7"));
         assert!(VersionSpec::new("1.7.1") > VersionSpec::new("1.7.post1"));
         // this is supposed to be true: >1.7.post2 will allow 1.7.1 and 1.7.0.post3 but not 1.7.0.
         // assert_eq!(VersionSpec::new("1.7.0") > VersionSpec::new("1.7.post1"), false);

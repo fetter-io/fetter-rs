@@ -517,77 +517,68 @@ mod tests {
         let input = "package>0.2,<2.0";
         let ds1 = DepSpec::from_string(input).unwrap();
         assert_eq!(ds1.name, "package");
-        assert_eq!(ds1.validate_version(&VersionSpec::new("0.3")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("0.2")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("0.2.1")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.2")), false);
+        assert!(ds1.validate_version(&VersionSpec::new("0.3")));
+        assert!(!ds1.validate_version(&VersionSpec::new("0.2")));
+        assert!(ds1.validate_version(&VersionSpec::new("0.2.1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.2")));
     }
     #[test]
     fn test_dep_spec_validate_version_b() {
         let input = "package>0.2,<2.0";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0.0")), false);
-        assert_eq!(
-            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
-            true
-        );
+        assert!(!ds1.validate_version(&VersionSpec::new("2.0.1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.0.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.9.99.99999")));
     }
     #[test]
     fn test_dep_spec_validate_version_c() {
         let input = "package>=2.0,<=3.0";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.0")), true);
-        assert_eq!(
-            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
-            false
-        );
-        assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("2.0")));
+        assert!(!ds1.validate_version(&VersionSpec::new("1.9.99.99999")),);
+        assert!(ds1.validate_version(&VersionSpec::new("3.0")));
     }
     #[test]
     fn test_dep_spec_validate_version_d() {
         let input = "package==2.*";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.4")), true);
-        assert_eq!(
-            ds1.validate_version(&VersionSpec::new("1.9.99.99999")),
-            false
-        );
-        assert_eq!(ds1.validate_version(&VersionSpec::new("3.0")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.3")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("2.4")));
+        assert!(!ds1.validate_version(&VersionSpec::new("1.9.99.99999")),);
+        assert!(!ds1.validate_version(&VersionSpec::new("3.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("2.3")));
     }
     #[test]
     fn test_dep_spec_validate_version_e() {
         let input =
             "requests [security,tests] >= 2.8.1, == 2.8.*, < 3; python_version < '2.7'";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.1")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.2.1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.0")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.8.99")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("2.8.1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.2.1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.8.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("2.8.99")));
     }
     #[test]
     fn test_dep_spec_validate_version_f() {
         let input = "name>=3,<2";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("3")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("4")), false);
+        assert!(!ds1.validate_version(&VersionSpec::new("2")));
+        assert!(!ds1.validate_version(&VersionSpec::new("3")));
+        assert!(!ds1.validate_version(&VersionSpec::new("4")));
     }
     #[test]
     fn test_dep_spec_validate_version_g() {
         let input = "name==1.1.post1";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
+        assert!(!ds1.validate_version(&VersionSpec::new("1.1")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1.post1")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1.*")));
     }
     #[test]
     fn test_dep_spec_validate_version_h() {
         let input = "name==1.1a1";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), true);
+        assert!(!ds1.validate_version(&VersionSpec::new("1.1")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1a1")));
         // this is supposed to match...
         // assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
     }
@@ -595,144 +586,144 @@ mod tests {
     fn test_dep_spec_validate_version_i() {
         let input = "name==1.1";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.0.0")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.dev1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1a1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.post1")), false);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.1.*")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("1.1")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1.0.0")));
+        assert!(!ds1.validate_version(&VersionSpec::new("1.1.dev1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("1.1a1")));
+        assert!(!ds1.validate_version(&VersionSpec::new("1.1.post1")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.1.*")));
     }
     #[test]
     fn test_dep_spec_validate_version_j1() {
         let input = "name===12";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("12")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("12")));
     }
     #[test]
     fn test_dep_spec_validate_version_j2() {
         let input = "name===12++";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("12++")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("12++")));
     }
     #[test]
     fn test_dep_spec_validate_version_k() {
         let input = "name";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("foo++")), true);
+        assert!(ds1.validate_version(&VersionSpec::new("foo++")));
     }
     #[test]
     fn test_dep_spec_validate_version_l1() {
         let input = "name==1.*,<1.10";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
+        assert!(ds1.validate_version(&VersionSpec::new("1.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.9")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.1")));
     }
     #[test]
     fn test_dep_spec_validate_version_l2() {
         let input = "name<1.10,==1.*";
         let ds1 = DepSpec::from_string(input).unwrap();
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.0")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("1.9")), true);
-        assert_eq!(ds1.validate_version(&VersionSpec::new("2.1")), false);
+        assert!(ds1.validate_version(&VersionSpec::new("1.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("1.9")));
+        assert!(!ds1.validate_version(&VersionSpec::new("2.1")));
     }
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_package_a() {
         let p1 = Package::from_name_version_durl("package", "1.0", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
-        assert_eq!(ds1.validate_package(&p1), true);
+        assert!(ds1.validate_package(&p1));
     }
     #[test]
     fn test_dep_spec_validate_package_b() {
         let p1 = Package::from_name_version_durl("package", "1.5", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5").unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
     }
     #[test]
     fn test_dep_spec_validate_package_c() {
         let p1 = Package::from_name_version_durl("package", "1.0", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
     }
     #[test]
     fn test_dep_spec_validate_package_d() {
         let p1 = Package::from_name_version_durl("package", "1.0.0.0.1", None).unwrap();
         let ds1 = DepSpec::from_string("package>0.5,<1.5,!=1.0").unwrap();
-        assert_eq!(ds1.validate_package(&p1), true);
+        assert!(ds1.validate_package(&p1));
     }
     #[test]
     fn test_dep_spec_validate_package_e1() {
         let ds1 = DepSpec::from_string("package~=1.0").unwrap();
         let p1 = Package::from_name_version_durl("package", "1.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), true);
+        assert!(ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "0.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), false);
+        assert!(!ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "2.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), false);
+        assert!(!ds1.validate_package(&p3));
     }
     #[test]
     fn test_dep_spec_validate_package_e2() {
         let ds1 = DepSpec::from_string("package~=5.2.0").unwrap();
         let p1 = Package::from_name_version_durl("package", "5.2.8", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), true);
+        assert!(ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "5.3", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), false);
+        assert!(!ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "4.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), false);
+        assert!(!ds1.validate_package(&p3));
     }
     #[test]
     fn test_dep_spec_validate_package_e3() {
         let ds1 = DepSpec::from_string("package~=5.2.4.6").unwrap();
         let p1 = Package::from_name_version_durl("package", "5.2.4.6", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), true);
+        assert!(ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "5.2.4.8", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), true);
+        assert!(ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "5.2.5", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), false);
+        assert!(!ds1.validate_package(&p3));
     }
     #[test]
     fn test_dep_spec_validate_package_f1() {
         let ds1 = DepSpec::from_string("package~2.3").unwrap();
         let p1 = Package::from_name_version_durl("package", "1.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "2.3.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), true);
+        assert!(ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "2.4", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), false);
+        assert!(!ds1.validate_package(&p3));
     }
     #[test]
     fn test_dep_spec_validate_package_f2() {
         let ds1 = DepSpec::from_string("package~2").unwrap();
         let p1 = Package::from_name_version_durl("package", "1.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "2.3.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), true);
+        assert!(ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "2.4", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), true);
+        assert!(ds1.validate_package(&p3));
     }
     #[test]
     fn test_dep_spec_validate_package_g1() {
         let ds1 = DepSpec::from_string("package^2.3").unwrap();
         let p1 = Package::from_name_version_durl("package", "1.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "2.3.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), true);
+        assert!(ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "2.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), true);
+        assert!(ds1.validate_package(&p3));
         let p4 = Package::from_name_version_durl("package", "3.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p4), false);
+        assert!(!ds1.validate_package(&p4));
     }
     #[test]
     fn test_dep_spec_validate_package_g2() {
         let ds1 = DepSpec::from_string("package^0.2.3").unwrap();
         let p1 = Package::from_name_version_durl("package", "1.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p1), false);
+        assert!(!ds1.validate_package(&p1));
         let p2 = Package::from_name_version_durl("package", "0.3.1", None).unwrap();
-        assert_eq!(ds1.validate_package(&p2), false);
+        assert!(!ds1.validate_package(&p2));
         let p3 = Package::from_name_version_durl("package", "0.2.9", None).unwrap();
-        assert_eq!(ds1.validate_package(&p3), true);
+        assert!(ds1.validate_package(&p3));
     }
 
     //--------------------------------------------------------------------------
@@ -1004,7 +995,7 @@ mod tests {
         let ds1 = DepSpec::from_string(input).unwrap();
 
         let em = get_ems_darwin();
-        assert_eq!(ds1.validate_env_marker(&em), true);
+        assert!(ds1.validate_env_marker(&em));
     }
 
     #[test]
@@ -1013,6 +1004,6 @@ mod tests {
         let ds1 = DepSpec::from_string(input).unwrap();
 
         let em = get_ems_darwin();
-        assert_eq!(ds1.validate_env_marker(&em), false);
+        assert!(!ds1.validate_env_marker(&em));
     }
 }

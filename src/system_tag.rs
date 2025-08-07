@@ -109,7 +109,6 @@ impl SystemTag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
 
     #[test]
     fn test_system_tag_json_a() {

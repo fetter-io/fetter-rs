@@ -443,16 +443,16 @@ mod tests {
             DepManifest::try_from_iter(["pk1>=0.2,<0.3", "pk2>=1,<3"].iter()).unwrap();
 
         let p1 = Package::from_dist_info("pk2-2.0.dist-info", None, None).unwrap();
-        assert_eq!(dm.validate(&p1, false, None).0, true);
+        assert!(dm.validate(&p1, false, None).0);
 
         let p2 = Package::from_dist_info("foo-2.0.dist-info", None, None).unwrap();
-        assert_eq!(dm.validate(&p2, false, None).0, false);
+        assert!(!dm.validate(&p2, false, None).0);
 
         let p3 = Package::from_dist_info("pk1-0.2.5.dist-info", None, None).unwrap();
-        assert_eq!(dm.validate(&p3, false, None).0, true);
+        assert!(dm.validate(&p3, false, None).0);
 
         let p3 = Package::from_dist_info("pk1-0.3.0.dist-info", None, None).unwrap();
-        assert_eq!(dm.validate(&p3, false, None).0, false);
+        assert!(!dm.validate(&p3, false, None).0);
     }
 
     //--------------------------------------------------------------------------
@@ -475,7 +475,7 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "# comment").unwrap();
         writeln!(file, "pk1>=0.2,  <0.3    ").unwrap();
-        writeln!(file, "").unwrap();
+        writeln!(file).unwrap();
         writeln!(file, "pk2>=1,<3").unwrap();
         writeln!(file, "# ").unwrap();
 
@@ -483,14 +483,14 @@ mod tests {
         assert_eq!(dep_manifest.len(), 2);
 
         let p1 = Package::from_name_version_durl("pk2", "2.1", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p1, false, None).0, true);
+        assert!(dep_manifest.validate(&p1, false, None).0);
         let p2 = Package::from_name_version_durl("pk2", "0.1", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p2, false, None).0, false);
+        assert!(!dep_manifest.validate(&p2, false, None).0);
         let p3 = Package::from_name_version_durl("pk1", "0.2.2.999", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p3, false, None).0, true);
+        assert!(dep_manifest.validate(&p3, false, None).0);
 
         let p4 = Package::from_name_version_durl("pk99", "0.2.2.999", None).unwrap();
-        assert_eq!(dep_manifest.validate(&p4, false, None).0, false);
+        assert!(!dep_manifest.validate(&p4, false, None).0);
     }
 
     #[test]
@@ -523,13 +523,13 @@ tomlkit==0.12.4
         let dm1 = DepManifest::from_requirements_file(&file_path).unwrap();
         assert_eq!(dm1.len(), 7);
         let p1 = Package::from_name_version_durl("termcolor", "2.2.0", None).unwrap();
-        assert_eq!(dm1.validate(&p1, false, None).0, true);
+        assert!(dm1.validate(&p1, false, None).0);
         let p2 = Package::from_name_version_durl("termcolor", "2.2.1", None).unwrap();
-        assert_eq!(dm1.validate(&p2, false, None).0, false);
+        assert!(!dm1.validate(&p2, false, None).0);
         let p3 = Package::from_name_version_durl("text-unicide", "1.3", None).unwrap();
-        assert_eq!(dm1.validate(&p3, false, None).0, false);
+        assert!(!dm1.validate(&p3, false, None).0);
         let p3 = Package::from_name_version_durl("text-unidecode", "1.3", None).unwrap();
-        assert_eq!(dm1.validate(&p3, false, None).0, true);
+        assert!(dm1.validate(&p3, false, None).0);
     }
 
     #[test]
@@ -576,21 +576,21 @@ opentelemetry-semantic-conventions==0.45b0
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p1, false, None).0, true);
+        assert!(dm1.validate(&p1, false, None).0);
         let p2 = Package::from_name_version_durl(
             "opentelemetry-exporter-otlp-proto-grpc",
             "1.24.1",
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p2, false, None).0, false);
+        assert!(!dm1.validate(&p2, false, None).0);
         let p3 = Package::from_name_version_durl(
             "opentelemetry-exporter-otlp-proto-gpc",
             "1.24.0",
             None,
         )
         .unwrap();
-        assert_eq!(dm1.validate(&p3, false, None).0, false);
+        assert!(!dm1.validate(&p3, false, None).0);
     }
 
     #[test]
@@ -623,11 +623,11 @@ regex==2024.4.16
         let dm1 = DepManifest::from_requirements_file(&file_path).unwrap();
         assert_eq!(dm1.len(), 9);
         let p1 = Package::from_name_version_durl("regex", "2024.4.16", None).unwrap();
-        assert_eq!(dm1.validate(&p1, false, None).0, true);
+        assert!(dm1.validate(&p1, false, None).0);
         let p2 = Package::from_name_version_durl("regex", "2024.04.16", None).unwrap();
-        assert_eq!(dm1.validate(&p2, false, None).0, true);
+        assert!(dm1.validate(&p2, false, None).0);
         let p2 = Package::from_name_version_durl("regex", "2024.04.17", None).unwrap();
-        assert_eq!(dm1.validate(&p2, false, None).0, false);
+        assert!(!dm1.validate(&p2, false, None).0);
     }
 
     #[test]
@@ -1413,12 +1413,12 @@ setuptools = { version = ">=60", python = "<3.10" }
 "#;
 
         let bo = vec!["dev".to_string()];
-        let dm1 = DepManifest::from_pyproject(&content, Some(&bo)).unwrap();
+        let dm1 = DepManifest::from_pyproject(content, Some(&bo)).unwrap();
         assert_eq!(
             dm1.keys(),
             vec!["django", "gidgethub", "httpx", "pre_commit", "setuptools"]
         );
-        let dm2 = DepManifest::from_pyproject(&content, None).unwrap();
+        let dm2 = DepManifest::from_pyproject(content, None).unwrap();
         assert_eq!(dm2.keys(), vec!["django", "gidgethub", "httpx"]);
     }
 
@@ -1543,7 +1543,7 @@ numpy>= 2.0
         // ds1 has no version information, while p1 does: meaning version passes
         // ds1 has url of git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
         // DirectURL: git+https://github.com/pypa/packaging.git@cf2cbe2aec28f87c6228a6fb136c27931c9af407
-        assert_eq!(dm1.validate(&p1, false, None).0, true);
+        assert!(dm1.validate(&p1, false, None).0);
     }
 
     #[test]
@@ -1568,8 +1568,8 @@ numpy>= 2.0
             ds1,
         ];
         let dm1 = DepManifest::from_dep_specs(&specs).unwrap();
-        assert_eq!(dm1.env_marker_active, false);
-        assert_eq!(dm1.validate(&p1, false, None).0, true);
+        assert!(!dm1.env_marker_active);
+        assert!(dm1.validate(&p1, false, None).0);
     }
 
     //--------------------------------------------------------------------------
@@ -1592,8 +1592,8 @@ dependencies = [
         let file_path = dir.path().join("pyproject.toml");
         let mut file = File::create(&file_path).unwrap();
         write!(file, "{}", content).unwrap();
-        let dm = DepManifest::from_dir(&dir.path(), None).unwrap();
-        assert_eq!(dm.env_marker_active, true);
+        let dm = DepManifest::from_dir(dir.path(), None).unwrap();
+        assert!(dm.env_marker_active);
         assert_eq!(dm.keys(), vec!["django", "gidgethub", "httpx"]);
     }
 
@@ -1633,7 +1633,7 @@ pyzmq==26.0.0
         let mut file2 = File::create(&fp2).unwrap();
         write!(file2, "{}", content2).unwrap();
 
-        let dm = DepManifest::from_dir(&dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None);
         assert_eq!(
             dm.unwrap().keys(),
             vec!["python_slugify", "pytz", "pytzdata", "pyyaml", "pyzmq"]
@@ -1676,7 +1676,7 @@ pyzmq==26.0.0
         let mut file2 = File::create(&fp2).unwrap();
         write!(file2, "{}", content2).unwrap();
 
-        let dm = DepManifest::from_dir(&dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None);
         assert_eq!(
             dm.unwrap().keys(),
             vec!["python_slugify", "pytz", "pytzdata", "pyyaml", "pyzmq"]
@@ -1747,7 +1747,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/6c/89/1d8b77225282b1a37
         let mut file3 = File::create(&fp3).unwrap();
         write!(file3, "{}", content3).unwrap();
 
-        let dm = DepManifest::from_dir(&dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None);
         assert_eq!(dm.unwrap().keys(), vec!["arraykit", "arraymap"]);
     }
 
@@ -1815,7 +1815,7 @@ groups = ["main"]
         let mut file3 = File::create(&fp3).unwrap();
         write!(file3, "{}", content3).unwrap();
 
-        let dm = DepManifest::from_dir(&dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None);
         assert_eq!(dm.unwrap().keys(), vec!["certifi", "charset_normalizer"]);
     }
 }

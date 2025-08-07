@@ -721,7 +721,7 @@ mod tests {
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
         let paths1 = get_site_package_dirs(p1, true, FlagLog(false));
-        assert!(paths1.len() > 0);
+        assert!(!paths1.is_empty());
         let paths2 = get_site_package_dirs(p1, false, FlagLog(false));
         assert!(paths1.len() >= paths2.len());
     }

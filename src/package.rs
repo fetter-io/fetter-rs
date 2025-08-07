@@ -182,10 +182,10 @@ mod tests {
         let p3 =
             Package::from_dist_info("xarray-2024.6.0.dist-info", None, None).unwrap();
 
-        assert_eq!(p2 > p1, true);
-        assert_eq!(p1 < p2, true);
-        assert_eq!(p1 == p3, false);
-        assert_eq!(p2 == p3, true);
+        assert!(p2 > p1);
+        assert!(p1 < p2);
+        assert!(p1 != p3);
+        assert!(p2 == p3);
     }
     #[test]
     fn test_package_to_string_a() {
