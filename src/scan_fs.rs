@@ -41,6 +41,7 @@ use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
+use crate::util::vecs_equal_as_sets;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
 
@@ -120,7 +121,7 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 
 // The result of a file-system scan.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ScanFS {
     // NOTE: these attributes are used by reporters
     /// A mapping of exe path to site packages paths
@@ -137,6 +138,46 @@ pub struct ScanFS {
     /// Store the hash of the un-normalized exe inputs for cache lookup.
     exes_hash: String,
 }
+
+impl PartialEq for ScanFS {
+    fn eq(&self, other: &Self) -> bool {
+        if self.force_usite != other.force_usite || self.exes_hash != other.exes_hash {
+            return false;
+        }
+        if self.exe_to_ems != other.exe_to_ems {
+            return false;
+        }
+        if self.site_to_exe != other.site_to_exe {
+            return false;
+        }
+        if self.exe_to_sites.len() != other.exe_to_sites.len() {
+            return false;
+        }
+        for (key, vec1) in &self.exe_to_sites {
+            if let Some(vec2) = other.exe_to_sites.get(key) {
+                if !vecs_equal_as_sets(vec1, vec2) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        if self.package_to_sites.len() != other.package_to_sites.len() {
+            return false;
+        }
+        for (key, vec1) in &self.package_to_sites {
+            if let Some(vec2) = other.package_to_sites.get(key) {
+                if !vecs_equal_as_sets(vec1, vec2) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 
 struct PathIndexer {
     path_to_index: HashMap<PathBuf, usize>,

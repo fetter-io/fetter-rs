@@ -16,6 +16,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml::Value as TomlValue;
+use std::collections::HashSet;
 
 //------------------------------------------------------------------------------
 
@@ -137,6 +138,15 @@ pub(crate) fn get_writer(stderr: bool) -> StdWriter {
 }
 
 //------------------------------------------------------------------------------
+
+pub fn vecs_equal_as_sets<T: Eq + std::hash::Hash>(vec1: &[T], vec2: &[T]) -> bool {
+    if vec1.len() != vec2.len() {
+        return false;
+    }
+    let set1: HashSet<_> = vec1.iter().collect();
+    let set2: HashSet<_> = vec2.iter().collect();
+    set1 == set2
+}
 
 // Normalize all names
 pub(crate) fn name_to_key(name: &str) -> String {
