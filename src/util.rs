@@ -1,5 +1,6 @@
 use crate::write_color::write_color;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -16,7 +17,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml::Value as TomlValue;
-use std::collections::HashSet;
 
 //------------------------------------------------------------------------------
 

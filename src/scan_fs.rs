@@ -37,11 +37,11 @@ use crate::util::path_cache;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
+use crate::util::vecs_equal_as_sets;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;
-use crate::util::vecs_equal_as_sets;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
 
@@ -177,7 +177,6 @@ impl PartialEq for ScanFS {
         true
     }
 }
-
 
 struct PathIndexer {
     path_to_index: HashMap<PathBuf, usize>,
