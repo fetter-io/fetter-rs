@@ -1928,8 +1928,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
             .insert(pkg_requests.clone(), vec![site2.clone().into()]);
 
         // Populate site_to_exe
-        let exes1 =  vec![PathShared::from(exe1.to_path_buf())];
-        let exes2 =  vec![PathShared::from(exe2.to_path_buf())];
+        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
+        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
         sfs.site_to_exe.insert(site1.clone().into(), exes1);
         sfs.site_to_exe.insert(site2.clone().into(), exes2);
 
@@ -1952,8 +1952,14 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         assert_eq!(numpy_sites.len(), 2);
 
         // Check site_to_exe mapping
-        assert_eq!(sfsd.site_to_exe.get(&site1.into()).and_then(|v| v.first()), Some(PathShared::from(&exe1)).as_ref());
-        assert_eq!(sfsd.site_to_exe.get(&site2.into()).and_then(|v| v.first()), Some(PathShared::from(&exe2)).as_ref());
+        assert_eq!(
+            sfsd.site_to_exe.get(&site1.into()).and_then(|v| v.first()),
+            Some(PathShared::from(&exe1)).as_ref()
+        );
+        assert_eq!(
+            sfsd.site_to_exe.get(&site2.into()).and_then(|v| v.first()),
+            Some(PathShared::from(&exe2)).as_ref()
+        );
     }
 
     #[test]
@@ -2011,8 +2017,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         package_to_sites.insert(p3, vec![site_shared1.clone(), site_shared2.clone()]);
 
         let mut site_to_exe: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
-        let exes1 =  vec![PathShared::from(exe1.to_path_buf())];
-        let exes2 =  vec![PathShared::from(exe2.to_path_buf())];
+        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
+        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
         site_to_exe.insert(site_shared1.clone(), exes1);
         site_to_exe.insert(site_shared2.clone(), exes2);
 

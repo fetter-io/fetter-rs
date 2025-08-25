@@ -66,7 +66,6 @@ impl From<&PathBuf> for PathShared {
 //     }
 // }
 
-
 impl AsRef<Path> for PathShared {
     fn as_ref(&self) -> &Path {
         self.as_path()
