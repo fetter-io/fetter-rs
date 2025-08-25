@@ -389,7 +389,10 @@ impl ScanFS {
         for (exe, sites) in &exe_to_sites {
             let e: PathShared = PathShared::from(exe.clone()); // TODO: exe better as PathShared
             for site in sites {
-                site_to_exes.entry(site.clone()).or_default().push(e.clone());
+                site_to_exes
+                    .entry(site.clone())
+                    .or_default()
+                    .push(e.clone());
             }
         }
 
@@ -494,7 +497,10 @@ impl ScanFS {
         for (exe, sites) in &exe_to_sites {
             let e: PathShared = PathShared::from(exe.clone()); // TODO: exe better as PathShared
             for site in sites {
-                site_to_exes.entry(site.clone()).or_default().push(e.clone());
+                site_to_exes
+                    .entry(site.clone())
+                    .or_default()
+                    .push(e.clone());
             }
         }
 
