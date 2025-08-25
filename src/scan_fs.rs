@@ -128,9 +128,9 @@ pub struct ScanFS {
     pub exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
     /// A mapping of Package tp a site package paths
     pub package_to_sites: HashMap<Package, Vec<PathShared>>,
+
     // A mapping of site package to exe paths
     pub site_to_exe: HashMap<PathShared, Vec<PathShared>>,
-
     /// Optionally populate EnvMarkerState for all exe, only if env markers are found
     pub exe_to_ems: Option<HashMap<PathBuf, EnvMarkerState>>,
     /// Optionally force usage of user site
