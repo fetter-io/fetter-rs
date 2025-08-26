@@ -63,18 +63,19 @@ struct OSVResponse {
 
 //------------------------------------------------------------------------------
 
+const OSV_BATCH_URL: &str = "https://api.osv.dev/v1/querybatch";
+
 /// Function to send a single batch of queries to the OSV API, and return a Vec of vulnerabilities per package.
 fn query_osv_batch(
     client: Arc<dyn UreqClient>,
     packages: &[OSVPackageQuery],
 ) -> Vec<Option<Vec<String>>> {
-    let url = "https://api.osv.dev/v1/querybatch";
 
     let batch_query = OSVQueryBatch {
         queries: packages.to_vec(),
     };
     let body = serde_json::to_string(&batch_query).unwrap();
-    let response: Result<String, ureq::Error> = client.post(url, &body);
+    let response: Result<String, ureq::Error> = client.post(OSV_BATCH_URL, &body);
     match response {
         Ok(body_str) => {
             let osv_res: OSVResponse = serde_json::from_str(&body_str).unwrap();
