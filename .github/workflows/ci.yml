@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest] #, windows-latest]
-        rust: ["1.81.0", stable]
+        rust: ["1.85.0", stable]
         python: ["3.9", "3.13"]
 
     name: Build & Test / ${{ matrix.os }} / Rust ${{ matrix.rust }} / Python ${{ matrix.python }}
