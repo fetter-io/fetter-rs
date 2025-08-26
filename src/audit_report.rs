@@ -6,7 +6,7 @@ use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 use crate::util::logger;
 
-use crate::osv_vulns::OSVVulnInfo;
+use crate::osv_vulns::VulnInfo;
 use crate::package::Package;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
@@ -21,7 +21,7 @@ use crate::util::FlagLog;
 pub struct AuditRecord {
     pub package: Package,
     pub vuln_ids: Vec<String>,
-    pub vuln_infos: HashMap<String, OSVVulnInfo>,
+    pub vuln_infos: HashMap<String, VulnInfo>,
 }
 
 impl Rowable for AuditRecord {
@@ -69,12 +69,12 @@ impl Rowable for AuditRecord {
                     vuln_info.references.get_prime(),
                 ]);
 
-                if let Some(severity) = &vuln_info.severity {
+                if let Some(cvss_details) = &vuln_info.cvss_details {
                     rows.push(vec![
                         package_display(),
                         vuln_display(),
                         "Severity".to_string(),
-                        severity.get_prime(),
+                        cvss_details.get_prime(), // gets a vector
                     ]);
                 }
             }
@@ -108,7 +108,7 @@ impl AuditReport {
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
             if let Some(vuln_ids) = vuln_ids {
-                let vuln_infos: HashMap<String, OSVVulnInfo> =
+                let vuln_infos: HashMap<String, VulnInfo> =
                     query_osv_vulns(client.clone(), vuln_ids, cache_refresh, log);
 
                 let record = AuditRecord {
