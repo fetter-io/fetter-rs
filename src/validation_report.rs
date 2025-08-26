@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::path::PathBuf;
 
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
@@ -126,8 +125,8 @@ impl ValidationReport {
     pub fn from_components(
         packages: &Vec<Package>, // ordered for reporting
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
-        site_to_exe: &HashMap<PathShared, PathBuf>, // only needed if exe_to_ems is Some
-        exe_to_ems: &Option<HashMap<PathBuf, EnvMarkerState>>,
+        site_to_exes: &HashMap<PathShared, Vec<PathShared>>, // only needed if exe_to_ems is Some
+        exe_to_ems: &Option<HashMap<PathShared, EnvMarkerState>>,
         dm: &DepManifest,
         vf: &ValidationFlags,
         ignore: Option<&HashSet<String>>,
@@ -155,8 +154,14 @@ impl ValidationReport {
             } else if let Some(exe_to_ems) = exe_to_ems {
                 // For each package, if the DepManifest has env_marker_active, we have already loaded EnvMarkerState
                 for site in package_to_sites.get(package).unwrap() {
-                    let exe = site_to_exe.get(site).unwrap();
-                    let ems = exe_to_ems.get(exe); // validate() expects Option
+                    // let exe = site_to_exes.get(site).unwrap()
+                    let exe = site_to_exes
+                        .get(site)
+                        .and_then(|exes| exes.iter().min_by_key(|p| p.to_string())) // pick smallest path
+                        .expect("no exe mapped for site");
+
+                    let ems = exe_to_ems.get(exe);
+                    // validate() expects Option
                     let (valid, ds) = dm.validate(package, vf.permit_superset, ems);
                     if let Some(ds) = ds {
                         ds_keys_matched.insert(&ds.key);

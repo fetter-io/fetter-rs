@@ -54,6 +54,24 @@ impl From<PathBuf> for PathShared {
     }
 }
 
+impl From<&PathBuf> for PathShared {
+    fn from(p: &PathBuf) -> Self {
+        PathShared::from_path_buf(p.clone())
+    }
+}
+
+// impl From<&Path> for PathShared {
+//     fn from(p: &Path) -> Self {
+//         PathShared::from_path_buf(p.to_path_buf())
+//     }
+// }
+
+impl AsRef<Path> for PathShared {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
 impl Serialize for PathShared {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -96,6 +114,18 @@ impl fmt::Display for PathShared {
 }
 
 impl Eq for PathShared {}
+
+impl PartialOrd for PathShared {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PathShared {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.as_path().cmp(other.0.as_path())
+    }
+}
 
 impl Hash for PathShared {
     fn hash<H: Hasher>(&self, state: &mut H) {

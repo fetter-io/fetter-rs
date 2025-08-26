@@ -37,6 +37,7 @@ use crate::util::path_cache;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
+use crate::util::vecs_equal_as_sets;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
@@ -120,26 +121,76 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 
 // The result of a file-system scan.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ScanFS {
     // NOTE: these attributes are used by reporters
     /// A mapping of exe path to site packages paths
-    pub exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
+    pub exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
     /// A mapping of Package tp a site package paths
     pub package_to_sites: HashMap<Package, Vec<PathShared>>,
-    // A mapping of site package to exe paths
-    pub site_to_exe: HashMap<PathShared, PathBuf>,
 
+    // A mapping of site package to exe paths
+    pub site_to_exes: HashMap<PathShared, Vec<PathShared>>,
     /// Optionally populate EnvMarkerState for all exe, only if env markers are found
-    pub exe_to_ems: Option<HashMap<PathBuf, EnvMarkerState>>,
+    pub exe_to_ems: Option<HashMap<PathShared, EnvMarkerState>>,
     /// Optionally force usage of user site
     force_usite: bool,
     /// Store the hash of the un-normalized exe inputs for cache lookup.
     exes_hash: String,
 }
 
+impl PartialEq for ScanFS {
+    fn eq(&self, other: &Self) -> bool {
+        if self.force_usite != other.force_usite || self.exes_hash != other.exes_hash {
+            return false;
+        }
+        if self.exe_to_ems != other.exe_to_ems {
+            return false;
+        }
+
+        if self.site_to_exes.len() != other.site_to_exes.len() {
+            return false;
+        }
+        for (key, vec1) in &self.site_to_exes {
+            if let Some(vec2) = other.site_to_exes.get(key) {
+                if !vecs_equal_as_sets(vec1, vec2) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        if self.exe_to_sites.len() != other.exe_to_sites.len() {
+            return false;
+        }
+        for (key, vec1) in &self.exe_to_sites {
+            if let Some(vec2) = other.exe_to_sites.get(key) {
+                if !vecs_equal_as_sets(vec1, vec2) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        if self.package_to_sites.len() != other.package_to_sites.len() {
+            return false;
+        }
+        for (key, vec1) in &self.package_to_sites {
+            if let Some(vec2) = other.package_to_sites.get(key) {
+                if !vecs_equal_as_sets(vec1, vec2) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 struct PathIndexer {
-    path_to_index: HashMap<PathBuf, usize>,
+    path_to_index: HashMap<PathShared, usize>,
     paths: Vec<String>,
 }
 
@@ -151,15 +202,16 @@ impl PathIndexer {
         }
     }
 
-    fn get_index<S: serde::ser::Error>(&mut self, p: &Path) -> Result<usize, S> {
+    fn get_index<S: serde::ser::Error>(&mut self, p: &PathShared) -> Result<usize, S> {
         if let Some(&idx) = self.path_to_index.get(p) {
             Ok(idx)
         } else {
             let idx = self.paths.len();
             let s = p
+                .as_path()
                 .to_str()
                 .ok_or_else(|| S::custom("Invalid UTF-8 in path"))?;
-            self.path_to_index.insert(p.to_owned(), idx);
+            self.path_to_index.insert(p.clone(), idx);
             self.paths.push(s.to_string());
             Ok(idx)
         }
@@ -178,8 +230,8 @@ impl Serialize for ScanFS {
         let mut package_to_sites: Vec<_> = self.package_to_sites.iter().collect();
         package_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
 
-        let mut site_to_exe: Vec<_> = self.site_to_exe.iter().collect();
-        site_to_exe.sort_by_key(|(k, _)| k.to_string());
+        let mut site_to_exes: Vec<_> = self.site_to_exes.iter().collect();
+        site_to_exes.sort_by_key(|(k, _)| k.to_string());
 
         let mut pi = PathIndexer::new();
 
@@ -188,7 +240,7 @@ impl Serialize for ScanFS {
             .map(|(exe, sites)| {
                 let exe_i = pi.get_index(exe)?;
                 let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                    sites.iter().map(|s| pi.get_index(s)).collect();
                 Ok((exe_i, site_idx?))
             })
             .collect();
@@ -197,17 +249,21 @@ impl Serialize for ScanFS {
             .into_iter()
             .map(|(pkg, sites)| {
                 let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                    sites.iter().map(|s| pi.get_index(s)).collect();
                 Ok((pkg, site_idx?))
             })
             .collect();
 
-        let site_to_exe_idx: Result<Vec<_>, S::Error> = site_to_exe
+        let site_to_exe_idx: Result<Vec<_>, S::Error> = site_to_exes
             .into_iter()
-            .map(|(site, exe)| {
-                let site_i = pi.get_index(site.as_path())?;
-                let exe_i = pi.get_index(exe)?;
-                Ok((site_i, exe_i))
+            .map(|(site, exes)| {
+                let site_i = pi.get_index(site)?;
+                // sort exe paths by string for deterministic output
+                let mut exes_sorted: Vec<_> = exes.iter().collect();
+                exes_sorted.sort_by_key(|p| p.to_string());
+                let exe_idx: Result<Vec<_>, S::Error> =
+                    exes_sorted.into_iter().map(|e| pi.get_index(e)).collect();
+                Ok((site_i, exe_idx?))
             })
             .collect();
 
@@ -229,7 +285,7 @@ type ScanFSData = (
     Vec<String>,
     Vec<(usize, Vec<usize>)>,
     Vec<(Package, Vec<usize>)>,
-    Vec<(usize, usize)>,
+    Vec<(usize, Vec<usize>)>,
     bool,
     String,
 );
@@ -251,10 +307,10 @@ impl<'de> Deserialize<'de> for ScanFS {
         // let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         let ps: Vec<PathShared> = paths.into_iter().map(PathShared::from).collect();
 
-        let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exe_to_sites_idx
+        let exe_to_sites: HashMap<PathShared, Vec<PathShared>> = exe_to_sites_idx
             .into_iter()
             .map(|(exe_i, site_is)| {
-                let exe = ps[exe_i].as_path().to_path_buf();
+                let exe = ps[exe_i].clone();
                 let sites = site_is.into_iter().map(|i| ps[i].clone()).collect();
                 (exe, sites)
             })
@@ -268,17 +324,20 @@ impl<'de> Deserialize<'de> for ScanFS {
             })
             .collect();
 
-        let site_to_exe: HashMap<PathShared, PathBuf> = site_to_exe_idx
+        let site_to_exes: HashMap<PathShared, Vec<PathShared>> = site_to_exe_idx
             .into_iter()
-            .map(|(site_i, exe_i)| {
-                (ps[site_i].clone(), ps[exe_i].as_path().to_path_buf())
+            .map(|(site_i, exe_is)| {
+                let site = ps[site_i].clone();
+                let exes: Vec<PathShared> =
+                    exe_is.into_iter().map(|i| ps[i].clone()).collect();
+                (site, exes)
             })
             .collect();
 
         Ok(ScanFS {
             exe_to_sites,
             package_to_sites,
-            site_to_exe,
+            site_to_exes,
             exe_to_ems: None,
             force_usite,
             exes_hash,
@@ -289,7 +348,7 @@ impl<'de> Deserialize<'de> for ScanFS {
 impl ScanFS {
     /// Main entry point for creating a ScanFS. All public creation should go through this interface.
     fn from_exe_to_sites(
-        exe_to_sites: HashMap<PathBuf, Vec<PathShared>>,
+        exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
         force_usite: bool,
         exes_hash: String,
     ) -> ResultDynError<Self> {
@@ -304,10 +363,15 @@ impl ScanFS {
             })
             .collect::<HashMap<PathShared, Vec<Package>>>();
 
-        let site_to_exe: HashMap<PathShared, PathBuf> = exe_to_sites
-            .iter()
-            .flat_map(|(exe, sites)| sites.iter().map(|site| (site.clone(), exe.clone())))
-            .collect();
+        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
+        for (exe, sites) in &exe_to_sites {
+            for site in sites {
+                site_to_exes
+                    .entry(site.clone())
+                    .or_default()
+                    .push(exe.clone());
+            }
+        }
 
         let mut package_to_sites: HashMap<Package, Vec<PathShared>> = HashMap::new();
         for (site_package_path, packages) in site_to_packages.iter() {
@@ -321,7 +385,7 @@ impl ScanFS {
         Ok(ScanFS {
             exe_to_sites,
             package_to_sites,
-            site_to_exe,
+            site_to_exes,
             exe_to_ems: None,
             force_usite,
             exes_hash,
@@ -376,11 +440,11 @@ impl ScanFS {
             }
         }
 
-        let exe_to_sites: HashMap<PathBuf, Vec<PathShared>> = exes_norm
+        let exe_to_sites: HashMap<PathShared, Vec<PathShared>> = exes_norm
             .into_par_iter()
             .map(|exe| {
                 let dirs = get_site_package_dirs(&exe, force_usite, log);
-                (exe, dirs)
+                (PathShared::from(exe), dirs)
             })
             .collect();
 
@@ -398,13 +462,18 @@ impl ScanFS {
         let mut exe_to_sites = HashMap::new();
         let site_shared = PathShared::from_path_buf(site);
 
-        exe_to_sites.insert(exe.clone(), vec![site_shared.clone()]);
+        exe_to_sites.insert(PathShared::from(exe.clone()), vec![site_shared.clone()]);
         let exes = vec![exe];
 
-        let site_to_exe: HashMap<PathShared, PathBuf> = exe_to_sites
-            .iter()
-            .flat_map(|(exe, sites)| sites.iter().map(|site| (site.clone(), exe.clone())))
-            .collect();
+        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
+        for (exe, sites) in &exe_to_sites {
+            for site in sites {
+                site_to_exes
+                    .entry(site.clone())
+                    .or_default()
+                    .push(exe.clone());
+            }
+        }
 
         let mut package_to_sites = HashMap::new();
         for package in packages {
@@ -415,10 +484,11 @@ impl ScanFS {
         }
         let force_usite = false;
         let exes_hash = hash_paths(&exes, force_usite);
+
         Ok(ScanFS {
             exe_to_sites,
             package_to_sites,
-            site_to_exe,
+            site_to_exes,
             exe_to_ems: None,
             force_usite,
             exes_hash,
@@ -432,13 +502,18 @@ impl ScanFS {
         logger!(log, module_path!(), "Fetching EnvMarkerState");
 
         if self.exe_to_ems.is_none() {
-            let ems_map: HashMap<PathBuf, EnvMarkerState> = self
+            let ems_map: HashMap<PathShared, EnvMarkerState> = self
                 .exe_to_sites
                 .keys()
                 .cloned()
                 .collect::<Vec<_>>()
                 .into_par_iter()
-                .map(|exe| (exe.clone(), EnvMarkerState::from_exe(&exe).unwrap()))
+                .map(|exe| {
+                    (
+                        exe.clone(),
+                        EnvMarkerState::from_exe(exe.as_path()).unwrap(),
+                    )
+                })
                 .collect();
 
             self.exe_to_ems = Some(ems_map);
@@ -517,7 +592,7 @@ impl ScanFS {
         ValidationReport::from_components(
             &packages,
             &self.package_to_sites,
-            &self.site_to_exe,
+            &self.site_to_exes,
             &self.exe_to_ems,
             &dm,
             &vf,
@@ -680,7 +755,7 @@ impl ScanFS {
             // NOTE: taking the first site, but might prioritize by some other criteria
             if let Some(site) = sites.first() {
                 install_validation(
-                    exe,
+                    exe.as_path(),
                     &ba,
                     bound_options,
                     ignore,
@@ -740,9 +815,9 @@ mod tests {
         let fp_p2 = fp_sp.join("foo-3.0.dist-info");
         fs::create_dir(&fp_p2).unwrap();
 
-        let mut exe_to_sites = HashMap::<PathBuf, Vec<PathShared>>::new();
+        let mut exe_to_sites = HashMap::<PathShared, Vec<PathShared>>::new();
         exe_to_sites.insert(
-            fp_exe.clone(),
+            PathShared::from(fp_exe.clone()),
             vec![PathShared::from_path_buf(fp_sp.to_path_buf())],
         );
         let mut sfs =
@@ -878,7 +953,10 @@ mod tests {
             None,
             FlagLog(false),
         );
-        assert_eq!(sfs.exe_to_sites.get(&exe).unwrap()[0].strong_count(), 8);
+        assert_eq!(
+            sfs.exe_to_sites.get(&PathShared::from(exe)).unwrap()[0].strong_count(),
+            8
+        );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
@@ -1784,7 +1862,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,0]],false,\"35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,\"35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.exe_to_sites.len(), 1);
@@ -1808,7 +1886,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let mut sfs = ScanFS {
             exe_to_sites: HashMap::new(),
             package_to_sites: HashMap::new(),
-            site_to_exe: HashMap::new(),
+            site_to_exes: HashMap::new(),
             exe_to_ems: None,
             force_usite: false,
             exes_hash: "hash".to_string(),
@@ -1816,9 +1894,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
         // Populate exe_to_sites
         sfs.exe_to_sites
-            .insert(exe1.clone(), vec![site1.clone().into()]);
+            .insert(exe1.clone().into(), vec![site1.clone().into()]);
         sfs.exe_to_sites.insert(
-            exe2.clone(),
+            exe2.clone().into(),
             vec![site1.clone().into(), site2.clone().into()],
         );
 
@@ -1834,31 +1912,39 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         sfs.package_to_sites
             .insert(pkg_requests.clone(), vec![site2.clone().into()]);
 
-        // Populate site_to_exe
-        sfs.site_to_exe.insert(site1.clone().into(), exe1.clone());
-        sfs.site_to_exe.insert(site2.clone().into(), exe2.clone());
+        // Populate site_to_exes
+        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
+        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
+        sfs.site_to_exes.insert(site1.clone().into(), exes1);
+        sfs.site_to_exes.insert(site2.clone().into(), exes2);
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,0],[1,3]],false,"hash"]"#;
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,[0]],[1,[3]]],false,"hash"]"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         // Check deserialized sizes
         assert_eq!(sfsd.exe_to_sites.len(), 2);
         assert_eq!(sfsd.package_to_sites.len(), 4);
-        assert_eq!(sfsd.site_to_exe.len(), 2);
+        assert_eq!(sfsd.site_to_exes.len(), 2);
 
         // Check exe_to_sites keys
-        assert!(sfsd.exe_to_sites.contains_key(&exe1));
-        assert!(sfsd.exe_to_sites.contains_key(&exe2));
+        assert!(sfsd.exe_to_sites.contains_key(&exe1.clone().into()));
+        assert!(sfsd.exe_to_sites.contains_key(&exe2.clone().into()));
 
         // Check that numpy maps to both sites
         let numpy_sites = sfsd.package_to_sites.get(&pkg_numpy).unwrap();
         assert_eq!(numpy_sites.len(), 2);
 
-        // Check site_to_exe mapping
-        assert_eq!(sfsd.site_to_exe.get(&site1.into()).unwrap(), &exe1);
-        assert_eq!(sfsd.site_to_exe.get(&site2.into()).unwrap(), &exe2);
+        // Check site_to_exes mapping
+        assert_eq!(
+            sfsd.site_to_exes.get(&site1.into()).and_then(|v| v.first()),
+            Some(PathShared::from(&exe1)).as_ref()
+        );
+        assert_eq!(
+            sfsd.site_to_exes.get(&site2.into()).and_then(|v| v.first()),
+            Some(PathShared::from(&exe2)).as_ref()
+        );
     }
 
     #[test]
@@ -1905,8 +1991,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let p3 = Package::from_name_version_durl("flask", "1.1.3", None).unwrap();
 
         let mut exe_to_sites = HashMap::new();
-        exe_to_sites.insert(exe1.clone(), vec![site_shared1.clone()]);
-        exe_to_sites.insert(exe2.clone(), vec![site_shared2.clone()]);
+        exe_to_sites.insert(exe1.clone().into(), vec![site_shared1.clone()]);
+        exe_to_sites.insert(exe2.clone().into(), vec![site_shared2.clone()]);
 
         let exes = vec![exe1.clone(), exe2.clone()];
 
@@ -1915,16 +2001,18 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         package_to_sites.insert(p2, vec![site_shared1.clone()]);
         package_to_sites.insert(p3, vec![site_shared1.clone(), site_shared2.clone()]);
 
-        let mut site_to_exe = HashMap::new();
-        site_to_exe.insert(site_shared1.clone(), exe1.clone());
-        site_to_exe.insert(site_shared2.clone(), exe2.clone());
+        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
+        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
+        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
+        site_to_exes.insert(site_shared1.clone(), exes1);
+        site_to_exes.insert(site_shared2.clone(), exes2);
 
         let force_usite = false;
         let exes_hash = hash_paths(&exes, force_usite);
         let sfs = ScanFS {
             exe_to_sites,
             package_to_sites,
-            site_to_exe,
+            site_to_exes,
             exe_to_ems: None,
             force_usite,
             exes_hash,
