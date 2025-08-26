@@ -70,7 +70,6 @@ fn query_osv_batch(
     client: Arc<dyn UreqClient>,
     packages: &[OSVPackageQuery],
 ) -> Vec<Option<Vec<String>>> {
-
     let batch_query = OSVQueryBatch {
         queries: packages.to_vec(),
     };
