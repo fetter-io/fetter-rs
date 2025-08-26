@@ -324,13 +324,6 @@ impl<'de> Deserialize<'de> for ScanFS {
             })
             .collect();
 
-        // let site_to_exes: HashMap<PathShared, PathBuf> = site_to_exe_idx
-        //     .into_iter()
-        //     .map(|(site_i, exe_i)| {
-        //         (ps[site_i].clone(), ps[exe_i].as_path().to_path_buf())
-        //     })
-        //     .collect();
-
         let site_to_exes: HashMap<PathShared, Vec<PathShared>> = site_to_exe_idx
             .into_iter()
             .map(|(site_i, exe_is)| {
@@ -369,11 +362,6 @@ impl ScanFS {
                 })
             })
             .collect::<HashMap<PathShared, Vec<Package>>>();
-
-        // let site_to_exes: HashMap<PathShared, PathBuf> = exe_to_sites
-        //     .iter()
-        //     .flat_map(|(exe, sites)| sites.iter().map(|site| (site.clone(), exe.clone())))
-        //     .collect();
 
         let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
         for (exe, sites) in &exe_to_sites {
