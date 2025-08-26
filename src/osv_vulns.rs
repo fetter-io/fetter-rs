@@ -1,16 +1,16 @@
+use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::path_cache;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use cvss::Cvss;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
-use cvss::Cvss;
-use crate::ureq_client::UreqClient;
-use std::cmp::Ordering;
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -198,21 +198,25 @@ fn query_osv_vuln(
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 pub enum CvssVersion {
-    V4_0,
-    V3_1,
-    V3_0,
     Unknown,
+    V3_0,
+    V3_1,
+    V4_0,
 }
 
 impl CvssVersion {
     fn from_vector(s: &str) -> Self {
-        if s.starts_with("CVSS:4.0") { Self::V4_0 }
-        else if s.starts_with("CVSS:3.1") { Self::V3_1 }
-        else if s.starts_with("CVSS:3.0") { Self::V3_0 }
-        else { Self::Unknown }
+        if s.starts_with("CVSS:4.0") {
+            Self::V4_0
+        } else if s.starts_with("CVSS:3.1") {
+            Self::V3_1
+        } else if s.starts_with("CVSS:3.0") {
+            Self::V3_0
+        } else {
+            Self::Unknown
+        }
     }
 }
-
 
 #[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct CvssDetail {
@@ -271,15 +275,15 @@ impl fmt::Display for CvssDetails {
 }
 
 impl CvssDetails {
-    /// For the max version of CVSS, get the max score
+    /// For the max version of CVSS, get the max score with full display formatting
     pub fn get_prime(&self) -> String {
         self.0
             .iter()
-            .max_by(|a, b| {
-                match a.version.cmp(&b.version) {
-                    Ordering::Equal => a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal),
-                    other => other,
+            .max_by(|a, b| match a.version.cmp(&b.version) {
+                Ordering::Equal => {
+                    a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal)
                 }
+                other => other,
             })
             .map(|d| d.to_string())
             .unwrap_or_default()
@@ -306,12 +310,19 @@ impl VulnInfo {
 impl From<OSVVulnInfo> for VulnInfo {
     fn from(src: OSVVulnInfo) -> Self {
         // Destructure so we can move fields individually
-        let OSVVulnInfo { id, summary, references, severity } = src;
+        let OSVVulnInfo {
+            id,
+            summary,
+            references,
+            severity,
+        } = src;
 
         // severity: Option<Vec<OSVSeverity>>
         let cvss_details = severity
+            .as_ref()
             .map(|sevs| {
-                sevs.0.into_iter()
+                sevs.0
+                    .iter()
                     // (optional) keep only entries marked as CVSS
                     .filter(|s| s.r#type.to_ascii_uppercase().starts_with("CVSS"))
                     // parse each vector into CvssDetail; drop failures
@@ -338,14 +349,13 @@ pub fn query_osv_vulns(
     cache_refresh: FlagCacheRefresh,
     log: FlagLog,
 ) -> HashMap<String, VulnInfo> {
-    let results: Vec<(String, OSVVulnInfo)> = vuln_ids
+    vuln_ids
         .par_iter()
         .filter_map(|vuln_id| {
             query_osv_vuln(client.clone(), vuln_id, cache_refresh, log)
                 .map(|info| (vuln_id.clone(), VulnInfo::from(info)))
         })
-        .collect();
-    results.into_iter().collect() // to HashMap
+        .collect() // directly collect to HashMap
 }
 
 //--------------------------------------------------------------------------
@@ -356,36 +366,44 @@ mod tests {
     use crate::ureq_client::UreqClientMock;
     use cvss::Cvss;
 
-
     #[test]
     fn test_get_prime_prefers_highest_version_and_score() {
         // v3.1 example, score ~4.3 (Medium)
-        let d1 = CvssDetail::from_vector(
-            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
-        ).unwrap();
+        let d1 = CvssDetail::from_vector("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L")
+            .unwrap();
 
         // v4.0 example, lower score (~1.7 Low)
         let d2 = CvssDetail::from_vector(
-            "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N"
-        ).unwrap();
+            "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N",
+        )
+        .unwrap();
 
         // v4.0 example, higher score (should be chosen as prime)
         let d3 = CvssDetail::from_vector(
-            "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H"
-        ).unwrap();
+            "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
+        )
+        .unwrap();
 
         let details = CvssDetails(vec![d1, d2, d3]);
 
-        let prime = details.get_prime_detail().unwrap();
-        // Assert it picked the higher-scoring v4.0 vector
-        assert_eq!(prime.version, CvssVersion::V4_0);
-        assert!(prime.score > 5.0, "Expected high score for chosen v4 vector, got {}", prime.score);
-
-        // Ensure string formatting looks right
-        let prime_str = details.get_prime().unwrap();
-        assert!(prime_str.contains("CVSS:4.0"));
+        // Ensure string formatting looks right and it picked the higher-scoring v4.0 vector
+        let prime_str = details.get_prime();
+        assert!(
+            prime_str.contains("CVSS:4.0"),
+            "Expected CVSS:4.0 in prime string: {}",
+            prime_str
+        );
+        assert!(
+            prime_str.contains("VC:H/VI:H/VA:H"),
+            "Expected high impact scores in prime string: {}",
+            prime_str
+        );
+        assert!(
+            prime_str.starts_with("CVSS"),
+            "Expected formatted display starting with 'CVSS': {}",
+            prime_str
+        );
     }
-
 
     #[test]
     fn test_cvss_score_a() {
@@ -425,8 +443,8 @@ mod tests {
             "https://nvd.nist.gov/vuln/detail/CVE-2024-1727"
         );
         assert_eq!(
-            vuln.severity.as_ref().unwrap().get_prime(),
-            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
+            vuln.cvss_details.as_ref().unwrap().get_prime(),
+            "CVSS 4.3 (Medium): CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
         );
     }
 }
