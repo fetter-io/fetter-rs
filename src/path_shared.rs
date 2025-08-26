@@ -115,6 +115,18 @@ impl fmt::Display for PathShared {
 
 impl Eq for PathShared {}
 
+impl PartialOrd for PathShared {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PathShared {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.as_path().cmp(other.0.as_path())
+    }
+}
+
 impl Hash for PathShared {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.as_path().hash(state);

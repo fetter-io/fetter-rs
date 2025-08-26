@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::path::PathBuf;
 
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
@@ -127,7 +126,7 @@ impl ValidationReport {
         packages: &Vec<Package>, // ordered for reporting
         package_to_sites: &HashMap<Package, Vec<PathShared>>,
         site_to_exes: &HashMap<PathShared, Vec<PathShared>>, // only needed if exe_to_ems is Some
-        exe_to_ems: &Option<HashMap<PathBuf, EnvMarkerState>>,
+        exe_to_ems: &Option<HashMap<PathShared, EnvMarkerState>>,
         dm: &DepManifest,
         vf: &ValidationFlags,
         ignore: Option<&HashSet<String>>,
@@ -161,7 +160,7 @@ impl ValidationReport {
                         .and_then(|exes| exes.iter().min_by_key(|p| p.to_string())) // pick smallest path
                         .expect("no exe mapped for site");
 
-                    let ems = exe_to_ems.get(exe.as_path());
+                    let ems = exe_to_ems.get(exe);
                     // validate() expects Option
                     let (valid, ds) = dm.validate(package, vf.permit_superset, ems);
                     if let Some(ds) = ds {
