@@ -10,9 +10,6 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
 
-// use std::ops::Deref;
-// use ureq;
-
 use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
@@ -127,18 +124,6 @@ impl OSVVulnInfo {
 }
 
 //------------------------------------------------------------------------------
-
-// fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnInfo> {
-//     let url = format!("https://api.osv.dev/v1/vulns/{vuln_id}");
-
-//     match client.get(&url) {
-//         Ok(body_str) => {
-//             let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
-//             Some(osv_vuln)
-//         }
-//         Err(_) => None,
-//     }
-// }
 
 fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
