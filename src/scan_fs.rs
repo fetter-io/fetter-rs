@@ -190,7 +190,7 @@ impl PartialEq for ScanFS {
 }
 
 struct PathIndexer {
-    path_to_index: HashMap<PathBuf, usize>,
+    path_to_index: HashMap<PathShared, usize>,
     paths: Vec<String>,
 }
 
@@ -202,15 +202,16 @@ impl PathIndexer {
         }
     }
 
-    fn get_index<S: serde::ser::Error>(&mut self, p: &Path) -> Result<usize, S> {
+    fn get_index<S: serde::ser::Error>(&mut self, p: &PathShared) -> Result<usize, S> {
         if let Some(&idx) = self.path_to_index.get(p) {
             Ok(idx)
         } else {
             let idx = self.paths.len();
             let s = p
+                .as_path()
                 .to_str()
                 .ok_or_else(|| S::custom("Invalid UTF-8 in path"))?;
-            self.path_to_index.insert(p.to_owned(), idx);
+            self.path_to_index.insert(p.clone(), idx);
             self.paths.push(s.to_string());
             Ok(idx)
         }
@@ -237,9 +238,9 @@ impl Serialize for ScanFS {
         let exe_to_sites_idx: Result<Vec<_>, S::Error> = exe_to_sites
             .into_iter()
             .map(|(exe, sites)| {
-                let exe_i = pi.get_index(exe.as_path())?;
+                let exe_i = pi.get_index(exe)?;
                 let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                    sites.iter().map(|s| pi.get_index(s)).collect();
                 Ok((exe_i, site_idx?))
             })
             .collect();
@@ -248,7 +249,7 @@ impl Serialize for ScanFS {
             .into_iter()
             .map(|(pkg, sites)| {
                 let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s.as_path())).collect();
+                    sites.iter().map(|s| pi.get_index(s)).collect();
                 Ok((pkg, site_idx?))
             })
             .collect();
@@ -256,14 +257,12 @@ impl Serialize for ScanFS {
         let site_to_exe_idx: Result<Vec<_>, S::Error> = site_to_exes
             .into_iter()
             .map(|(site, exes)| {
-                let site_i = pi.get_index(site.as_path())?;
+                let site_i = pi.get_index(site)?;
                 // sort exe paths by string for deterministic output
                 let mut exes_sorted: Vec<_> = exes.iter().collect();
                 exes_sorted.sort_by_key(|p| p.to_string());
-                let exe_idx: Result<Vec<_>, S::Error> = exes_sorted
-                    .into_iter()
-                    .map(|e| pi.get_index(e.as_path()))
-                    .collect();
+                let exe_idx: Result<Vec<_>, S::Error> =
+                    exes_sorted.into_iter().map(|e| pi.get_index(e)).collect();
                 Ok((site_i, exe_idx?))
             })
             .collect();
