@@ -74,26 +74,6 @@ impl fmt::Display for OSVSeverity {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OSVSeverities(Vec<OSVSeverity>);
 
-// impl OSVSeverities {
-//     pub fn get_prime(&self) -> String {
-//         // want to find the highest cvss...
-//         let mut priority: VecDeque<&String> = VecDeque::new();
-//         for s in self.0.iter() {
-//             println!("sverity type: {}", s.r#type);
-//             if s.r#type == "CVSS_V4" {
-//                 priority.push_front(&s.score);
-//             } else if s.r#type == "CVSS_V3" {
-//                 priority.push_back(&s.score);
-//             }
-//         }
-//         if let Some(item) = priority.pop_front() {
-//             item.clone()
-//         } else {
-//             self.0[0].score.clone() // get first
-//         }
-//     }
-// }
-
 impl fmt::Display for OSVSeverities {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -335,7 +315,7 @@ impl From<OSVVulnInfo> for VulnInfo {
 
         VulnInfo {
             id,
-            summary,
+            summary: summary.map(|s| s.trim().to_string()),
             references,
             cvss_details,
         }
