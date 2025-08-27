@@ -54,28 +54,6 @@ pub enum CvssFilter {
     Threshold(f64), // Show vulnerabilities with CVSS score >= threshold
 }
 
-// impl CvssFilter {
-//     pub fn from_arg(filter_arg: &[String]) -> Self {
-//         match filter_arg {
-//             [] => CvssFilter::All,
-//             [s] if s.is_empty() => CvssFilter::MaxOnly,
-//             [s] => match s.parse::<f64>() {
-//                 Ok(threshold) if (0.0..=10.0).contains(&threshold) => {
-//                     CvssFilter::Threshold(threshold)
-//                 }
-//                 _ => {
-//                     eprintln!("Error: CVSS score must be a number between 0.0 and 10.0");
-//                     std::process::exit(1);
-//                 }
-//             },
-//             _ => {
-//                 eprintln!("Error: CVSS can only be specified once");
-//                 std::process::exit(1);
-//             }
-//         }
-//     }
-// }
-
 impl CvssFilter {
     pub fn from_arg(arg: Option<Option<f64>>) -> Self {
         match arg {
@@ -249,8 +227,6 @@ enum Commands {
         cache_refresh: bool,
 
         /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
-        // #[arg(long, value_name = "CVSS", num_args = 0..=1, default_missing_value = "", action = clap::ArgAction::Append)]
-        // cvss: Vec<String>,
         #[arg(long, num_args = 0..=1, value_name = "CVSS")]
         cvss: Option<Option<f64>>,
 
