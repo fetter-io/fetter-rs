@@ -299,21 +299,17 @@ impl VulnInfo {
 // NOTE: Keep only severity entries that look like CVSS (defensive); drop entries that fail to parse.
 impl From<OSVVulnInfo> for VulnInfo {
     fn from(src: OSVVulnInfo) -> Self {
-        // Destructure so we can move fields individually
         let OSVVulnInfo {
             id,
             summary,
             references,
             severity,
         } = src;
-
-        // severity: Option<Vec<OSVSeverity>>
         let cvss_details = severity
             .as_ref()
             .map(|sevs| {
                 sevs.0
                     .iter()
-                    // (optional) keep only entries marked as CVSS
                     .filter(|s| s.r#type.to_ascii_uppercase().starts_with("CVSS"))
                     // parse each vector into CvssDetail; drop failures
                     .filter_map(|s| CvssDetail::from_vector(&s.score).ok())
