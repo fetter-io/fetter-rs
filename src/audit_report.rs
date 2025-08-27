@@ -26,7 +26,7 @@ pub struct AuditRecord {
 }
 
 impl AuditRecord {
-    /// Remove vulnerabilities that don't have CVSS scores >= min_score
+    /// Among all the vuln_ids, vuln_infos, remove all references for scores less than min_score. This updates in-place vuln_infos and vuln_ids. This might leave the AuditRecord with no vulnerabiltities.
     fn filter_by_cvss_threshold(&mut self, min_score: f64) {
         self.vuln_infos.retain(|_vuln_id, vuln_info| {
             if let Some(cvss_details) = &vuln_info.cvss_details {
@@ -152,30 +152,20 @@ impl AuditReport {
         mut report: AuditReport,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
-        match filter_cvss {
-            CvssFilter::All => report,
-            CvssFilter::MaxOnly => {
-                let max_score = report.find_max_cvss_score();
-                if let Some(max_score) = max_score {
-                    for record in &mut report.records {
-                        record.filter_by_cvss_threshold(max_score);
-                    }
-                    report
-                        .records
-                        .retain(|record| !record.vuln_infos.is_empty());
-                }
-                report
+        let threshold: Option<f64> = match filter_cvss {
+            CvssFilter::All => None,
+            CvssFilter::MaxOnly => report.find_max_cvss_score(),
+            CvssFilter::Threshold(min) => Some(min),
+        };
+
+        if let Some(min) = threshold {
+            for record in &mut report.records {
+                record.filter_by_cvss_threshold(min);
             }
-            CvssFilter::Threshold(min_score) => {
-                for record in &mut report.records {
-                    record.filter_by_cvss_threshold(min_score);
-                }
-                report
-                    .records
-                    .retain(|record| !record.vuln_infos.is_empty());
-                report
-            }
+            // after removing filtered vulns from records, we then need to remove those records
+            report.records.retain(|r| !r.vuln_infos.is_empty());
         }
+        report
     }
 
     fn find_max_cvss_score(&self) -> Option<f64> {
