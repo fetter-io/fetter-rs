@@ -227,7 +227,7 @@ enum Commands {
         cache_refresh: bool,
 
         /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
-        #[arg(long, num_args = 0..=1, value_name = "CVSS")]
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CVSS")]
         cvss: Option<Option<f64>>,
 
         #[command(subcommand)]
