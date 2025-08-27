@@ -388,6 +388,20 @@ repos:
 ## What is New in Fetter
 
 
+### 2.0-dev
+
+The `audit` comand now features a `--cvss` flag to filter results be CVSS score.
+
+The `audit` command now displays CVSS score, severity, and vector.
+
+The `audit` command is now robust to requests with now packages.
+
+The `monitor_scan` command now properly identifies duplicated scans.
+
+The `monitor_scan` command now defaults to a single execution with a `--period` of zero.
+
+
+
 ### 1.22.0
 
 Extension to the public library interface.
