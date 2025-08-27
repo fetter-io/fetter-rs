@@ -47,6 +47,35 @@ impl From<CliAnchor> for Anchor {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CvssFilter {
+    All,            // No filtering, show all results
+    MaxOnly,        // Show only vulnerabilities with maximum observed CVSS score
+    Threshold(f64), // Show vulnerabilities with CVSS score >= threshold
+}
+
+impl CvssFilter {
+    pub fn from_arg(filter_arg: &[String]) -> Self {
+        match filter_arg {
+            [] => CvssFilter::All,
+            [s] if s.is_empty() => CvssFilter::MaxOnly,
+            [s] => match s.parse::<f64>() {
+                Ok(threshold) if (0.0..=10.0).contains(&threshold) => {
+                    CvssFilter::Threshold(threshold)
+                }
+                _ => {
+                    eprintln!("Error: CVSS score must be a number between 0.0 and 10.0");
+                    std::process::exit(1);
+                }
+            },
+            _ => {
+                eprintln!("Error: --filter-cvss can only be specified once");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 //------------------------------------------------------------------------------
 
 const ERROR_EXIT_CODE: i32 = 3;
@@ -204,6 +233,10 @@ enum Commands {
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
         cache_refresh: bool,
+
+        /// Filter vulnerabilities by CVSS score. Use --filter-cvss to show only max CVSS, or --filter-cvss=X to show score >= X.
+        #[arg(long, value_name = "SCORE", num_args = 0..=1, default_missing_value = "", action = clap::ArgAction::Append)]
+        cvss: Vec<String>,
 
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
@@ -641,6 +674,7 @@ where
             pattern,
             case,
             cache_refresh,
+            cvss,
         }) => {
             let sfs = get_sfs()?;
             // network lookup makes this potentially slow
@@ -652,12 +686,14 @@ where
                     stderr,
                 );
             }
+            let cvss_filter = CvssFilter::from_arg(cvss);
             let ar = sfs.to_audit_report(
                 pattern,
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
                 log,
+                cvss_filter,
             );
             if !quiet {
                 active.store(false, Ordering::Relaxed);

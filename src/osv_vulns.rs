@@ -268,6 +268,16 @@ impl CvssDetails {
             .map(|d| d.to_string())
             .unwrap_or_default()
     }
+
+    /// Get the maximum CVSS score among all details
+    pub fn get_max_score(&self) -> Option<f64> {
+        self.0.iter().map(|d| d.score).reduce(f64::max)
+    }
+
+    /// Check if any CVSS detail has a score >= threshold
+    pub fn has_score_gte(&self, threshold: f64) -> bool {
+        self.0.iter().any(|detail| detail.score >= threshold)
+    }
 }
 
 //--------------------------------------------------------------------------

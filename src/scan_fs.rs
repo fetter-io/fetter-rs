@@ -16,6 +16,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::audit_report::AuditReport;
+use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepOperator;
@@ -607,9 +608,10 @@ impl ScanFS {
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
+        filter_cvss: CvssFilter,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(client, &packages, cache_refresh, log)
+        AuditReport::from_packages(client, &packages, cache_refresh, log, filter_cvss)
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned

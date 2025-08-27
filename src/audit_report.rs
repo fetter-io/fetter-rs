@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::cli::CvssFilter;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 use crate::util::logger;
@@ -22,6 +23,22 @@ pub struct AuditRecord {
     pub package: Package,
     pub vuln_ids: Vec<String>,
     pub vuln_infos: HashMap<String, VulnInfo>,
+}
+
+impl AuditRecord {
+    /// Remove vulnerabilities that don't have CVSS scores >= min_score
+    fn filter_by_cvss_threshold(&mut self, min_score: f64) {
+        self.vuln_infos.retain(|_vuln_id, vuln_info| {
+            if let Some(cvss_details) = &vuln_info.cvss_details {
+                cvss_details.has_score_gte(min_score)
+            } else {
+                false
+            }
+        });
+        // Update vuln_ids to only include the remaining vulnerabilities
+        self.vuln_ids
+            .retain(|vuln_id| self.vuln_infos.contains_key(vuln_id));
+    }
 }
 
 impl Rowable for AuditRecord {
@@ -97,6 +114,7 @@ impl AuditReport {
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
+        filter_cvss: CvssFilter,
     ) -> Self {
         if packages.is_empty() {
             let records: Vec<AuditRecord> = Vec::new();
@@ -119,7 +137,7 @@ impl AuditReport {
                 records.push(record);
             }
         }
-        AuditReport { records }
+        Self::apply_cvss_filter(AuditReport { records }, filter_cvss)
     }
 
     pub fn len(&self) -> usize {
@@ -128,6 +146,57 @@ impl AuditReport {
 
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
+    }
+
+    fn apply_cvss_filter(
+        mut report: AuditReport,
+        filter_cvss: CvssFilter,
+    ) -> AuditReport {
+        match filter_cvss {
+            CvssFilter::All => report,
+            CvssFilter::MaxOnly => {
+                let max_score = report.find_max_cvss_score();
+                if let Some(max_score) = max_score {
+                    for record in &mut report.records {
+                        record.filter_by_cvss_threshold(max_score);
+                    }
+                    report
+                        .records
+                        .retain(|record| !record.vuln_infos.is_empty());
+                }
+                report
+            }
+            CvssFilter::Threshold(min_score) => {
+                for record in &mut report.records {
+                    record.filter_by_cvss_threshold(min_score);
+                }
+                report
+                    .records
+                    .retain(|record| !record.vuln_infos.is_empty());
+                report
+            }
+        }
+    }
+
+    fn find_max_cvss_score(&self) -> Option<f64> {
+        let mut max_score = None;
+        for record in &self.records {
+            for vuln_info in record.vuln_infos.values() {
+                if let Some(cvss_details) = &vuln_info.cvss_details {
+                    if let Some(score) = cvss_details.get_max_score() {
+                        match max_score {
+                            None => max_score = Some(score),
+                            Some(current_max) => {
+                                if score > current_max {
+                                    max_score = Some(score);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        max_score
     }
 }
 
@@ -181,6 +250,7 @@ mod tests {
             &packages,
             FlagCacheRefresh(true),
             FlagLog(false),
+            CvssFilter::All,
         );
 
         let dir = tempdir().unwrap();
@@ -214,6 +284,7 @@ mod tests {
             &packages,
             FlagCacheRefresh(true),
             FlagLog(false),
+            CvssFilter::All,
         );
         assert!(ar.get_records().is_empty());
     }
@@ -236,6 +307,7 @@ mod tests {
             &packages,
             FlagCacheRefresh(true),
             FlagLog(false),
+            CvssFilter::All,
         );
         let ar_json = serde_json::to_string_pretty(&ar).unwrap();
         let expected_json = r#"{"records":[{"package":{"name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"cvss_details":[{"version":"V3_1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L","score":4.3,"severity":"medium"}]}}}]}"#;
