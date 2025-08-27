@@ -37,8 +37,6 @@ pub use env_marker::EnvMarkerState;
 pub use lock_file::LockFile;
 pub use lock_file::LockFileType;
 pub use osv_vulns::CvssDetail;
-pub use osv_vulns::CvssDetail;
-pub use osv_vulns::CvssDetails;
 pub use osv_vulns::CvssDetails;
 pub use osv_vulns::CvssVersion;
 pub use osv_vulns::OSVReferences;
