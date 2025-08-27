@@ -176,7 +176,7 @@ fn query_osv_vuln(
 
 //------------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize)]
 pub enum CvssVersion {
     Unknown,
     V3_0,
@@ -198,7 +198,7 @@ impl CvssVersion {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct CvssDetail {
     pub version: CvssVersion,
     pub vector: String,
@@ -237,7 +237,7 @@ impl fmt::Display for CvssDetail {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CvssDetails(Vec<CvssDetail>);
 
 impl fmt::Display for CvssDetails {
@@ -282,7 +282,7 @@ impl CvssDetails {
 
 //--------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VulnInfo {
     pub id: String,
     pub summary: Option<String>,
