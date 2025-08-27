@@ -333,6 +333,7 @@ repos:
   - `--pattern, -p <STRING>`: Specify a glob-like pattern to select packages (default: `*`).
   - `--case`: Enable case-sensitive pattern matching.
   - `--cache-refresh`: Ignore any OSV caches and re-fetch vulnerability details
+  - `--cvss`: Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
 - Subcommands
   - `display`: Show audit results in the terminal.
   - `json`: Print validation results in JSON format.
