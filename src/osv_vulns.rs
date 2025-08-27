@@ -1,19 +1,16 @@
+use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::path_cache;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use cvss::Cvss;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
-
-// use std::ops::Deref;
-// use ureq;
-
-use crate::ureq_client::UreqClient;
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -60,6 +57,7 @@ impl fmt::Display for OSVReferences {
 }
 
 //------------------------------------------------------------------------------
+/// If this is a CVSS_V3 or V4, the "score" is the vector, not the score
 #[derive(Clone, Debug, Deserialize, Serialize, Ord, Eq, PartialEq, PartialOrd)]
 pub struct OSVSeverity {
     r#type: String,
@@ -76,25 +74,6 @@ impl fmt::Display for OSVSeverity {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OSVSeverities(Vec<OSVSeverity>);
 
-impl OSVSeverities {
-    pub fn get_prime(&self) -> String {
-        // want to find the highest cvss...
-        let mut priority: VecDeque<&String> = VecDeque::new();
-        for s in self.0.iter() {
-            if s.r#type == "CVSS_V4" {
-                priority.push_front(&s.score);
-            } else if s.r#type == "CVSS_V3" {
-                priority.push_back(&s.score);
-            }
-        }
-        if let Some(item) = priority.pop_front() {
-            item.clone()
-        } else {
-            self.0[0].score.clone() // get first
-        }
-    }
-}
-
 impl fmt::Display for OSVSeverities {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -110,6 +89,7 @@ impl fmt::Display for OSVSeverities {
 }
 
 //------------------------------------------------------------------------------
+/// This is a query object designed to match the response from the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OSVVulnInfo {
     pub id: String,
@@ -120,25 +100,7 @@ pub struct OSVVulnInfo {
     // affected: Vec<OSVAffected>,
 }
 
-impl OSVVulnInfo {
-    pub fn get_url(&self) -> String {
-        format!("https://osv.dev/vulnerability/{}", self.id)
-    }
-}
-
 //------------------------------------------------------------------------------
-
-// fn query_osv_vuln(client: Arc<dyn UreqClient>, vuln_id: &str) -> Option<OSVVulnInfo> {
-//     let url = format!("https://api.osv.dev/v1/vulns/{vuln_id}");
-
-//     match client.get(&url) {
-//         Ok(body_str) => {
-//             let osv_vuln: OSVVulnInfo = serde_json::from_str(&body_str).unwrap();
-//             Some(osv_vuln)
-//         }
-//         Err(_) => None,
-//     }
-// }
 
 fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
@@ -212,20 +174,174 @@ fn query_osv_vuln(
     }
 }
 
+//------------------------------------------------------------------------------
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize)]
+pub enum CvssVersion {
+    Unknown,
+    V3_0,
+    V3_1,
+    V4_0,
+}
+
+impl CvssVersion {
+    fn from_vector(s: &str) -> Self {
+        if s.starts_with("CVSS:4.0") {
+            Self::V4_0
+        } else if s.starts_with("CVSS:3.1") {
+            Self::V3_1
+        } else if s.starts_with("CVSS:3.0") {
+            Self::V3_0
+        } else {
+            Self::Unknown
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct CvssDetail {
+    pub version: CvssVersion,
+    pub vector: String,
+    pub score: f64,
+    pub severity: String,
+}
+
+impl CvssDetail {
+    pub fn from_vector(vector: &str) -> Result<Self, String> {
+        let cvss: Cvss = vector
+            .parse()
+            .map_err(|e| format!("Failed to parse CVSS vector: {e}"))?;
+
+        Ok(Self {
+            version: CvssVersion::from_vector(vector),
+            vector: vector.to_string(),
+            score: cvss.score(),
+            severity: cvss.severity().to_string(),
+        })
+    }
+}
+
+impl fmt::Display for CvssDetail {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut chars = self.severity.chars();
+        let severity_title = match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        };
+
+        write!(
+            f,
+            "CVSS {:.1} ({}): {}",
+            self.score, severity_title, self.vector
+        )
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CvssDetails(Vec<CvssDetail>);
+
+impl fmt::Display for CvssDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+impl CvssDetails {
+    /// For the max version of CVSS, get the max score with full display formatting
+    pub fn get_prime(&self) -> String {
+        self.0
+            .iter()
+            .max_by(|a, b| match a.version.cmp(&b.version) {
+                Ordering::Equal => {
+                    a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal)
+                }
+                other => other,
+            })
+            .map(|d| d.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Get the maximum CVSS score among all details
+    pub fn get_max_score(&self) -> Option<f64> {
+        self.0.iter().map(|d| d.score).reduce(f64::max)
+    }
+
+    /// Check if any CVSS detail has a score >= threshold
+    pub fn has_score_gte(&self, threshold: f64) -> bool {
+        self.0.iter().any(|detail| detail.score >= threshold)
+    }
+}
+
+//--------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct VulnInfo {
+    pub id: String,
+    pub summary: Option<String>,
+    pub references: OSVReferences,
+    pub cvss_details: Option<CvssDetails>,
+}
+
+impl VulnInfo {
+    pub fn get_url(&self) -> String {
+        format!("https://osv.dev/vulnerability/{}", self.id)
+    }
+}
+
+// NOTE: Keep only severity entries that look like CVSS (defensive); drop entries that fail to parse.
+impl From<OSVVulnInfo> for VulnInfo {
+    fn from(src: OSVVulnInfo) -> Self {
+        let OSVVulnInfo {
+            id,
+            summary,
+            references,
+            severity,
+        } = src;
+        let cvss_details = severity
+            .as_ref()
+            .map(|sevs| {
+                sevs.0
+                    .iter()
+                    .filter(|s| s.r#type.to_ascii_uppercase().starts_with("CVSS"))
+                    // parse each vector into CvssDetail; drop failures
+                    .filter_map(|s| CvssDetail::from_vector(&s.score).ok())
+                    .collect::<Vec<_>>()
+            })
+            // turn empty vecs into None
+            .filter(|v| !v.is_empty())
+            .map(CvssDetails);
+
+        VulnInfo {
+            id,
+            summary: summary.map(|s| s.trim().to_string()),
+            references,
+            cvss_details,
+        }
+    }
+}
+
+//--------------------------------------------------------------------------
 pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
     cache_refresh: FlagCacheRefresh,
     log: FlagLog,
-) -> HashMap<String, OSVVulnInfo> {
-    let results: Vec<(String, OSVVulnInfo)> = vuln_ids
+) -> HashMap<String, VulnInfo> {
+    vuln_ids
         .par_iter()
         .filter_map(|vuln_id| {
             query_osv_vuln(client.clone(), vuln_id, cache_refresh, log)
-                .map(|info| (vuln_id.clone(), info))
+                .map(|info| (vuln_id.clone(), VulnInfo::from(info)))
         })
-        .collect();
-    results.into_iter().collect() // to HashMap
+        .collect() // directly collect to HashMap
 }
 
 //--------------------------------------------------------------------------
@@ -234,6 +350,60 @@ pub fn query_osv_vulns(
 mod tests {
     use super::*;
     use crate::ureq_client::UreqClientMock;
+    use cvss::Cvss;
+
+    #[test]
+    fn test_get_prime_prefers_highest_version_and_score() {
+        // v3.1 example, score ~4.3 (Medium)
+        let d1 = CvssDetail::from_vector("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L")
+            .unwrap();
+
+        // v4.0 example, lower score (~1.7 Low)
+        let d2 = CvssDetail::from_vector(
+            "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N",
+        )
+        .unwrap();
+
+        // v4.0 example, higher score (should be chosen as prime)
+        let d3 = CvssDetail::from_vector(
+            "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
+        )
+        .unwrap();
+
+        let details = CvssDetails(vec![d1, d2, d3]);
+
+        // Ensure string formatting looks right and it picked the higher-scoring v4.0 vector
+        let prime_str = details.get_prime();
+        assert!(
+            prime_str.contains("CVSS:4.0"),
+            "Expected CVSS:4.0 in prime string: {}",
+            prime_str
+        );
+        assert!(
+            prime_str.contains("VC:H/VI:H/VA:H"),
+            "Expected high impact scores in prime string: {}",
+            prime_str
+        );
+        assert!(
+            prime_str.starts_with("CVSS"),
+            "Expected formatted display starting with 'CVSS': {}",
+            prime_str
+        );
+    }
+
+    #[test]
+    fn test_cvss_score_a() {
+        let s1 = "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N/E:U";
+        let v1: Cvss = s1.parse().unwrap(); // calls FromStr automatically
+
+        assert_eq!(v1.score(), 1.7);
+        assert_eq!(v1.severity().to_string(), "low");
+
+        let s2 = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L";
+        let v2: Cvss = s2.parse().unwrap(); // calls FromStr automatically
+        assert_eq!(v2.score(), 4.3);
+        assert_eq!(v2.severity().to_string(), "medium");
+    }
 
     #[test]
     fn test_vuln_a() {
@@ -259,8 +429,8 @@ mod tests {
             "https://nvd.nist.gov/vuln/detail/CVE-2024-1727"
         );
         assert_eq!(
-            vuln.severity.as_ref().unwrap().get_prime(),
-            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
+            vuln.cvss_details.as_ref().unwrap().get_prime(),
+            "CVSS 4.3 (Medium): CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"
         );
     }
 }

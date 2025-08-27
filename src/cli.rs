@@ -47,6 +47,27 @@ impl From<CliAnchor> for Anchor {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CvssFilter {
+    All,            // No filtering, show all results
+    MaxOnly,        // Show only vulnerabilities with maximum observed CVSS score
+    Threshold(f64), // Show vulnerabilities with CVSS score >= threshold
+}
+
+impl CvssFilter {
+    pub fn from_arg(arg: Option<Option<f64>>) -> Self {
+        match arg {
+            None => CvssFilter::All,           // flag not present
+            Some(None) => CvssFilter::MaxOnly, // --cvss with no value
+            Some(Some(v)) if (0.0..=10.0).contains(&v) => CvssFilter::Threshold(v),
+            Some(Some(_)) => {
+                eprintln!("Error: CVSS score must be a number between 0.0 and 10.0");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 //------------------------------------------------------------------------------
 
 const ERROR_EXIT_CODE: i32 = 3;
@@ -204,6 +225,10 @@ enum Commands {
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
         cache_refresh: bool,
+
+        /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+        #[arg(long, num_args = 0..=1, value_name = "CVSS")]
+        cvss: Option<Option<f64>>,
 
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
@@ -641,6 +666,7 @@ where
             pattern,
             case,
             cache_refresh,
+            cvss,
         }) => {
             let sfs = get_sfs()?;
             // network lookup makes this potentially slow
@@ -652,12 +678,14 @@ where
                     stderr,
                 );
             }
+            let cvss_filter = CvssFilter::from_arg(*cvss);
             let ar = sfs.to_audit_report(
                 pattern,
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
                 log,
+                cvss_filter,
             );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
