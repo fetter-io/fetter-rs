@@ -416,6 +416,7 @@ impl ScanFS {
                 let data: ScanFS = serde_json::from_str(&contents)?;
                 Ok(data)
             } else if cache_fp.exists() {
+                // NOTE: should remove cache_fp to clean up
                 Err("Cache expired".into())
             } else {
                 Err("Cache file does not exist".into())
