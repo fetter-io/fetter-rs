@@ -391,7 +391,7 @@ repos:
 
 ### 2.0.0
 
-The `audit` comand now features a `--cvss` flag to filter results be CVSS score.
+The `audit` command now features a `--cvss` flag to filter results be CVSS score.
 
 The `audit` command now displays CVSS score, severity, and vector.
 
