@@ -123,13 +123,13 @@ fn query_osv_vuln(
         match std::fs::read_to_string(&cache_path) {
             Ok(cached_data) => {
                 if let Ok(osv_vuln) = serde_json::from_str(&cached_data) {
-                    logger!(log, module_path!(), "loaded {vuln_id} from cache");
+                    logger!(log, module_path!(), "Loaded OSV vuln {vuln_id} from cache");
                     return Some(osv_vuln);
                 } else {
                     logger!(
                         log,
                         module_path!(),
-                        "failed to deserialize cached {vuln_id}, refetching"
+                        "Failed to deserialize cached {vuln_id}, refetching"
                     );
                 }
             }
@@ -137,7 +137,7 @@ fn query_osv_vuln(
                 logger!(
                     log,
                     module_path!(),
-                    "failed to read cache file {cache_path:?}: {e}, refetching",
+                    "Failed to read cache file {cache_path:?}: {e}, refetching",
                 );
             }
         }
@@ -151,15 +151,23 @@ fn query_osv_vuln(
                     logger!(
                         log,
                         module_path!(),
-                        "failed to write cache file {cache_path:?}: {e}"
+                        "Failed to write cache file {cache_path:?}: {e}"
                     );
                 } else {
-                    logger!(log, module_path!(), "cached response for {vuln_id}");
+                    logger!(
+                        log,
+                        module_path!(),
+                        "Cached OSV vuln response for {vuln_id}"
+                    );
                 }
                 Some(osv_vuln)
             }
             Err(e) => {
-                logger!(log, module_path!(), "failed to deserialize {vuln_id}: {e}");
+                logger!(
+                    log,
+                    module_path!(),
+                    "Failed to deserialize OSV vuln {vuln_id}: {e}"
+                );
                 None
             }
         },
