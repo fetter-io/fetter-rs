@@ -132,7 +132,7 @@ pub(crate) fn query_osv_batches(
 
     // Get cache directory or return error
     let mut cache_dir = path_cache(true).ok_or("Cache directory not available")?;
-    cache_dir.push(format!("osv_batch_{}", cache_key));
+    cache_dir.push(format!("osv_batch_{cache_key}"));
     let cache_fp = cache_dir.with_extension("json");
 
     if path_within_duration(&cache_fp, cache_dur) {
