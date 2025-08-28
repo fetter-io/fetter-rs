@@ -1,9 +1,14 @@
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
+use std::time::Duration;
+use crate::util::DURATION_0;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // use crate::package::Package;
+use crate::util::{hash_string, logger, path_cache, path_within_duration, ResultDynError, FlagLog};
 use crate::{package::Package, ureq_client::UreqClient};
 
 //------------------------------------------------------------------------------
@@ -101,19 +106,52 @@ fn query_osv_batch(
 pub(crate) fn query_osv_batches(
     client: Arc<dyn UreqClient>,
     packages: &[Package],
-) -> Vec<Option<Vec<String>>> {
-    // prepare query structs from Package
+    cache_dur: Duration,
+    log: FlagLog,
+) -> ResultDynError<Vec<Option<Vec<String>>>> {
     let packages_osv: Vec<OSVPackageQuery> =
         packages.iter().map(OSVPackageQuery::from_package).collect();
 
-    // avoid pagination from api by keeping chunk size under 1000
-    let chunk_size = 64.min(packages_osv.len());
-    // par_chunks sends groups of 4 to batch query
-    let results: Vec<Option<Vec<String>>> = packages_osv
-        .par_chunks(chunk_size)
-        .flat_map(|chunk| query_osv_batch(client.clone(), chunk))
-        .collect();
-    results
+    let json = serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
+    let cache_key = hash_string(&json);
+
+    let query_api = || -> Vec<Option<Vec<String>>> {
+        let chunk_size = 64.min(packages_osv.len());
+        packages_osv
+            .par_chunks(chunk_size)
+            .flat_map(|chunk| query_osv_batch(client.clone(), chunk))
+            .collect()
+    };
+
+    if cache_dur == DURATION_0 {
+        return Ok(query_api());
+    }
+
+    // Get cache directory or return error
+    let mut cache_dir = path_cache(true).ok_or("Cache directory not available")?;
+    cache_dir.push(format!("osv_batch_{}", cache_key));
+    let cache_fp = cache_dir.with_extension("json");
+
+    if path_within_duration(&cache_fp, cache_dur) {
+        // Read from cache
+        logger!(log, module_path!(), "Loading OSV batch cache: {:?}", cache_fp);
+        if let Ok(mut file) = File::open(&cache_fp) {
+            let mut contents = String::new();
+            if file.read_to_string(&mut contents).is_ok() {
+                if let Ok(cached_results) = serde_json::from_str(&contents) {
+                    return Ok(cached_results);
+                }
+            }
+        }
+    }
+    // cache miss or expired, fetch from API
+    let results = query_api();
+    if let Ok(json) = serde_json::to_string(&results) {
+        logger!(log, module_path!(), "Writing OSV batch cache: {:?}", cache_fp);
+        let _ = std::fs::write(&cache_fp, json);
+    }
+
+    Ok(results)
 }
 
 //--------------------------------------------------------------------------
@@ -135,7 +173,7 @@ mod tests {
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
         ];
 
-        let results = query_osv_batches(client, &packages);
+        let results = query_osv_batches(client, &packages, Duration::from_secs(3600), crate::util::FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -147,5 +185,25 @@ mod tests {
             ])
         );
         assert_eq!(results[1], Some(vec!["GHSA-pmv9-3xqp-8w42".to_string()]));
+    }
+
+    #[test]
+    fn test_osv_querybatch_cache_disabled() {
+        let client = Arc::new(UreqClientMock {
+            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-disabled\",\"modified\":\"2024-05-06T14:46:47.572046Z\"}]}]}".to_string()),
+            mock_get : None,
+        });
+        let packages = vec![
+            Package::from_name_version_durl("test-package", "1.0.0", None).unwrap(),
+        ];
+
+        // Test with cache disabled (DURATION_0)
+        let results = query_osv_batches(client, &packages, DURATION_0, crate::util::FlagLog(false)).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0],
+            Some(vec!["GHSA-test-disabled".to_string()])
+        );
     }
 }

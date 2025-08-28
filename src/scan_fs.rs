@@ -404,7 +404,7 @@ impl ScanFS {
             Err("Cache disabled by duration".into())
         } else if let Some(mut cache_dir) = path_cache(true) {
             let exes_hash = hash_paths(exes, force_usite);
-            cache_dir.push(exes_hash);
+            cache_dir.push(format!("scan_fs_{}", exes_hash));
             let cache_fp = cache_dir.with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
@@ -416,7 +416,7 @@ impl ScanFS {
                 let data: ScanFS = serde_json::from_str(&contents)?;
                 Ok(data)
             } else if cache_fp.exists() {
-                // NOTE: should remove cache_fp to clean up
+                // NOTE: could remove cache_fp to clean up
                 Err("Cache expired".into())
             } else {
                 Err("Cache file does not exist".into())

@@ -337,10 +337,15 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
 
     let input = format!("{concatenated}\n{flag}");
     // println!("hash_paths input: {:?}", input);
+    hash_string(&input)
+}
+
+/// Generate SHA256 hash of a string and return it as a lowercase hexadecimal string
+pub(crate) fn hash_string(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let hash = hasher.finalize();
-
+    
     hash.iter().fold(String::new(), |mut acc, byte| {
         write!(&mut acc, "{byte:02x}").unwrap();
         acc
