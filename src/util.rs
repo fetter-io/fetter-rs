@@ -308,6 +308,7 @@ pub(crate) fn exe_path_normalize(path: &Path) -> ResultDynError<PathBuf> {
     path_normalize(&fp, true) // always validate
 }
 
+// Return True of the Path specified was saved within the provided duration from now.
 pub(crate) fn path_within_duration<P: AsRef<Path>>(
     cache_path: P,
     max_dur: Duration,
@@ -335,6 +336,11 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
 
     let input = format!("{concatenated}\n{flag}");
     // println!("hash_paths input: {:?}", input);
+    hash_string(&input)
+}
+
+/// Generate SHA256 hash of a string and return it as a lowercase hexadecimal string
+pub(crate) fn hash_string(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let hash = hasher.finalize();

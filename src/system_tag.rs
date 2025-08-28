@@ -3,7 +3,7 @@ use std::process::Command;
 use std::{env, fs};
 
 #[cfg(test)]
-use sha2::{Digest, Sha256};
+use crate::util::hash_string;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
@@ -93,16 +93,7 @@ impl SystemTag {
     #[cfg(test)]
     pub fn to_hash(&self) -> String {
         let json = serde_json::to_string(self).expect("Unexpected");
-
-        let mut hasher = Sha256::new();
-        hasher.update(json.as_bytes());
-        let hash = hasher.finalize();
-
-        hash.iter().fold(String::new(), |mut acc, byte| {
-            use std::fmt::Write;
-            write!(&mut acc, "{:02x}", byte).unwrap();
-            acc
-        })
+        hash_string(&json)
     }
 }
 

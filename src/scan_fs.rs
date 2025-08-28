@@ -404,11 +404,11 @@ impl ScanFS {
             Err("Cache disabled by duration".into())
         } else if let Some(mut cache_dir) = path_cache(true) {
             let exes_hash = hash_paths(exes, force_usite);
-            cache_dir.push(exes_hash);
+            cache_dir.push(format!("scan_fs_{exes_hash}"));
             let cache_fp = cache_dir.with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Loading cache: {:?}", cache_fp);
+                logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
 
                 let mut file = File::open(cache_fp)?;
                 let mut contents = String::new();
@@ -416,6 +416,7 @@ impl ScanFS {
                 let data: ScanFS = serde_json::from_str(&contents)?;
                 Ok(data)
             } else if cache_fp.exists() {
+                // NOTE: could remove cache_fp to clean up
                 Err("Cache expired".into())
             } else {
                 Err("Cache file does not exist".into())
@@ -554,20 +555,19 @@ impl ScanFS {
     ) -> ResultDynError<()> {
         if let Some(mut cache_dir) = path_cache(true) {
             // use hash of exes observed at initialization
-            cache_dir.push(self.exes_hash.clone());
+            cache_dir.push(format!("scan_fs_{}", self.exes_hash));
             let cache_fp = cache_dir.with_extension("json");
 
             // only write if cache does not exist or it is out of duration
             if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Writing cache: {:?}", cache_fp);
+                logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
 
                 let json = serde_json::to_string(self)?;
                 let mut file = File::create(cache_fp)?;
                 file.write_all(json.as_bytes())?;
                 return Ok(());
             } else {
-                logger!(log, module_path!(), "Keeping existing cache {:?}", cache_fp);
-
+                logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
                 return Ok(());
             }
         }
@@ -601,17 +601,26 @@ impl ScanFS {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn to_audit_report(
         &self,
         pattern: &str,
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
+        cache_dur: Duration,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(client, &packages, cache_refresh, log, filter_cvss)
+        AuditReport::from_packages(
+            client,
+            &packages,
+            cache_refresh,
+            cache_dur,
+            log,
+            filter_cvss,
+        )
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned

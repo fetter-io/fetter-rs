@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::cli::CvssFilter;
 use crate::osv_query::query_osv_batches;
@@ -107,21 +108,32 @@ pub struct AuditReport {
     pub records: Vec<AuditRecord>,
 }
 
-/// An AuditReport, for all provided packages, looks up and display any vulnerabilities in the OSV DB
+/// An AuditReport, for all provided packages, looks up package vulnerabilities and details in the OSV DB. There are two types of caching. (1) A cache on the vulnerabilities found for the provided set of packages. This is a time-cache that is invalidated after `duration`. (2) A cache of the details of each vulnerability. As these are unlikely to change often, these are fetched once and only removed if `cache_refresh` is set.
 impl AuditReport {
     pub fn from_packages(
         client: Arc<dyn UreqClient>,
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
+        cache_dur: Duration,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
         if packages.is_empty() {
-            let records: Vec<AuditRecord> = Vec::new();
-            return AuditReport { records };
+            return AuditReport {
+                records: Vec::new(),
+            };
         }
-        let vulns: Vec<Option<Vec<String>>> = query_osv_batches(client.clone(), packages);
-        logger!(log, module_path!(), "completed query_osv_batch");
+        let vulns: Vec<Option<Vec<String>>> =
+            match query_osv_batches(client.clone(), packages, cache_dur, log) {
+                Ok(vulns) => vulns,
+                Err(e) => {
+                    logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
+                    return AuditReport {
+                        records: Vec::new(),
+                    };
+                }
+            };
+        logger!(log, module_path!(), "Completed query_osv_batch");
 
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
@@ -220,6 +232,7 @@ mod tests {
 
     use crate::table::Tableable;
     use crate::ureq_client::UreqClientMock;
+    use crate::util::DURATION_0;
 
     #[test]
     fn test_audit_report_a() {
@@ -239,6 +252,7 @@ mod tests {
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
+            DURATION_0,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -273,6 +287,7 @@ mod tests {
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
+            DURATION_0,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -296,6 +311,7 @@ mod tests {
             client,
             &packages,
             FlagCacheRefresh(true),
+            DURATION_0,
             FlagLog(false),
             CvssFilter::All,
         );
