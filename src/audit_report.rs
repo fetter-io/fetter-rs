@@ -7,6 +7,7 @@ use crate::cli::CvssFilter;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 use crate::util::logger;
+use crate::util::DURATION_0;
 
 use crate::osv_vulns::VulnInfo;
 use crate::package::Package;
@@ -114,7 +115,7 @@ impl AuditReport {
         client: Arc<dyn UreqClient>,
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
-        cache_dur: Duration,
+        mut cache_dur: Duration,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
@@ -122,6 +123,10 @@ impl AuditReport {
             return AuditReport {
                 records: Vec::new(),
             };
+        }
+        // if cache_refresh is false, force no usage of any caching
+        if bool::from(cache_refresh) {
+            cache_dur = DURATION_0;
         }
         let vulns: Vec<Option<Vec<String>>> =
             match query_osv_batches(client.clone(), packages, cache_dur, log) {
@@ -232,7 +237,6 @@ mod tests {
 
     use crate::table::Tableable;
     use crate::ureq_client::UreqClientMock;
-    use crate::util::DURATION_0;
 
     #[test]
     fn test_audit_report_a() {

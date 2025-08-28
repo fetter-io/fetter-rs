@@ -99,7 +99,7 @@ struct Cli {
     )]
     exe: Vec<PathBuf>,
 
-    /// Create or use caches that expires after the provided number of seconds. A duration of zero will disable caching.
+    /// Create or use caches that expire after the provided number of seconds. A duration of zero will disable caching.
     #[arg(long, short, required = false, default_value = "60")]
     cache_duration: u64,
 
