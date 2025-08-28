@@ -408,7 +408,7 @@ impl ScanFS {
             let cache_fp = cache_dir.with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Loading cache: {:?}", cache_fp);
+                logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
 
                 let mut file = File::open(cache_fp)?;
                 let mut contents = String::new();
@@ -555,7 +555,7 @@ impl ScanFS {
     ) -> ResultDynError<()> {
         if let Some(mut cache_dir) = path_cache(true) {
             // use hash of exes observed at initialization
-            cache_dir.push(self.exes_hash.clone());
+            cache_dir.push(format!("scan_fs_{}", self.exes_hash));
             let cache_fp = cache_dir.with_extension("json");
 
             // only write if cache does not exist or it is out of duration
