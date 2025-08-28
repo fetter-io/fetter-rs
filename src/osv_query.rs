@@ -123,6 +123,8 @@ pub(crate) fn query_osv_batches(
     };
 
     if cache_dur == DURATION_0 {
+        // do not read or write cache
+        logger!(log, module_path!(), "Cache OSV batch disabled by duration");
         return Ok(query_api());
     }
 
