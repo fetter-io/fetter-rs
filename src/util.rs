@@ -308,7 +308,6 @@ pub(crate) fn exe_path_normalize(path: &Path) -> ResultDynError<PathBuf> {
     path_normalize(&fp, true) // always validate
 }
 
-
 // Return True of the Path specified was saved within the provided duration from now.
 pub(crate) fn path_within_duration<P: AsRef<Path>>(
     cache_path: P,
@@ -345,7 +344,7 @@ pub(crate) fn hash_string(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let hash = hasher.finalize();
-    
+
     hash.iter().fold(String::new(), |mut acc, byte| {
         write!(&mut acc, "{byte:02x}").unwrap();
         acc

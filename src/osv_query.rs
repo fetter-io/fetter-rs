@@ -1,14 +1,16 @@
+use crate::util::DURATION_0;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
-use crate::util::DURATION_0;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // use crate::package::Package;
-use crate::util::{hash_string, logger, path_cache, path_within_duration, ResultDynError, FlagLog};
+use crate::util::{
+    hash_string, logger, path_cache, path_within_duration, FlagLog, ResultDynError,
+};
 use crate::{package::Package, ureq_client::UreqClient};
 
 //------------------------------------------------------------------------------
@@ -112,7 +114,8 @@ pub(crate) fn query_osv_batches(
     let packages_osv: Vec<OSVPackageQuery> =
         packages.iter().map(OSVPackageQuery::from_package).collect();
 
-    let json = serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
+    let json =
+        serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
     let cache_key = hash_string(&json);
 
     let query_api = || -> Vec<Option<Vec<String>>> {
@@ -134,7 +137,12 @@ pub(crate) fn query_osv_batches(
 
     if path_within_duration(&cache_fp, cache_dur) {
         // Read from cache
-        logger!(log, module_path!(), "Loading OSV batch cache: {:?}", cache_fp);
+        logger!(
+            log,
+            module_path!(),
+            "Loading OSV batch cache: {:?}",
+            cache_fp
+        );
         if let Ok(mut file) = File::open(&cache_fp) {
             let mut contents = String::new();
             if file.read_to_string(&mut contents).is_ok() {
@@ -147,7 +155,12 @@ pub(crate) fn query_osv_batches(
     // cache miss or expired, fetch from API
     let results = query_api();
     if let Ok(json) = serde_json::to_string(&results) {
-        logger!(log, module_path!(), "Writing OSV batch cache: {:?}", cache_fp);
+        logger!(
+            log,
+            module_path!(),
+            "Writing OSV batch cache: {:?}",
+            cache_fp
+        );
         let _ = std::fs::write(&cache_fp, json);
     }
 
@@ -173,7 +186,13 @@ mod tests {
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
         ];
 
-        let results = query_osv_batches(client, &packages, Duration::from_secs(3600), crate::util::FlagLog(false)).unwrap();
+        let results = query_osv_batches(
+            client,
+            &packages,
+            Duration::from_secs(3600),
+            crate::util::FlagLog(false),
+        )
+        .unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -193,17 +212,15 @@ mod tests {
             mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-disabled\",\"modified\":\"2024-05-06T14:46:47.572046Z\"}]}]}".to_string()),
             mock_get : None,
         });
-        let packages = vec![
-            Package::from_name_version_durl("test-package", "1.0.0", None).unwrap(),
-        ];
+        let packages =
+            vec![Package::from_name_version_durl("test-package", "1.0.0", None).unwrap()];
 
         // Test with cache disabled (DURATION_0)
-        let results = query_osv_batches(client, &packages, DURATION_0, crate::util::FlagLog(false)).unwrap();
+        let results =
+            query_osv_batches(client, &packages, DURATION_0, crate::util::FlagLog(false))
+                .unwrap();
 
         assert_eq!(results.len(), 1);
-        assert_eq!(
-            results[0],
-            Some(vec!["GHSA-test-disabled".to_string()])
-        );
+        assert_eq!(results[0], Some(vec!["GHSA-test-disabled".to_string()]));
     }
 }

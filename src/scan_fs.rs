@@ -568,7 +568,6 @@ impl ScanFS {
                 return Ok(());
             } else {
                 logger!(log, module_path!(), "Keeping existing cache {:?}", cache_fp);
-
                 return Ok(());
             }
         }

@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::{env, fs};
 
-
 #[cfg(test)]
 use crate::util::hash_string;
 

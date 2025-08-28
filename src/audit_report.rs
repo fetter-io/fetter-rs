@@ -120,11 +120,18 @@ impl AuditReport {
             let records: Vec<AuditRecord> = Vec::new();
             return AuditReport { records };
         }
-        let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(client.clone(), packages, std::time::Duration::from_secs(3600), log) {
+        let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
+            client.clone(),
+            packages,
+            std::time::Duration::from_secs(3600),
+            log,
+        ) {
             Ok(vulns) => vulns,
             Err(e) => {
                 logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
-                return AuditReport { records: Vec::new() };
+                return AuditReport {
+                    records: Vec::new(),
+                };
             }
         };
         logger!(log, module_path!(), "completed query_osv_batch");
