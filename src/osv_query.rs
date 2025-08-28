@@ -163,7 +163,6 @@ pub(crate) fn query_osv_batches(
         );
         let _ = std::fs::write(&cache_fp, json);
     }
-
     Ok(results)
 }
 
@@ -190,7 +189,7 @@ mod tests {
             client,
             &packages,
             Duration::from_secs(3600),
-            crate::util::FlagLog(false),
+            FlagLog(false),
         )
         .unwrap();
 
@@ -217,8 +216,7 @@ mod tests {
 
         // Test with cache disabled (DURATION_0)
         let results =
-            query_osv_batches(client, &packages, DURATION_0, crate::util::FlagLog(false))
-                .unwrap();
+            query_osv_batches(client, &packages, DURATION_0, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], Some(vec!["GHSA-test-disabled".to_string()]));

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::cli::CvssFilter;
 use crate::osv_query::query_osv_batches;
@@ -123,7 +124,7 @@ impl AuditReport {
         let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
             client.clone(),
             packages,
-            std::time::Duration::from_secs(3600),
+            Duration::from_secs(3600),
             log,
         ) {
             Ok(vulns) => vulns,
