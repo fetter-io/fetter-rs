@@ -30,7 +30,8 @@ tempfile = "3.11.0"
 toml = "0.8.19"
 sha2 = "0.10.8"
 serde_yaml = "0.9.34" # deprecated
-cvss = { git = "https://github.com/rustsec/rustsec.git", rev = "37764b73a8dd6dfe1af1439180a60d339de77b7a" } # waiting for > 2.1.0
+# cvss = { git = "https://github.com/rustsec/rustsec.git", rev = "37764b73a8dd6dfe1af1439180a60d339de77b7a" } # waiting for > 2.1.0
+cvss = "2.1.0"
 
 [profile.release]
 debug = false
