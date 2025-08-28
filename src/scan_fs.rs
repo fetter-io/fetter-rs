@@ -560,14 +560,14 @@ impl ScanFS {
 
             // only write if cache does not exist or it is out of duration
             if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Writing cache: {:?}", cache_fp);
+                logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
 
                 let json = serde_json::to_string(self)?;
                 let mut file = File::create(cache_fp)?;
                 file.write_all(json.as_bytes())?;
                 return Ok(());
             } else {
-                logger!(log, module_path!(), "Keeping existing cache {:?}", cache_fp);
+                logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
                 return Ok(());
             }
         }
@@ -601,17 +601,26 @@ impl ScanFS {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn to_audit_report(
         &self,
         pattern: &str,
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
+        cache_dur: Duration,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
-        AuditReport::from_packages(client, &packages, cache_refresh, log, filter_cvss)
+        AuditReport::from_packages(
+            client,
+            &packages,
+            cache_refresh,
+            cache_dur,
+            log,
+            filter_cvss,
+        )
     }
 
     /// The `count` Boolean determine if what type of UnpackReport is returned

@@ -99,8 +99,8 @@ struct Cli {
     )]
     exe: Vec<PathBuf>,
 
-    /// Create or use a cache that expires after the provided number of seconds. A duration of zero will disable caching.
-    #[arg(long, short, required = false, default_value = "40")]
+    /// Create or use caches that expires after the provided number of seconds. A duration of zero will disable caching.
+    #[arg(long, short, required = false, default_value = "60")]
     cache_duration: u64,
 
     /// Disable terminal animations.
@@ -505,17 +505,11 @@ where
     let quiet = cli.quiet;
     let stderr = cli.stderr;
     let banner = cli.banner;
+    let cache_dur = Duration::from_secs(cli.cache_duration);
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        from_cache_or_exes(
-            &cli.exe,
-            cli.user_site,
-            !quiet,
-            Duration::from_secs(cli.cache_duration),
-            log,
-            stderr,
-        )
+        from_cache_or_exes(&cli.exe, cli.user_site, !quiet, cache_dur, log, stderr)
     };
 
     match &cli.command {
@@ -684,6 +678,7 @@ where
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
+                cache_dur,
                 log,
                 cvss_filter,
             );

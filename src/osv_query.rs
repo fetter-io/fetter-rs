@@ -114,10 +114,6 @@ pub(crate) fn query_osv_batches(
     let packages_osv: Vec<OSVPackageQuery> =
         packages.iter().map(OSVPackageQuery::from_package).collect();
 
-    let json =
-        serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
-    let cache_key = hash_string(&json);
-
     let query_api = || -> Vec<Option<Vec<String>>> {
         let chunk_size = 64.min(packages_osv.len());
         packages_osv
@@ -130,13 +126,15 @@ pub(crate) fn query_osv_batches(
         return Ok(query_api());
     }
 
-    // Get cache directory or return error
+    let json =
+        serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
+    let cache_key = hash_string(&json);
+
     let mut cache_dir = path_cache(true).ok_or("Cache directory not available")?;
     cache_dir.push(format!("osv_batch_{cache_key}"));
     let cache_fp = cache_dir.with_extension("json");
 
     if path_within_duration(&cache_fp, cache_dur) {
-        // Read from cache
         logger!(
             log,
             module_path!(),
@@ -152,7 +150,7 @@ pub(crate) fn query_osv_batches(
             }
         }
     }
-    // cache miss or expired, fetch from API
+    // full fetch
     let results = query_api();
     if let Ok(json) = serde_json::to_string(&results) {
         logger!(
@@ -185,13 +183,8 @@ mod tests {
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
         ];
 
-        let results = query_osv_batches(
-            client,
-            &packages,
-            Duration::from_secs(3600),
-            FlagLog(false),
-        )
-        .unwrap();
+        let results =
+            query_osv_batches(client, &packages, DURATION_0, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
