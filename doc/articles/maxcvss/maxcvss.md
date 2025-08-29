@@ -1,5 +1,22 @@
 
 
+# Find the Highest Severity Python Package on Your System
+# The Highest Severity Python Package on Your System
+# What's the Most Dangerous Python Package on Your System?
+
+
+The `fetter` command-line application can find the highest-severity Python packages on your system, across all Pythons and virtual environments:
+
+```
+$ fetter audit --cvss
+```
+
+While there are a number of tools to evaluate vulnerable Python packages defined in requirements or lock files, `fetter` takes a bottom-up, system-wide approach, searching for all Python executables, all site packages associated with those executables, and all installed packages.
+
+Countless Python packages have security vulnerabilities, but the severity of those vulnerabilities can be diverse.
+
+
+
 ```bash
 {.env311}{default} % cargo run -- audit --cvss
 
