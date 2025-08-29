@@ -389,6 +389,11 @@ repos:
 ## What is New in Fetter
 
 
+### 2.0.2
+
+Updated `cvss` dependency.
+
+
 ### 2.0.1
 
 Update for CI.
