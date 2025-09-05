@@ -4,30 +4,22 @@
 # Find the Highest Severity Python Package on Your System
 # The Highest Severity Python Package on Your System
 -->
-# What's the Most Dangerous Python Package on Your System?
+# What Is the Most Dangerous Python Package on Your System?
 
-The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of vulnerability.
+The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of software vulnerabilities. If you work with Python, you have Python dependencies on your system, and it is likely that some of those packages have vulnerabilities. But which vulnerabilities are important?
 
-The `fetter` command-line application can find the Python packages on your system, across all Pythons and virtual environments:
+With the following command, the `fetter` command-line application can find, among all Python packages on your system, the dependencies with the highest CVSS scores:
 
-```
+```bash
 $ fetter audit --cvss
 ```
 
-On my system, I find two packages with CVSS scores of 9.1: `flask_applbuilder-4.3.6` and `h11-0.14.0`.
+Fetter can be installed in a Python virtual environment with `pip install fetter` or in an isolated environment with `pipx install fetter`. Using `uvx`, the command can also be run in an ephemeral environment with `uvx fetter audit --cvss`.
 
-
-
-While there are a number of tools to evaluate vulnerable Python packages defined in requirements or lock files, `fetter` takes a bottom-up, system-wide approach, searching for all Python executables, all site packages associated with those executables, and all installed packages.
-
-Countless Python packages have security vulnerabilities, but the severity of those vulnerabilities can be diverse.
-
-
+On my system, I find two packages with CVSS scores of 9.1: `flask_applbuilder` 4.3.6` and `h11` 0.14.0. Fetter provides high level information and relevant links:
 
 ```bash
-{.env311}{default} % cargo run -- audit --cvss
-
-
+$ fetter audit --cvss
 Package                 Vulnerabilities      Attribute  Value
 flask_appbuilder-4.3.6  GHSA-j2pw-vp55-fqqj  URL        https://osv.dev/vulnerability/GHSA-j2pw-vp55-fqqj
                                              Summary    Flask-AppBuilder vulnerable to incorrect authentication when using auth type OpenID
@@ -37,6 +29,20 @@ h11-0.14.0              GHSA-vqfr-h8mv-ghfj  URL        https://osv.dev/vulnerab
                                              Summary    h11 accepts some malformed Chunked-Encoding bodies
                                              Reference  https://nvd.nist.gov/vuln/detail/CVE-2025-43859
                                              Severity   CVSS 9.1 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
-
-
 ```
+
+But are these dangerous? The `flask_appbuilder` 4.3.6 package, if deployed in a web app, permits an attacker to forge an HTTP request to use an arbitrary OpenID service and gain unauthorized privileged access. The `h11` 0.14.0 package, an HTTP/1.1 protocol library, permits request smuggling under some conditions, potentially allowing an attacker to circumvent reverse proxy controls to get to a protected endpoint. So while these packages are not likely dangerous run locally, they certainly should not be deployed.
+
+To find where packages reside, you can use the `fetter search` command:
+
+```bash
+$ fetter search -p h11*
+```
+
+To fully uninstall all packages matching a pattern, you can use the `fetter purge-pattern` command:
+
+```bash
+$ fetter purge-pattern -p h11-0.14*
+```
+
+While there are many tools to evaluate vulnerable Python packages defined in `pyproject.toml`, requirements, or lock files, `fetter` takes a bottom-up, system-wide approach, searching for all Python executables, all site packages associated with those executables, and all installed packages. This finds abandoned Python installations and forgotten virtual environments, all potential sources of vulnerable code.
