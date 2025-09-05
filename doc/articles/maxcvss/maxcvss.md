@@ -1,11 +1,14 @@
 
 
+<!--
 # Find the Highest Severity Python Package on Your System
 # The Highest Severity Python Package on Your System
+-->
 # What's the Most Dangerous Python Package on Your System?
 
+The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of vulnerability.
 
-The `fetter` command-line application can find the highest-severity Python packages on your system, across all Pythons and virtual environments:
+The `fetter` command-line application can find the Python packages on your system, across all Pythons and virtual environments:
 
 ```
 $ fetter audit --cvss
