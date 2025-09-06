@@ -6,7 +6,7 @@
 -->
 # What Is the Most Dangerous Python Package on Your System?
 
-The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of software vulnerabilities. If you work with Python, you have Python dependencies on your system, and it is likely that some of those packages have vulnerabilities. But which vulnerabilities are important?
+The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of software vulnerabilities from 0 to 10. If you work with Python, you have Python dependencies on your system, and it is likely that some of those packages have vulnerabilities. But which vulnerabilities are important?
 
 With the following command, the `fetter` command-line application can find, among all Python packages on your system, the dependencies with the highest CVSS scores:
 
@@ -14,9 +14,9 @@ With the following command, the `fetter` command-line application can find, amon
 $ fetter audit --cvss
 ```
 
-Fetter can be installed in a Python virtual environment with `pip install fetter` or in an isolated environment with `pipx install fetter`. Using `uvx`, the command can also be run in an ephemeral environment with `uvx fetter audit --cvss`.
+Fetter can be installed in a Python environment with `pip install fetter` or in an isolated environment with `pipx install fetter`. Using `uvx`, the command can also be run in an ephemeral environment with `uvx fetter audit --cvss`.
 
-On my system, I find two packages with CVSS scores of 9.1: `flask_applbuilder` 4.3.6` and `h11` 0.14.0. Fetter provides high level information and relevant links:
+On my system, I find two packages with "critical" CVSS scores of 9.1: `flask_applbuilder` 4.3.6 and `h11` 0.14.0. Fetter provides high level information and relevant links:
 
 ```bash
 $ fetter audit --cvss
@@ -45,4 +45,4 @@ To fully uninstall all packages matching a pattern, you can use the `fetter purg
 $ fetter purge-pattern -p h11-0.14*
 ```
 
-While there are many tools to evaluate vulnerable Python packages defined in `pyproject.toml`, requirements, or lock files, `fetter` takes a bottom-up, system-wide approach, searching for all Python executables, all site packages associated with those executables, and all installed packages. This finds abandoned Python installations and forgotten virtual environments, all potential sources of vulnerable code.
+While there are many tools to evaluate vulnerable Python packages defined in `pyproject.toml`, requirements, or lock files, `fetter` takes a bottom-up, system-wide approach, searching for all Python executables, all site packages associated with those executables, and all installed packages. This finds packages in active projects as well as abandoned Python installations or forgotten virtual environments, all potential sources of malware or vulnerable code.
