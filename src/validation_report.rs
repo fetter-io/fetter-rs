@@ -25,10 +25,10 @@ pub enum ValidationExplain {
 impl fmt::Display for ValidationExplain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
-            ValidationExplain::Missing => "Missing", // not found
+            ValidationExplain::Missing => "Missing", // not found, specified
             ValidationExplain::Unrequired => "Unrequired", // found, not specified
             ValidationExplain::Misdefined => "Misdefined", // found, not matched version
-            ValidationExplain::Undefined => "Undefined",
+            ValidationExplain::Undefined => "Undefined", // not found, not specified (catch all)
         };
         write!(f, "{value}")
     }

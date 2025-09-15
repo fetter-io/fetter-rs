@@ -34,6 +34,7 @@ pub use cli::CvssFilter;
 pub use dep_manifest::DepManifest;
 pub use dep_manifest::DepManifestRecord;
 pub use dep_manifest::DepManifestReport;
+pub use dep_spec::DepSpec;
 pub use env_marker::EnvMarkerState;
 pub use lock_file::LockFile;
 pub use lock_file::LockFileType;
