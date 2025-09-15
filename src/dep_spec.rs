@@ -132,10 +132,10 @@ fn extract_marker_expr(
 // Dependency Specification: A model of a specification for one package with pairs of versions and operators, such as "numpy>1.18,<2.0".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DepSpec {
-    pub(crate) name: String,
-    pub(crate) key: String,
-    pub(crate) url: Option<String>,
-    operators: Vec<DepOperator>,
+    pub name: String,
+    pub key: String,
+    pub url: Option<String>,
+    operators: Vec<DepOperator>, // use to_spec() to get version, operators as a String
     versions: Vec<VersionSpec>,
     pub(crate) env_marker: String,
     pub(crate) env_marker_expr: Option<HashMap<String, EnvMarkerExpr>>,
@@ -176,7 +176,7 @@ impl DepSpec {
     }
 
     /// Given a string as found in a requirements.txt or similar, create a DepSpec.
-    pub(crate) fn from_string(input: &str) -> ResultDynError<Self> {
+    pub fn from_string(input: &str) -> ResultDynError<Self> {
         if let Ok(ds) = DepSpec::from_whl(input) {
             return Ok(ds);
         }
@@ -368,18 +368,39 @@ impl DepSpec {
     // public validators
 
     // Primary public interfaced for validation
-    pub(crate) fn validate_package(&self, package: &Package) -> bool {
+    pub fn validate_package(&self, package: &Package) -> bool {
         self.key == package.key
             && self.validate_version(&package.version)
             && self.validate_url(package)
     }
 
     // Given an EnvMarkerState, determine if this DepSpec is applied on this envirionment.
-    pub(crate) fn validate_env_marker(&self, ems: &EnvMarkerState) -> bool {
+    pub fn validate_env_marker(&self, ems: &EnvMarkerState) -> bool {
         if let Some(me) = &self.env_marker_expr {
             return marker_eval(&self.env_marker, me, ems).unwrap();
         }
         true
+    }
+
+    //--------------------------------------------------------------------------
+    /// Return the dependency specification; either the version or URL as string
+    pub fn to_spec(&self) -> String {
+        let marker = match self.env_marker.is_empty() {
+            true => "".to_string(),
+            false => format!("; {}", &self.env_marker),
+        };
+        // if we have versions, we do not need URL
+        if !self.versions.is_empty() {
+            let mut parts = Vec::new();
+            for (op, ver) in self.operators.iter().zip(self.versions.iter()) {
+                parts.push(format!("{op}{ver}"));
+            }
+            format!("{}{}", parts.join(","), marker)
+        } else if let Some(url) = &self.url {
+            format!("{}{}", url_strip_user(url), marker)
+        } else {
+            marker
+        }
     }
 }
 
@@ -419,15 +440,16 @@ mod tests {
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.operators[1], DepOperator::LessThan);
+        assert_eq!(ds1.to_spec(), ">=0.2,<0.3");
     }
     #[test]
     fn test_dep_spec_b() {
         let input = "package[foo]>=0.2; python_version < '2.7'";
         let ds1 = DepSpec::from_string(input).unwrap();
-        // println!("{:?}", ds1);
         assert_eq!(ds1.name, "package");
         assert_eq!(ds1.operators[0], DepOperator::GreaterThanOrEq);
         assert_eq!(ds1.versions[0], VersionSpec::new("0.2"));
+        assert_eq!(ds1.to_spec(), ">=0.2; python_version < '2.7'");
     }
     #[test]
     fn test_dep_spec_c() {
@@ -467,6 +489,7 @@ mod tests {
             ds1.to_string(),
             "foo @ git+https://xx.com/xxxx/xxxx.git@xxxxxx"
         );
+        assert_eq!(ds1.to_spec(), "git+https://xx.com/xxxx/xxxx.git@xxxxxx");
     }
     #[test]
     fn test_dep_spec_h2() {
