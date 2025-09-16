@@ -32,7 +32,7 @@ use crate::util::{logger, FlagCacheRefresh};
 // utility enums
 
 #[derive(Copy, Clone, ValueEnum)]
-enum CliAnchor {
+pub enum CliAnchor {
     Lower,
     Upper,
     Both,

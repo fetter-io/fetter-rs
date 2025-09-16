@@ -31,6 +31,7 @@ pub use audit_report::AuditRecord;
 pub use audit_report::AuditReport;
 pub use cli::run_cli;
 pub use cli::CvssFilter;
+pub use cli::CliAnchor;
 pub use dep_manifest::DepManifest;
 pub use dep_manifest::DepManifestRecord;
 pub use dep_manifest::DepManifestReport;
