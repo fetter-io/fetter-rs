@@ -42,7 +42,7 @@ static LOCK_PRIORITY: &[&str] = &[
 
 //------------------------------------------------------------------------------
 pub struct DepManifestRecord {
-    dep_spec: DepSpec,
+    pub dep_spec: DepSpec,
 }
 
 impl Rowable for DepManifestRecord {

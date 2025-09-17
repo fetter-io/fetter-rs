@@ -388,6 +388,11 @@ repos:
 
 ## What is New in Fetter
 
+### 2.5.0
+
+Extension to the public library interface.
+
+
 ### 2.4.0
 
 Extension to the public library interface.
