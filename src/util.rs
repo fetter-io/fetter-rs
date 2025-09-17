@@ -25,6 +25,14 @@ pub type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
 pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
 //------------------------------------------------------------------------------
+#[derive(Debug, Copy, Clone)]
+pub enum Anchor {
+    Lower,
+    Upper,
+    Both,
+}
+
+//------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug)]
 pub struct FlagLog(pub bool);

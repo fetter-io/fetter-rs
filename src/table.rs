@@ -211,7 +211,7 @@ impl ColumnFormat {
 }
 
 //------------------------------------------------------------------------------
-pub(crate) trait Tableable<T: Rowable> {
+pub trait Tableable<T: Rowable> {
     fn get_header(&self) -> Vec<ColumnFormat>;
     fn get_records(&self) -> &Vec<T>;
 

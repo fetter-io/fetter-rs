@@ -17,12 +17,12 @@ use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
 use crate::monitor::monitor_scan_loop;
-use crate::scan_fs::Anchor;
 use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
+use crate::util::Anchor;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::DURATION_0;

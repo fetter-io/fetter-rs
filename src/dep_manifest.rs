@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -17,6 +18,7 @@ use crate::table::RowableContext;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
 
+use crate::dep_spec::DepOperator;
 use crate::dep_spec::DepSpec;
 use crate::env_marker::EnvMarkerState;
 use crate::lock_file::LockFile;
@@ -24,6 +26,7 @@ use crate::package::Package;
 use crate::pyproject::PyProjectInfo;
 use crate::ureq_client::UreqClientLive;
 use crate::util::path_normalize;
+use crate::util::Anchor;
 use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
@@ -149,6 +152,56 @@ impl DepManifest {
             dep_specs: ds,
             env_marker_active,
         })
+    }
+
+    // Given an iter of Packages, derive a DepManifest
+    pub fn from_packages<I>(packages: I, anchor: Anchor) -> ResultDynError<Self>
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Package>,
+    {
+        let mut package_name_to_package: HashMap<String, Vec<Package>> = HashMap::new();
+
+        for package in packages {
+            let pkg: &Package = package.borrow();
+            package_name_to_package
+                .entry(pkg.name.clone())
+                .or_default()
+                .push(pkg.clone());
+        }
+        let names: Vec<String> = package_name_to_package.keys().cloned().collect();
+        let mut dep_specs: Vec<DepSpec> = Vec::new();
+
+        for name in names {
+            let packages = match package_name_to_package.get_mut(&name) {
+                Some(packages) => packages,
+                None => continue,
+            };
+            packages.sort();
+
+            let pkg_min = match packages.first() {
+                Some(pkg) => pkg,
+                None => continue,
+            };
+            let pkg_max = match packages.last() {
+                Some(pkg) => pkg,
+                None => continue,
+            };
+
+            let ds = match anchor {
+                Anchor::Lower => {
+                    DepSpec::from_package(pkg_min, DepOperator::GreaterThanOrEq)
+                }
+                Anchor::Upper => {
+                    DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
+                }
+                Anchor::Both => return Err("Not implemented".into()),
+            };
+            if let Ok(dep_spec) = ds {
+                dep_specs.push(dep_spec);
+            }
+        }
+        DepManifest::from_dep_specs(&dep_specs)
     }
 
     //--------------------------------------------------------------------------
