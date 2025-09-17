@@ -53,7 +53,7 @@ impl Rowable for DepManifestRecord {
 
 // Simple report around dep manifest for common display/output needs
 pub struct DepManifestReport {
-    records: Vec<DepManifestRecord>,
+    pub records: Vec<DepManifestRecord>,
 }
 
 impl Tableable<DepManifestRecord> for DepManifestReport {

@@ -13,14 +13,14 @@ use crate::write_color::write_color;
 
 //------------------------------------------------------------------------------
 #[derive(PartialEq)]
-pub(crate) enum RowableContext {
+pub enum RowableContext {
     Delimited,
     Tty,
     // Undefined, // not delimited or tty
 }
 
 /// Translate one struct into one or more rows (Vec<String>). Note that the number of resultant columns not be equal to the number of struct fields.
-pub(crate) trait Rowable {
+pub trait Rowable {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>>;
 }
 
@@ -167,7 +167,7 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
 }
 
 //------------------------------------------------------------------------------
-pub(crate) struct ColumnFormat {
+pub struct ColumnFormat {
     header: String,
     ellipsisable: bool,
     color: String,

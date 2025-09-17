@@ -55,6 +55,7 @@ pub use package_durl::VcsInfo;
 pub use path_shared::PathShared;
 pub use scan_fs::ScanFS;
 pub use system_tag::SystemTag;
+pub use table::Tableable;
 pub use ureq_client::UreqClientLive;
 pub use util::FlagCacheRefresh;
 pub use util::FlagLog;
