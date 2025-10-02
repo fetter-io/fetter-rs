@@ -35,8 +35,8 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
     paths
 }
 
-// Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched.
-fn get_search_origins() -> HashSet<(PathBuf, bool)> {
+// Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched. If `users` is true, all users will be searched.
+fn get_search_origins(users: bool) -> HashSet<(PathBuf, bool)> {
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
 
     // get all paths on PATH
