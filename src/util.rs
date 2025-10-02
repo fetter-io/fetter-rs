@@ -273,6 +273,24 @@ pub(crate) fn path_cache(create: bool) -> Option<PathBuf> {
     cache_path
 }
 
+/// Return the base directory that typically contains user home folders.
+pub(crate) fn path_users() -> Option<PathBuf> {
+    let path_str = match env::consts::OS {
+        "linux"   => "/home",
+        "macos"   => "/Users",
+        "windows" => r"C:\Users",
+        _         => "/home", // generic UNIX fallback
+    };
+
+    let path = Path::new(path_str);
+    if path.is_dir() {
+        Some(path.to_path_buf())
+    } else {
+        None
+    }
+}
+
+
 /// Given a Path, make it absolute, either expanding `~` or prepending current working directory.
 pub(crate) fn path_normalize(path: &Path, validate: bool) -> ResultDynError<PathBuf> {
     let mut fp = path.to_path_buf();
@@ -578,4 +596,18 @@ mod tests {
             Some(("_libgcc_mutex".to_string(), "0.1".to_string()))
         );
     }
+
+    //--------------------------------------------------------------------------
+
+    #[test]
+    fn test_path_users() {
+        let home = path_home().unwrap();
+        let users = path_users().unwrap();
+
+        assert_eq!(
+            users,
+            home.parent().map(|p| p.to_path_buf()).unwrap()
+        );
+    }
+
 }
