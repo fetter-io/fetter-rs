@@ -388,13 +388,14 @@ impl ScanFS {
     pub(crate) fn from_cache(
         exes: &[PathBuf],
         force_usite: bool,
+        all_users: bool,
         cache_dur: Duration,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         if cache_dur == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else if let Some(mut cache_dir) = path_cache(true) {
-            let exes_hash = hash_paths(exes, force_usite);
+            let exes_hash = hash_paths(exes, force_usite, all_users);
             cache_dir.push(format!("scan_fs_{exes_hash}"));
             let cache_fp = cache_dir.with_extension("json");
 
@@ -421,13 +422,14 @@ impl ScanFS {
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
         force_usite: bool,
+        all_users: bool,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
         let mut exes_norm = Vec::new();
         for e in exes {
             if path_is_component(e) && *e == path_wild {
-                exes_norm.extend(find_exe());
+                exes_norm.extend(find_exe(all_users));
             } else {
                 exes_norm.push(exe_path_normalize(e)?);
             }
@@ -441,7 +443,7 @@ impl ScanFS {
             })
             .collect();
 
-        let exes_hash = hash_paths(exes, force_usite);
+        let exes_hash = hash_paths(exes, force_usite, all_users);
         Self::from_exe_to_sites(exe_to_sites, force_usite, exes_hash)
     }
 
@@ -476,7 +478,8 @@ impl ScanFS {
                 .push(site_shared.clone());
         }
         let force_usite = false;
-        let exes_hash = hash_paths(&exes, force_usite);
+        let all_users = false;
+        let exes_hash = hash_paths(&exes, force_usite, all_users);
 
         Ok(ScanFS {
             exe_to_sites,
@@ -1825,7 +1828,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,\"35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.exe_to_sites.len(), 1);
@@ -1922,7 +1925,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.exes_hash,
-            "35cc8bbf5f965f99f2ed716a23e0cfbb70b8977ba65e837708e960fc13e51da2"
+            "c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7"
         );
     }
 
@@ -1938,7 +1941,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.exes_hash,
-            "973122597250deea4e62e359208ab4335782561c12032746ce044a387a201d09"
+            "2a8da48d3b320314e74fa1b06b1b1d03330f4fa801b03ac81e57409726169a94"
         );
     }
 
@@ -1971,7 +1974,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         site_to_exes.insert(site_shared2.clone(), exes2);
 
         let force_usite = false;
-        let exes_hash = hash_paths(&exes, force_usite);
+        let all_users = false;
+
+        let exes_hash = hash_paths(&exes, force_usite, all_users);
         let sfs = ScanFS {
             exe_to_sites,
             package_to_sites,
@@ -2006,7 +2011,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exe1 = PathBuf::from("a");
         let exe2 = PathBuf::from("b");
         let exes = vec![exe1, exe2];
-        let post = ScanFS::from_exes(&exes, false, FlagLog(false));
+        let post = ScanFS::from_exes(&exes, false, false, FlagLog(false));
         // error for bad exe
         assert!(post.is_err());
     }
@@ -2018,9 +2023,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
         let exes = vec![exe1.clone(), exe2.clone()];
 
-        let scan1 = ScanFS::from_exes(&exes, false, FlagLog(false))
+        let scan1 = ScanFS::from_exes(&exes, false, false, FlagLog(false))
             .expect("Failed to build ScanFS from the first ordering");
-        let scan2 = ScanFS::from_exes(&exes, false, FlagLog(false))
+        let scan2 = ScanFS::from_exes(&exes, false, false, FlagLog(false))
             .expect("Failed to build ScanFS from the shuffled executables");
 
         let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");

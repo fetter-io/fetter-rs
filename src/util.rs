@@ -349,7 +349,7 @@ pub(crate) fn path_within_duration<P: AsRef<Path>>(
 }
 
 /// Create a hash of an iterable of PathBuf plus an additional Boolean flag (used for the usite configuration option).
-pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
+pub(crate) fn hash_paths(paths: &[PathBuf], flag1: bool, flag2: bool) -> String {
     let mut ps: Vec<PathBuf> = paths.to_owned();
     ps.sort();
 
@@ -359,8 +359,7 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let input = format!("{concatenated}\n{flag}");
-    // println!("hash_paths input: {:?}", input);
+    let input = format!("{concatenated}\n{flag1}\n{flag2}");
     hash_string(&input)
 }
 
@@ -561,20 +560,20 @@ mod tests {
             Path::new("/a/foo/bar").to_path_buf(),
             Path::new("/b/foo/bar").to_path_buf(),
         ];
-        let hashed = hash_paths(&paths, true);
+        let hashed = hash_paths(&paths, true, true);
         assert_eq!(
             hashed,
-            "aa1e51b6cc2de01f6180c646bd9fe6e5c548bdee475a212747588edc5b0d741b"
+            "83259d61ab78d5a4afb670e167bab74b0d1532878a45aa5c2848a8bb05f41903"
         )
     }
 
     #[test]
     fn test_hash_paths_b() {
         let paths = vec![Path::new("*").to_path_buf()];
-        let hashed = hash_paths(&paths, true);
+        let hashed = hash_paths(&paths, true, true);
         assert_eq!(
             hashed,
-            "e55c287546ecb742e64cae60f41e128a082b290f663f2e03f734b1d82d2ad274"
+            "aa0a2150615aa2de8849dedd49f8fb9bb6114270c98bfbf4d117faf39b172720"
         )
     }
     //--------------------------------------------------------------------------

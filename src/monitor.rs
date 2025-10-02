@@ -20,11 +20,12 @@ fn monitor_scan(
     url: Arc<String>,
     tenant: Arc<String>,
     force_usite: bool,
+    all_users: bool,
     log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
     let sfs =
-        ScanFS::from_exes(&exe_paths, force_usite, log).expect("from_exes() failed.");
+        ScanFS::from_exes(&exe_paths, force_usite, all_users, log).expect("from_exes() failed.");
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -58,6 +59,7 @@ pub(crate) fn monitor_scan_loop(
     url: &String,
     tenant: &String,
     force_usite: bool,
+    all_users: bool,
     period: u64,
     log: FlagLog,
 ) -> ResultDynError<()> {
@@ -78,6 +80,7 @@ pub(crate) fn monitor_scan_loop(
             url_arc,
             tenant_arc,
             force_usite,
+            all_users,
             log,
         );
         return Ok(());
@@ -98,6 +101,7 @@ pub(crate) fn monitor_scan_loop(
                 url,
                 tenant,
                 force_usite,
+                all_users,
                 log,
             );
         }

@@ -9,6 +9,7 @@ use rayon::prelude::*;
 use crate::util::get_absolute_path_from_exe;
 use crate::util::is_python_exe;
 use crate::util::path_home;
+use crate::util::path_users;
 
 //------------------------------------------------------------------------------
 // Provide absolute paths for directories that should be excluded from executable search.
@@ -36,7 +37,7 @@ fn get_search_exclude_paths() -> HashSet<PathBuf> {
 }
 
 // Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched. If `users` is true, all users will be searched.
-fn get_search_origins(users: bool) -> HashSet<(PathBuf, bool)> {
+fn get_search_origins(all_users: bool) -> HashSet<(PathBuf, bool)> {
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
 
     // get all paths on PATH
@@ -45,7 +46,13 @@ fn get_search_origins(users: bool) -> HashSet<(PathBuf, bool)> {
             paths.insert((PathBuf::from(path), false));
         }
     }
-    match path_home() {
+
+    let origin = match all_users {
+        true => path_users(),
+        false => path_home(),
+    };
+
+    match origin {
         Some(home) => {
             paths.insert((home.clone(), false));
             // collect all directories in the user's home directory
@@ -64,7 +71,7 @@ fn get_search_origins(users: bool) -> HashSet<(PathBuf, bool)> {
             }
         }
         None => {
-            eprintln!("Error getting HOME");
+            eprintln!("Error getting origin");
         }
     }
     paths.insert((PathBuf::from("/bin"), false));
@@ -130,9 +137,9 @@ fn find_exe_inner(
 }
 
 // After collecting origins, find all executables
-pub(crate) fn find_exe() -> HashSet<PathBuf> {
+pub(crate) fn find_exe(all_users: bool) -> HashSet<PathBuf> {
     let exclude = get_search_exclude_paths();
-    let origins = get_search_origins();
+    let origins = get_search_origins(all_users);
 
     let mut paths: HashSet<PathBuf> = origins
         .par_iter()
@@ -162,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_get_search_origins_a() {
-        let post = get_search_origins();
+        let post = get_search_origins(false);
         assert!(post.len() > 6);
     }
 

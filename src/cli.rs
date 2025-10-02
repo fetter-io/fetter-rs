@@ -123,6 +123,10 @@ struct Cli {
     #[arg(long, required = false)]
     user_site: bool,
 
+    /// When searching for all discoverable executables, include all user directories. Otherwise, include only the users home directory.
+    #[arg(long, required = false)]
+    all_users: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -463,12 +467,13 @@ enum UnpackFilesSubcommand {
 fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
     force_usite: bool,
+    all_users: bool,
     animate: bool,
     cache_dur: Duration,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, force_usite, cache_dur, log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, force_usite, all_users, cache_dur, log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -480,7 +485,7 @@ fn from_cache_or_exes(
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfs = ScanFS::from_exes(exe_paths, force_usite, log)?;
+        let sfs = ScanFS::from_exes(exe_paths, force_usite, all_users, log)?;
 
         if cache_dur > DURATION_0 {
             sfs.to_cache(cache_dur, log)?;
@@ -514,7 +519,7 @@ where
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        from_cache_or_exes(&cli.exe, cli.user_site, !quiet, cache_dur, log, stderr)
+        from_cache_or_exes(&cli.exe, cli.user_site, cli.all_users, !quiet, cache_dur, log, stderr)
     };
 
     match &cli.command {
@@ -779,6 +784,7 @@ where
                 url,
                 tenant,
                 cli.user_site,
+                cli.all_users,
                 *period,
                 log,
             );
