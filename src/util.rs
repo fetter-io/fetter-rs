@@ -51,6 +51,23 @@ impl From<FlagLog> for bool {
 
 //------------------------------------------------------------------------------
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScanConfig {
+    pub force_usite: bool,
+    pub all_users: bool,
+}
+
+impl ScanConfig {
+    pub fn new(force_usite: bool, all_users: bool) -> Self {
+        Self {
+            force_usite,
+            all_users,
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+
 #[derive(Clone, Copy, Debug)]
 pub struct FlagCacheRefresh(pub bool);
 
@@ -348,8 +365,8 @@ pub(crate) fn path_within_duration<P: AsRef<Path>>(
     false
 }
 
-/// Create a hash of an iterable of PathBuf plus an additional Boolean flag (used for the usite configuration option).
-pub(crate) fn hash_paths(paths: &[PathBuf], flag1: bool, flag2: bool) -> String {
+/// Create a hash of an iterable of PathBuf plus scan configuration options.
+pub(crate) fn hash_paths(paths: &[PathBuf], config: ScanConfig) -> String {
     let mut ps: Vec<PathBuf> = paths.to_owned();
     ps.sort();
 
@@ -359,7 +376,10 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag1: bool, flag2: bool) -> String 
         .collect::<Vec<_>>()
         .join("\n");
 
-    let input = format!("{concatenated}\n{flag1}\n{flag2}");
+    let input = format!(
+        "{concatenated}\n{}\n{}",
+        config.force_usite, config.all_users
+    );
     hash_string(&input)
 }
 
@@ -560,7 +580,8 @@ mod tests {
             Path::new("/a/foo/bar").to_path_buf(),
             Path::new("/b/foo/bar").to_path_buf(),
         ];
-        let hashed = hash_paths(&paths, true, true);
+        let config = ScanConfig::new(true, true);
+        let hashed = hash_paths(&paths, config);
         assert_eq!(
             hashed,
             "83259d61ab78d5a4afb670e167bab74b0d1532878a45aa5c2848a8bb05f41903"
@@ -570,7 +591,8 @@ mod tests {
     #[test]
     fn test_hash_paths_b() {
         let paths = vec![Path::new("*").to_path_buf()];
-        let hashed = hash_paths(&paths, true, true);
+        let config = ScanConfig::new(true, true);
+        let hashed = hash_paths(&paths, config);
         assert_eq!(
             hashed,
             "aa0a2150615aa2de8849dedd49f8fb9bb6114270c98bfbf4d117faf39b172720"

@@ -25,6 +25,7 @@ use crate::ureq_client::UreqClient;
 use crate::util::Anchor;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
+use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 
@@ -466,14 +467,13 @@ enum UnpackFilesSubcommand {
 // Provided `exe_paths` are not normalize.
 fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
-    force_usite: bool,
-    all_users: bool,
+    config: ScanConfig,
     animate: bool,
     cache_dur: Duration,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, force_usite, all_users, cache_dur, log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache_dur, log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -485,7 +485,7 @@ fn from_cache_or_exes(
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfs = ScanFS::from_exes(exe_paths, force_usite, all_users, log)?;
+        let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
         if cache_dur > DURATION_0 {
             sfs.to_cache(cache_dur, log)?;
@@ -519,15 +519,8 @@ where
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        from_cache_or_exes(
-            &cli.exe,
-            cli.user_site,
-            cli.all_users,
-            !quiet,
-            cache_dur,
-            log,
-            stderr,
-        )
+        let config = ScanConfig::new(cli.user_site, cli.all_users);
+        from_cache_or_exes(&cli.exe, config, !quiet, cache_dur, log, stderr)
     };
 
     match &cli.command {
@@ -786,16 +779,9 @@ where
             tenant,
         }) => {
             // let ureq clone for increment ref count
-            let _ = monitor_scan_loop(
-                &cli.exe,
-                client,
-                url,
-                tenant,
-                cli.user_site,
-                cli.all_users,
-                *period,
-                log,
-            );
+            let config = ScanConfig::new(cli.user_site, cli.all_users);
+            let _ =
+                monitor_scan_loop(&cli.exe, client, url, tenant, config, *period, log);
         }
         None => {}
     }

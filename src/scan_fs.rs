@@ -41,18 +41,19 @@ use crate::util::Anchor;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
+use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
 
 //------------------------------------------------------------------------------
 
-/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `force_usite` is false, we use site.ENABLE_USER_SITE to determine if we should include the user site packages; if `force_usite` is true, we always include usite.
+/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `config.force_usite` is false, we use site.ENABLE_USER_SITE to determine if we should include the user site packages; if `config.force_usite` is true, we always include usite.
 /// Calling Python using `-S` disables loading site so that we can mock sitecustomize.py (which fetter might customize). We then call `site.main()` to force proper initialization.
 const PY_SITE_PACKAGES: &str = "import sys;import site;import types;sys.modules['fetter_validate'] = types.ModuleType('fetter_validate');site.main();print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
 fn get_site_package_dirs(
     executable: &Path,
-    force_usite: bool,
+    config: ScanConfig,
     log: FlagLog,
 ) -> Vec<PathShared> {
     match Command::new(executable)
@@ -77,7 +78,7 @@ fn get_site_package_dirs(
                 }
             }
             // if necessary, remove the usite
-            if !force_usite && !usite_enabled {
+            if !config.force_usite && !usite_enabled {
                 let _p = paths.pop();
             }
             paths
@@ -125,15 +126,15 @@ pub struct ScanFS {
     pub site_to_exes: HashMap<PathShared, Vec<PathShared>>,
     /// Optionally populate EnvMarkerState for all exe, only if env markers are found
     pub exe_to_ems: Option<HashMap<PathShared, EnvMarkerState>>,
-    /// Optionally force usage of user site
-    force_usite: bool,
+    /// Scan configuration
+    config: ScanConfig,
     /// Store the hash of the un-normalized exe inputs for cache lookup.
     exes_hash: String,
 }
 
 impl PartialEq for ScanFS {
     fn eq(&self, other: &Self) -> bool {
-        if self.force_usite != other.force_usite || self.exes_hash != other.exes_hash {
+        if self.config != other.config || self.exes_hash != other.exes_hash {
             return false;
         }
         if self.exe_to_ems != other.exe_to_ems {
@@ -265,7 +266,8 @@ impl Serialize for ScanFS {
             exe_to_sites_idx?,
             package_to_sites_idx?,
             site_to_exe_idx?,
-            self.force_usite,
+            self.config.force_usite,
+            self.config.all_users,
             &self.exes_hash,
         );
         data.serialize(serializer)
@@ -278,6 +280,7 @@ type ScanFSData = (
     Vec<(usize, Vec<usize>)>,
     Vec<(Package, Vec<usize>)>,
     Vec<(usize, Vec<usize>)>,
+    bool,
     bool,
     String,
 );
@@ -293,6 +296,7 @@ impl<'de> Deserialize<'de> for ScanFS {
             package_to_sites_idx,
             site_to_exe_idx,
             force_usite,
+            all_users,
             exes_hash,
         ): ScanFSData = Deserialize::deserialize(deserializer)?;
 
@@ -331,7 +335,7 @@ impl<'de> Deserialize<'de> for ScanFS {
             package_to_sites,
             site_to_exes,
             exe_to_ems: None,
-            force_usite,
+            config: ScanConfig::new(force_usite, all_users),
             exes_hash,
         })
     }
@@ -341,7 +345,7 @@ impl ScanFS {
     /// Main entry point for creating a ScanFS. All public creation should go through this interface.
     fn from_exe_to_sites(
         exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
-        force_usite: bool,
+        config: ScanConfig,
         exes_hash: String,
     ) -> ResultDynError<Self> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
@@ -379,7 +383,7 @@ impl ScanFS {
             package_to_sites,
             site_to_exes,
             exe_to_ems: None,
-            force_usite,
+            config,
             exes_hash,
         })
     }
@@ -387,15 +391,14 @@ impl ScanFS {
     /// Create a ScanFS from a cache: exes provided here should be pre-normalization.
     pub(crate) fn from_cache(
         exes: &[PathBuf],
-        force_usite: bool,
-        all_users: bool,
+        config: ScanConfig,
         cache_dur: Duration,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         if cache_dur == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else if let Some(mut cache_dir) = path_cache(true) {
-            let exes_hash = hash_paths(exes, force_usite, all_users);
+            let exes_hash = hash_paths(exes, config);
             cache_dir.push(format!("scan_fs_{exes_hash}"));
             let cache_fp = cache_dir.with_extension("json");
 
@@ -421,15 +424,14 @@ impl ScanFS {
     /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide path search will be conducted.
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
-        force_usite: bool,
-        all_users: bool,
+        config: ScanConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
         let mut exes_norm = Vec::new();
         for e in exes {
             if path_is_component(e) && *e == path_wild {
-                exes_norm.extend(find_exe(all_users));
+                exes_norm.extend(find_exe(config.all_users));
             } else {
                 exes_norm.push(exe_path_normalize(e)?);
             }
@@ -438,13 +440,13 @@ impl ScanFS {
         let exe_to_sites: HashMap<PathShared, Vec<PathShared>> = exes_norm
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, force_usite, log);
+                let dirs = get_site_package_dirs(&exe, config, log);
                 (PathShared::from(exe), dirs)
             })
             .collect();
 
-        let exes_hash = hash_paths(exes, force_usite, all_users);
-        Self::from_exe_to_sites(exe_to_sites, force_usite, exes_hash)
+        let exes_hash = hash_paths(exes, config);
+        Self::from_exe_to_sites(exe_to_sites, config, exes_hash)
     }
 
     /// Alternative constructor from in-memory objects, only for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
@@ -477,16 +479,15 @@ impl ScanFS {
                 .or_insert_with(Vec::new)
                 .push(site_shared.clone());
         }
-        let force_usite = false;
-        let all_users = false;
-        let exes_hash = hash_paths(&exes, force_usite, all_users);
+        let config = ScanConfig::new(false, false);
+        let exes_hash = hash_paths(&exes, config);
 
         Ok(ScanFS {
             exe_to_sites,
             package_to_sites,
             site_to_exes,
             exe_to_ems: None,
-            force_usite,
+            config,
             exes_hash,
         })
     }
@@ -761,9 +762,11 @@ mod tests {
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
-        let paths1 = get_site_package_dirs(p1, true, FlagLog(false));
+        let config_force = ScanConfig::new(true, false);
+        let paths1 = get_site_package_dirs(p1, config_force, FlagLog(false));
         assert!(!paths1.is_empty());
-        let paths2 = get_site_package_dirs(p1, false, FlagLog(false));
+        let config_no_force = ScanConfig::new(false, false);
+        let paths2 = get_site_package_dirs(p1, config_no_force, FlagLog(false));
         assert!(paths1.len() >= paths2.len());
     }
     #[test]
@@ -786,8 +789,9 @@ mod tests {
             PathShared::from(fp_exe.clone()),
             vec![PathShared::from_path_buf(fp_sp.to_path_buf())],
         );
+        let config = ScanConfig::new(false, false);
         let mut sfs =
-            ScanFS::from_exe_to_sites(exe_to_sites, false, "".to_string()).unwrap();
+            ScanFS::from_exe_to_sites(exe_to_sites, config, "".to_string()).unwrap();
         assert_eq!(sfs.package_to_sites.len(), 2);
 
         let dm1 = DepManifest::try_from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
@@ -1828,7 +1832,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.exe_to_sites.len(), 1);
@@ -1854,7 +1858,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
             package_to_sites: HashMap::new(),
             site_to_exes: HashMap::new(),
             exe_to_ems: None,
-            force_usite: false,
+            config: ScanConfig::new(false, false),
             exes_hash: "hash".to_string(),
         };
 
@@ -1885,7 +1889,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         sfs.site_to_exes.insert(site2.clone().into(), exes2);
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,[0]],[1,[3]]],false,"hash"]"#;
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,[0]],[1,[3]]],false,false,"hash"]"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1973,16 +1977,14 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         site_to_exes.insert(site_shared1.clone(), exes1);
         site_to_exes.insert(site_shared2.clone(), exes2);
 
-        let force_usite = false;
-        let all_users = false;
-
-        let exes_hash = hash_paths(&exes, force_usite, all_users);
+        let config = ScanConfig::new(false, false);
+        let exes_hash = hash_paths(&exes, config);
         let sfs = ScanFS {
             exe_to_sites,
             package_to_sites,
             site_to_exes,
             exe_to_ems: None,
-            force_usite,
+            config,
             exes_hash,
         };
 
@@ -2011,7 +2013,8 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exe1 = PathBuf::from("a");
         let exe2 = PathBuf::from("b");
         let exes = vec![exe1, exe2];
-        let post = ScanFS::from_exes(&exes, false, false, FlagLog(false));
+        let config = ScanConfig::new(false, false);
+        let post = ScanFS::from_exes(&exes, config, FlagLog(false));
         // error for bad exe
         assert!(post.is_err());
     }
@@ -2023,9 +2026,10 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
         let exes = vec![exe1.clone(), exe2.clone()];
 
-        let scan1 = ScanFS::from_exes(&exes, false, false, FlagLog(false))
+        let config = ScanConfig::new(false, false);
+        let scan1 = ScanFS::from_exes(&exes, config, FlagLog(false))
             .expect("Failed to build ScanFS from the first ordering");
-        let scan2 = ScanFS::from_exes(&exes, false, false, FlagLog(false))
+        let scan2 = ScanFS::from_exes(&exes, config, FlagLog(false))
             .expect("Failed to build ScanFS from the shuffled executables");
 
         let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");
