@@ -24,8 +24,8 @@ fn monitor_scan(
     log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
-    let sfs =
-        ScanFS::from_exes(&exe_paths, force_usite, all_users, log).expect("from_exes() failed.");
+    let sfs = ScanFS::from_exes(&exe_paths, force_usite, all_users, log)
+        .expect("from_exes() failed.");
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)

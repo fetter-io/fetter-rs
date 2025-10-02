@@ -519,7 +519,15 @@ where
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        from_cache_or_exes(&cli.exe, cli.user_site, cli.all_users, !quiet, cache_dur, log, stderr)
+        from_cache_or_exes(
+            &cli.exe,
+            cli.user_site,
+            cli.all_users,
+            !quiet,
+            cache_dur,
+            log,
+            stderr,
+        )
     };
 
     match &cli.command {
