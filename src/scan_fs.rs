@@ -10,7 +10,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -32,12 +31,12 @@ use crate::ureq_client::UreqClient;
 use crate::util::exe_path_normalize;
 use crate::util::hash_paths;
 use crate::util::logger;
-use crate::util::path_cache;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
 use crate::util::vecs_equal_as_sets;
 use crate::util::Anchor;
+use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
@@ -393,17 +392,20 @@ impl ScanFS {
     pub(crate) fn from_cache(
         exes: &[PathBuf],
         config: ScanConfig,
-        cache_dur: Duration,
+        cache: CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
-        if cache_dur == DURATION_0 {
+        if cache.duration == DURATION_0 {
             Err("Cache disabled by duration".into())
-        } else if let Some(mut cache_dir) = path_cache(true) {
+        } else {
             let exes_hash = hash_paths(exes, config);
-            cache_dir.push(format!("scan_fs_{exes_hash}"));
-            let cache_fp = cache_dir.with_extension("json");
 
-            if path_within_duration(&cache_fp, cache_dur) {
+            let cache_fp = cache
+                .dir
+                .join(format!("scan_fs_{exes_hash}"))
+                .with_extension("json");
+
+            if path_within_duration(&cache_fp, cache.duration) {
                 logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
 
                 let mut file = File::open(cache_fp)?;
@@ -417,8 +419,6 @@ impl ScanFS {
             } else {
                 Err("Cache file does not exist".into())
             }
-        } else {
-            Err("Could not get cache directory".into())
         }
     }
 
@@ -546,28 +546,27 @@ impl ScanFS {
 
     pub(crate) fn to_cache(
         &self,
-        cache_dur: Duration,
+        cache: CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<()> {
-        if let Some(mut cache_dir) = path_cache(true) {
-            // use hash of exes observed at initialization
-            cache_dir.push(format!("scan_fs_{}", self.exes_hash));
-            let cache_fp = cache_dir.with_extension("json");
+        // use hash of exes observed at initialization
+        let cache_fp = cache
+            .dir
+            .join(format!("scan_fs_{}", self.exes_hash))
+            .with_extension("json");
 
-            // only write if cache does not exist or it is out of duration
-            if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
+        // only write if cache does not exist or it is out of duration
+        if !cache_fp.exists() || !path_within_duration(&cache_fp, cache.duration) {
+            logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
 
-                let json = serde_json::to_string(self)?;
-                let mut file = File::create(cache_fp)?;
-                file.write_all(json.as_bytes())?;
-                return Ok(());
-            } else {
-                logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
-                return Ok(());
-            }
+            let json = serde_json::to_string(self)?;
+            let mut file = File::create(cache_fp)?;
+            file.write_all(json.as_bytes())?;
+            Ok(())
+        } else {
+            logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
+            Ok(())
         }
-        Err("could not get cache directory".into())
     }
 
     //--------------------------------------------------------------------------
@@ -604,7 +603,7 @@ impl ScanFS {
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
-        cache_dur: Duration,
+        cache: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
@@ -613,7 +612,7 @@ impl ScanFS {
             client,
             &packages,
             cache_refresh,
-            cache_dur,
+            cache,
             log,
             filter_cvss,
         )

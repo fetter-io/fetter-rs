@@ -388,6 +388,11 @@ repos:
 
 ## What is New in Fetter
 
+### dev
+
+Added `all-users` command-line flag to expand default search to all users.
+
+
 ### 2.5.0
 
 Extension to the public library interface.

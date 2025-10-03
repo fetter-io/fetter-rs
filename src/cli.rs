@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::process;
-// use std::str::FromStr;
 
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::ffi::OsString;
 use std::fmt;
+use std::io;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -22,12 +22,14 @@ use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
-use crate::util::Anchor;
+use crate::util::path_normalize;
+use crate::util::CacheConfig;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
+use crate::util::{path_cache, Anchor};
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -103,6 +105,10 @@ struct Cli {
     /// Create or use caches that expire after the provided number of seconds. A duration of zero will disable caching.
     #[arg(long, short, required = false, default_value = "60")]
     cache_duration: u64,
+
+    /// Provide an explicit directory to be used for storing caches.
+    #[arg(long, required = false)]
+    cache_dir: Option<PathBuf>,
 
     /// Disable terminal animations.
     #[arg(long, short)]
@@ -469,11 +475,11 @@ fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
     config: ScanConfig,
     animate: bool,
-    cache_dur: Duration,
+    cache: CacheConfig,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, config, cache_dur, log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache.clone(), log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -487,8 +493,8 @@ fn from_cache_or_exes(
         }
         let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
-        if cache_dur > DURATION_0 {
-            sfs.to_cache(cache_dur, log)?;
+        if cache.duration > DURATION_0 {
+            sfs.to_cache(cache, log)?;
         }
 
         if animate {
@@ -518,10 +524,18 @@ where
     let banner = cli.banner;
     let cache_dur = Duration::from_secs(cli.cache_duration);
 
+    let cache_dir: PathBuf = match cli.cache_dir.as_deref() {
+        Some(p) => path_normalize(p, true)?,
+        None => path_cache(true)
+            .ok_or_else(|| io::Error::other("Cannot get default cache dir"))?,
+    };
+    logger!(log, module_path!(), "Cache dir: {:?}", cache_dir);
+
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
         let config = ScanConfig::new(cli.user_site, cli.all_users);
-        from_cache_or_exes(&cli.exe, config, !quiet, cache_dur, log, stderr)
+        let cache = CacheConfig::new(cache_dur, &cache_dir);
+        from_cache_or_exes(&cli.exe, config, !quiet, cache, log, stderr)
     };
 
     match &cli.command {
@@ -685,12 +699,13 @@ where
                 );
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
+            let cache = CacheConfig::new(cache_dur, &cache_dir);
             let ar = sfs.to_audit_report(
                 pattern,
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
-                cache_dur,
+                cache,
                 log,
                 cvss_filter,
             );
