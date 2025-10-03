@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::path::Path;
 use std::process;
 
 use crate::validation_report::ValidationFlags;
@@ -24,6 +23,7 @@ use crate::spin::spin;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
 use crate::util::path_normalize;
+use crate::util::CacheConfig;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
@@ -475,12 +475,11 @@ fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
     config: ScanConfig,
     animate: bool,
-    cache_dur: Duration,
-    cache_dir: &Path,
+    cache: CacheConfig,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, config, cache_dur, cache_dir, log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache.clone(), log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -494,8 +493,8 @@ fn from_cache_or_exes(
         }
         let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
-        if cache_dur > DURATION_0 {
-            sfs.to_cache(cache_dur, cache_dir, log)?;
+        if cache.duration > DURATION_0 {
+            sfs.to_cache(cache, log)?;
         }
 
         if animate {
@@ -535,7 +534,8 @@ where
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
         let config = ScanConfig::new(cli.user_site, cli.all_users);
-        from_cache_or_exes(&cli.exe, config, !quiet, cache_dur, &cache_dir, log, stderr)
+        let cache = CacheConfig::new(cache_dur, &cache_dir);
+        from_cache_or_exes(&cli.exe, config, !quiet, cache, log, stderr)
     };
 
     match &cli.command {
@@ -699,13 +699,13 @@ where
                 );
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
+            let cache = CacheConfig::new(cache_dur, &cache_dir);
             let ar = sfs.to_audit_report(
                 pattern,
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
-                cache_dur,
-                &cache_dir,
+                cache,
                 log,
                 cvss_filter,
             );

@@ -68,6 +68,20 @@ impl ScanConfig {
 
 //------------------------------------------------------------------------------
 
+#[derive(Clone, Debug)]
+pub struct CacheConfig<'a> {
+    pub duration: Duration,
+    pub dir: &'a Path,
+}
+
+impl<'a> CacheConfig<'a> {
+    pub fn new(duration: Duration, dir: &'a Path) -> Self {
+        Self { duration, dir }
+    }
+}
+
+//------------------------------------------------------------------------------
+
 #[derive(Clone, Copy, Debug)]
 pub struct FlagCacheRefresh(pub bool);
 
