@@ -65,7 +65,6 @@ fn get_origins_home(all_users: bool) -> HashSet<(PathBuf, bool)> {
     paths
 }
 
-
 // Provide directories that should be used as origins for searching for executables. Returns a set of tuples of PathBuf, bool, where the bool indicates if the directory should be recursively searched. If `users` is true, all users will be searched.
 fn get_origins_bin() -> HashSet<(PathBuf, bool)> {
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
