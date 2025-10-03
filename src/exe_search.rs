@@ -23,6 +23,7 @@ fn get_search_exclude_paths(homes: &HashSet<(PathBuf, bool)>) -> HashSet<PathBuf
         if env::consts::OS == "macos" {
             paths.insert(home.clone().join("Library"));
             paths.insert(home.clone().join("Photos"));
+            paths.insert(home.clone().join("Pictures"));
             paths.insert(home.clone().join("Downloads"));
             paths.insert(home.clone().join(".Trash"));
         } else if env::consts::OS == "linux" {
