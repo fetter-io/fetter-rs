@@ -13,39 +13,28 @@ use crate::util::path_users;
 
 //------------------------------------------------------------------------------
 // Provide absolute paths for directories that should be excluded from executable search.
-fn get_search_exclude_paths() -> HashSet<PathBuf> {
+fn get_search_exclude_paths(homes: &HashSet<(PathBuf, bool)>) -> HashSet<PathBuf> {
     let mut paths: HashSet<PathBuf> = HashSet::new();
-    match path_home() {
-        Some(home) => {
-            paths.insert(home.clone().join(".cache"));
-            paths.insert(home.clone().join(".npm"));
 
-            if env::consts::OS == "macos" {
-                paths.insert(home.clone().join("Library"));
-                paths.insert(home.clone().join("Photos"));
-                paths.insert(home.clone().join("Downloads"));
-                paths.insert(home.clone().join(".Trash"));
-            } else if env::consts::OS == "linux" {
-                paths.insert(home.clone().join(".local/share/Trash"));
-            }
-        }
-        None => {
-            eprintln!("Error getting HOME");
+    for (home, _) in homes {
+        paths.insert(home.clone().join(".cache"));
+        paths.insert(home.clone().join(".npm"));
+
+        if env::consts::OS == "macos" {
+            paths.insert(home.clone().join("Library"));
+            paths.insert(home.clone().join("Photos"));
+            paths.insert(home.clone().join("Downloads"));
+            paths.insert(home.clone().join(".Trash"));
+        } else if env::consts::OS == "linux" {
+            paths.insert(home.clone().join(".local/share/Trash"));
         }
     }
     paths
 }
 
-// Provide directories that should be used as origins for searching for executables. Returns a vector of PathBuf, bool, where the bool indicates if the directory should be recursively searched. If `users` is true, all users will be searched.
-fn get_search_origins(all_users: bool) -> HashSet<(PathBuf, bool)> {
+// Get one or more home dirs to search.
+fn get_origins_home(all_users: bool) -> HashSet<(PathBuf, bool)> {
     let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
-
-    // get all paths on PATH
-    if let Ok(path_var) = env::var("PATH") {
-        for path in path_var.split(':') {
-            paths.insert((PathBuf::from(path), false));
-        }
-    }
 
     let origin = match all_users {
         true => path_users(),
@@ -71,6 +60,19 @@ fn get_search_origins(all_users: bool) -> HashSet<(PathBuf, bool)> {
         }
         None => {
             eprintln!("Error getting origin");
+        }
+    }
+    paths
+}
+
+
+// Provide directories that should be used as origins for searching for executables. Returns a set of tuples of PathBuf, bool, where the bool indicates if the directory should be recursively searched. If `users` is true, all users will be searched.
+fn get_origins_bin() -> HashSet<(PathBuf, bool)> {
+    let mut paths: HashSet<(PathBuf, bool)> = HashSet::new();
+    // get all paths on PATH
+    if let Ok(path_var) = env::var("PATH") {
+        for path in path_var.split(':') {
+            paths.insert((PathBuf::from(path), false));
         }
     }
     paths.insert((PathBuf::from("/bin"), false));
@@ -137,9 +139,11 @@ fn find_exe_inner(
 
 // After collecting origins, find all executables
 pub(crate) fn find_exe(all_users: bool) -> HashSet<PathBuf> {
-    let exclude = get_search_exclude_paths();
-    let origins = get_search_origins(all_users);
+    let homes = get_origins_home(all_users);
+    let exclude = get_search_exclude_paths(&homes);
+    let bins = get_origins_bin();
 
+    let origins: HashSet<(PathBuf, bool)> = bins.into_iter().chain(homes).collect();
     let mut paths: HashSet<PathBuf> = origins
         .par_iter()
         .flat_map(|(path, recurse)| find_exe_inner(path, &exclude, *recurse))
@@ -162,13 +166,15 @@ mod tests {
 
     #[test]
     fn test_get_search_exclude_paths_a() {
-        let post = get_search_exclude_paths();
+        let mut homes = HashSet::<(PathBuf, bool)>::new();
+        homes.insert((path_home().unwrap(), true));
+        let post = get_search_exclude_paths(&homes);
         assert!(post.len() > 2);
     }
 
     #[test]
     fn test_get_search_origins_a() {
-        let post = get_search_origins(false);
+        let post = get_origins_bin();
         assert!(post.len() > 6);
     }
 
