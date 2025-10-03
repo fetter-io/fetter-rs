@@ -378,6 +378,7 @@ impl ScanFS {
                     .push(site_package_path.clone());
             }
         }
+
         Ok(ScanFS {
             exe_to_sites,
             package_to_sites,

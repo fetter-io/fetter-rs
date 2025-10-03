@@ -490,6 +490,7 @@ fn from_cache_or_exes(
         if cache_dur > DURATION_0 {
             sfs.to_cache(cache_dur, log)?;
         }
+
         if animate {
             active.store(false, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(100));

@@ -51,7 +51,6 @@ fn get_search_origins(all_users: bool) -> HashSet<(PathBuf, bool)> {
         true => path_users(),
         false => path_home(),
     };
-
     match origin {
         Some(home) => {
             paths.insert((home.clone(), false));
