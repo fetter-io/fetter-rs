@@ -187,7 +187,8 @@ mod tests {
 
         let cache_dir = path_cache(true).unwrap();
         let results =
-            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false)).unwrap();
+            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false))
+                .unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -213,7 +214,8 @@ mod tests {
         // Test with cache disabled (DURATION_0)
         let cache_dir = path_cache(true).unwrap();
         let results =
-            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false)).unwrap();
+            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false))
+                .unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], Some(vec!["GHSA-test-disabled".to_string()]));

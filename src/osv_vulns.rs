@@ -420,8 +420,13 @@ mod tests {
         });
 
         let cache_dir = path_cache(true).unwrap();
-        let result_map =
-            query_osv_vulns(client, &vuln_ids, FlagCacheRefresh(true), &cache_dir, FlagLog(false));
+        let result_map = query_osv_vulns(
+            client,
+            &vuln_ids,
+            FlagCacheRefresh(true),
+            &cache_dir,
+            FlagLog(false),
+        );
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();
