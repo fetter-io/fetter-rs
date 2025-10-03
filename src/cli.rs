@@ -25,6 +25,7 @@ use crate::ureq_client::UreqClient;
 use crate::util::Anchor;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
+use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 
@@ -122,6 +123,10 @@ struct Cli {
     /// Force inclusion of the user site-packages, even if it is not activated. If not set, user site packages will only be included if the interpreter has been configured to use it.
     #[arg(long, required = false)]
     user_site: bool,
+
+    /// When searching for all discoverable executables, include all user directories. Otherwise, include only the users home directory.
+    #[arg(long, required = false)]
+    all_users: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -462,13 +467,13 @@ enum UnpackFilesSubcommand {
 // Provided `exe_paths` are not normalize.
 fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
-    force_usite: bool,
+    config: ScanConfig,
     animate: bool,
     cache_dur: Duration,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, force_usite, cache_dur, log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache_dur, log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -480,11 +485,12 @@ fn from_cache_or_exes(
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfs = ScanFS::from_exes(exe_paths, force_usite, log)?;
+        let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
         if cache_dur > DURATION_0 {
             sfs.to_cache(cache_dur, log)?;
         }
+
         if animate {
             active.store(false, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(100));
@@ -514,7 +520,8 @@ where
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        from_cache_or_exes(&cli.exe, cli.user_site, !quiet, cache_dur, log, stderr)
+        let config = ScanConfig::new(cli.user_site, cli.all_users);
+        from_cache_or_exes(&cli.exe, config, !quiet, cache_dur, log, stderr)
     };
 
     match &cli.command {
@@ -773,15 +780,9 @@ where
             tenant,
         }) => {
             // let ureq clone for increment ref count
-            let _ = monitor_scan_loop(
-                &cli.exe,
-                client,
-                url,
-                tenant,
-                cli.user_site,
-                *period,
-                log,
-            );
+            let config = ScanConfig::new(cli.user_site, cli.all_users);
+            let _ =
+                monitor_scan_loop(&cli.exe, client, url, tenant, config, *period, log);
         }
         None => {}
     }

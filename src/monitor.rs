@@ -4,6 +4,7 @@ use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
+use crate::util::ScanConfig;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
@@ -19,12 +20,11 @@ fn monitor_scan(
     client: Arc<dyn UreqClient>,
     url: Arc<String>,
     tenant: Arc<String>,
-    force_usite: bool,
+    config: ScanConfig,
     log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
-    let sfs =
-        ScanFS::from_exes(&exe_paths, force_usite, log).expect("from_exes() failed.");
+    let sfs = ScanFS::from_exes(&exe_paths, config, log).expect("from_exes() failed.");
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -57,7 +57,7 @@ pub(crate) fn monitor_scan_loop(
     client: Arc<dyn UreqClient>,
     url: &String,
     tenant: &String,
-    force_usite: bool,
+    config: ScanConfig,
     period: u64,
     log: FlagLog,
 ) -> ResultDynError<()> {
@@ -77,7 +77,7 @@ pub(crate) fn monitor_scan_loop(
             client,
             url_arc,
             tenant_arc,
-            force_usite,
+            config,
             log,
         );
         return Ok(());
@@ -87,19 +87,10 @@ pub(crate) fn monitor_scan_loop(
 
     // spawn a single worker thread
     thread::spawn(move || {
-        while let Ok((eps, st, sfs_prev_mutex, client, url, tenant, force_usite, log)) =
+        while let Ok((eps, st, sfs_prev_mutex, client, url, tenant, config, log)) =
             rx.recv()
         {
-            monitor_scan(
-                eps,
-                st,
-                sfs_prev_mutex,
-                client,
-                url,
-                tenant,
-                force_usite,
-                log,
-            );
+            monitor_scan(eps, st, sfs_prev_mutex, client, url, tenant, config, log);
         }
     });
 
@@ -111,7 +102,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&client),
             Arc::clone(&url_arc),
             Arc::clone(&tenant_arc),
-            force_usite,
+            config,
             log,
         )) {
             logger!(log, module_path!(), "Worker panicked: {e}");

@@ -51,6 +51,23 @@ impl From<FlagLog> for bool {
 
 //------------------------------------------------------------------------------
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScanConfig {
+    pub force_usite: bool,
+    pub all_users: bool,
+}
+
+impl ScanConfig {
+    pub fn new(force_usite: bool, all_users: bool) -> Self {
+        Self {
+            force_usite,
+            all_users,
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+
 #[derive(Clone, Copy, Debug)]
 pub struct FlagCacheRefresh(pub bool);
 
@@ -273,6 +290,23 @@ pub(crate) fn path_cache(create: bool) -> Option<PathBuf> {
     cache_path
 }
 
+/// Return the base directory that typically contains user home folders.
+pub(crate) fn path_users() -> Option<PathBuf> {
+    let path_str = match env::consts::OS {
+        "linux" => "/home",
+        "macos" => "/Users",
+        "windows" => r"C:\Users",
+        _ => "/home", // generic UNIX fallback
+    };
+
+    let path = Path::new(path_str);
+    if path.is_dir() {
+        Some(path.to_path_buf())
+    } else {
+        None
+    }
+}
+
 /// Given a Path, make it absolute, either expanding `~` or prepending current working directory.
 pub(crate) fn path_normalize(path: &Path, validate: bool) -> ResultDynError<PathBuf> {
     let mut fp = path.to_path_buf();
@@ -331,8 +365,8 @@ pub(crate) fn path_within_duration<P: AsRef<Path>>(
     false
 }
 
-/// Create a hash of an iterable of PathBuf plus an additional Boolean flag (used for the usite configuration option).
-pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
+/// Create a hash of an iterable of PathBuf plus scan configuration options.
+pub(crate) fn hash_paths(paths: &[PathBuf], config: ScanConfig) -> String {
     let mut ps: Vec<PathBuf> = paths.to_owned();
     ps.sort();
 
@@ -342,8 +376,10 @@ pub(crate) fn hash_paths(paths: &[PathBuf], flag: bool) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let input = format!("{concatenated}\n{flag}");
-    // println!("hash_paths input: {:?}", input);
+    let input = format!(
+        "{concatenated}\n{}\n{}",
+        config.force_usite, config.all_users
+    );
     hash_string(&input)
 }
 
@@ -544,20 +580,22 @@ mod tests {
             Path::new("/a/foo/bar").to_path_buf(),
             Path::new("/b/foo/bar").to_path_buf(),
         ];
-        let hashed = hash_paths(&paths, true);
+        let config = ScanConfig::new(true, true);
+        let hashed = hash_paths(&paths, config);
         assert_eq!(
             hashed,
-            "aa1e51b6cc2de01f6180c646bd9fe6e5c548bdee475a212747588edc5b0d741b"
+            "83259d61ab78d5a4afb670e167bab74b0d1532878a45aa5c2848a8bb05f41903"
         )
     }
 
     #[test]
     fn test_hash_paths_b() {
         let paths = vec![Path::new("*").to_path_buf()];
-        let hashed = hash_paths(&paths, true);
+        let config = ScanConfig::new(true, true);
+        let hashed = hash_paths(&paths, config);
         assert_eq!(
             hashed,
-            "e55c287546ecb742e64cae60f41e128a082b290f663f2e03f734b1d82d2ad274"
+            "aa0a2150615aa2de8849dedd49f8fb9bb6114270c98bfbf4d117faf39b172720"
         )
     }
     //--------------------------------------------------------------------------
@@ -577,5 +615,15 @@ mod tests {
             parsed_filename,
             Some(("_libgcc_mutex".to_string(), "0.1".to_string()))
         );
+    }
+
+    //--------------------------------------------------------------------------
+
+    #[test]
+    fn test_path_users() {
+        let home = path_home().unwrap();
+        let users = path_users().unwrap();
+
+        assert_eq!(users, home.parent().map(|p| p.to_path_buf()).unwrap());
     }
 }
