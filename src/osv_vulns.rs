@@ -1,6 +1,5 @@
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
-use crate::util::path_cache;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use cvss::Cvss;
@@ -10,6 +9,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 //------------------------------------------------------------------------------
@@ -106,21 +106,14 @@ fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
     vuln_id: &str,
     cache_refresh: FlagCacheRefresh,
+    cache_dir: &PathBuf,
     log: FlagLog,
 ) -> Option<OSVVulnInfo> {
-    let cache_dir = match path_cache(true) {
-        Some(dir) => dir,
-        None => {
-            logger!(log, module_path!(), "cache directory not available");
-            return None;
-        }
-    };
-
-    let cache_path = cache_dir.join(format!("{vuln_id}.json"));
+    let cache_fp = cache_dir.join(format!("{vuln_id}.json"));
 
     // Try reading from cache
-    if !bool::from(cache_refresh) && cache_path.exists() {
-        match std::fs::read_to_string(&cache_path) {
+    if !bool::from(cache_refresh) && cache_fp.exists() {
+        match std::fs::read_to_string(&cache_fp) {
             Ok(cached_data) => {
                 if let Ok(osv_vuln) = serde_json::from_str(&cached_data) {
                     logger!(log, module_path!(), "Loaded OSV vuln {vuln_id} from cache");
@@ -137,7 +130,7 @@ fn query_osv_vuln(
                 logger!(
                     log,
                     module_path!(),
-                    "Failed to read cache file {cache_path:?}: {e}, refetching",
+                    "Failed to read cache file {cache_fp:?}: {e}, refetching",
                 );
             }
         }
@@ -147,11 +140,11 @@ fn query_osv_vuln(
     match client.get(&format!("https://api.osv.dev/v1/vulns/{vuln_id}")) {
         Ok(body_str) => match serde_json::from_str(&body_str) {
             Ok(osv_vuln) => {
-                if let Err(e) = std::fs::write(&cache_path, &body_str) {
+                if let Err(e) = std::fs::write(&cache_fp, &body_str) {
                     logger!(
                         log,
                         module_path!(),
-                        "Failed to write cache file {cache_path:?}: {e}"
+                        "Failed to write cache file {cache_fp:?}: {e}"
                     );
                 } else {
                     logger!(
@@ -341,12 +334,13 @@ pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
     cache_refresh: FlagCacheRefresh,
+    cache_dir: &PathBuf,
     log: FlagLog,
 ) -> HashMap<String, VulnInfo> {
     vuln_ids
         .par_iter()
         .filter_map(|vuln_id| {
-            query_osv_vuln(client.clone(), vuln_id, cache_refresh, log)
+            query_osv_vuln(client.clone(), vuln_id, cache_refresh, cache_dir, log)
                 .map(|info| (vuln_id.clone(), VulnInfo::from(info)))
         })
         .collect() // directly collect to HashMap
@@ -357,7 +351,7 @@ pub fn query_osv_vulns(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ureq_client::UreqClientMock;
+    use crate::{ureq_client::UreqClientMock, util::path_cache};
     use cvss::Cvss;
 
     #[test]
@@ -425,8 +419,9 @@ mod tests {
             mock_post: None,
         });
 
+        let cache_dir = path_cache(true).unwrap();
         let result_map =
-            query_osv_vulns(client, &vuln_ids, FlagCacheRefresh(true), FlagLog(false));
+            query_osv_vulns(client, &vuln_ids, FlagCacheRefresh(true), &cache_dir, FlagLog(false));
 
         let mut rm = result_map.iter();
         let (vuln_id, vuln) = rm.next().unwrap();

@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -116,6 +117,7 @@ impl AuditReport {
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
         mut cache_dur: Duration,
+        cache_dir: &PathBuf,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
@@ -128,23 +130,33 @@ impl AuditReport {
         if bool::from(cache_refresh) {
             cache_dur = DURATION_0;
         }
-        let vulns: Vec<Option<Vec<String>>> =
-            match query_osv_batches(client.clone(), packages, cache_dur, log) {
-                Ok(vulns) => vulns,
-                Err(e) => {
-                    logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
-                    return AuditReport {
-                        records: Vec::new(),
-                    };
-                }
-            };
+        let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
+            client.clone(),
+            packages,
+            cache_dur,
+            cache_dir,
+            log,
+        ) {
+            Ok(vulns) => vulns,
+            Err(e) => {
+                logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
+                return AuditReport {
+                    records: Vec::new(),
+                };
+            }
+        };
         logger!(log, module_path!(), "Completed query_osv_batch");
 
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {
             if let Some(vuln_ids) = vuln_ids {
-                let vuln_infos: HashMap<String, VulnInfo> =
-                    query_osv_vulns(client.clone(), vuln_ids, cache_refresh, log);
+                let vuln_infos: HashMap<String, VulnInfo> = query_osv_vulns(
+                    client.clone(),
+                    vuln_ids,
+                    cache_refresh,
+                    cache_dir,
+                    log,
+                );
 
                 let record = AuditRecord {
                     package: package.clone(),
@@ -230,6 +242,7 @@ impl Tableable<AuditRecord> for AuditReport {
 mod tests {
     use super::*;
     use crate::package::Package;
+    use crate::util::path_cache;
     use std::fs::File;
     use std::io;
     use std::io::BufRead;
@@ -250,6 +263,7 @@ mod tests {
 
         let packages =
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
+        let cache_dir = path_cache(true).unwrap();
 
         // client is Arc
         let ar = AuditReport::from_packages(
@@ -257,6 +271,7 @@ mod tests {
             &packages,
             FlagCacheRefresh(true),
             DURATION_0,
+            &cache_dir,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -285,13 +300,14 @@ mod tests {
         });
 
         let packages: Vec<Package> = vec![];
-
+        let cache_dir = path_cache(true).unwrap();
         // client is Arc
         let ar = AuditReport::from_packages(
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
             DURATION_0,
+            &cache_dir,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -311,11 +327,13 @@ mod tests {
         let packages =
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
+        let cache_dir = path_cache(true).unwrap();
         let ar = AuditReport::from_packages(
             client,
             &packages,
             FlagCacheRefresh(true),
             DURATION_0,
+            &cache_dir,
             FlagLog(false),
             CvssFilter::All,
         );

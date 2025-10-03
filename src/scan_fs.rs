@@ -32,7 +32,6 @@ use crate::ureq_client::UreqClient;
 use crate::util::exe_path_normalize;
 use crate::util::hash_paths;
 use crate::util::logger;
-use crate::util::path_cache;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
@@ -394,14 +393,17 @@ impl ScanFS {
         exes: &[PathBuf],
         config: ScanConfig,
         cache_dur: Duration,
+        cache_dir: &PathBuf,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         if cache_dur == DURATION_0 {
             Err("Cache disabled by duration".into())
-        } else if let Some(mut cache_dir) = path_cache(true) {
+        } else {
             let exes_hash = hash_paths(exes, config);
-            cache_dir.push(format!("scan_fs_{exes_hash}"));
-            let cache_fp = cache_dir.with_extension("json");
+
+            let cache_fp = cache_dir
+                .join(format!("scan_fs_{exes_hash}"))
+                .with_extension("json");
 
             if path_within_duration(&cache_fp, cache_dur) {
                 logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
@@ -417,8 +419,6 @@ impl ScanFS {
             } else {
                 Err("Cache file does not exist".into())
             }
-        } else {
-            Err("Could not get cache directory".into())
         }
     }
 
@@ -547,27 +547,26 @@ impl ScanFS {
     pub(crate) fn to_cache(
         &self,
         cache_dur: Duration,
+        cache_dir: &PathBuf,
         log: FlagLog,
     ) -> ResultDynError<()> {
-        if let Some(mut cache_dir) = path_cache(true) {
-            // use hash of exes observed at initialization
-            cache_dir.push(format!("scan_fs_{}", self.exes_hash));
-            let cache_fp = cache_dir.with_extension("json");
+        // use hash of exes observed at initialization
+        let cache_fp = cache_dir
+            .join(format!("scan_fs_{}", self.exes_hash))
+            .with_extension("json");
 
-            // only write if cache does not exist or it is out of duration
-            if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
-                logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
+        // only write if cache does not exist or it is out of duration
+        if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_dur) {
+            logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
 
-                let json = serde_json::to_string(self)?;
-                let mut file = File::create(cache_fp)?;
-                file.write_all(json.as_bytes())?;
-                return Ok(());
-            } else {
-                logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
-                return Ok(());
-            }
+            let json = serde_json::to_string(self)?;
+            let mut file = File::create(cache_fp)?;
+            file.write_all(json.as_bytes())?;
+            Ok(())
+        } else {
+            logger!(log, module_path!(), "Keeping ScanFS cache {:?}", cache_fp);
+            Ok(())
         }
-        Err("could not get cache directory".into())
     }
 
     //--------------------------------------------------------------------------
@@ -605,6 +604,7 @@ impl ScanFS {
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
         cache_dur: Duration,
+        cache_dir: &PathBuf,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
@@ -614,6 +614,7 @@ impl ScanFS {
             &packages,
             cache_refresh,
             cache_dur,
+            cache_dir,
             log,
             filter_cvss,
         )
