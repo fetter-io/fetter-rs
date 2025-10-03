@@ -108,7 +108,7 @@ struct Cli {
 
     /// Provide an explicit directory to be used for storing caches.
     #[arg(long, required = false)]
-    cache_dir: Option<PathBuf>,
+    cache_directory: Option<PathBuf>,
 
     /// Disable terminal animations.
     #[arg(long, short)]
@@ -524,7 +524,7 @@ where
     let banner = cli.banner;
     let cache_dur = Duration::from_secs(cli.cache_duration);
 
-    let cache_dir: PathBuf = match cli.cache_dir.as_deref() {
+    let cache_dir: PathBuf = match cli.cache_directory.as_deref() {
         Some(p) => path_normalize(p, true)?,
         None => path_cache(true)
             .ok_or_else(|| io::Error::other("Cannot get default cache dir"))?,

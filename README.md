@@ -244,7 +244,9 @@ repos:
 - `--exe, -e <FILES>`: Provide zero or more executable paths to derive site package locations. If omitted, all discoverable executables will be used.
 - `--quiet, -q`: Disable terminal animations.
 - `--user_site`: Force inclusion of the user site-packages, even if it is not activated. Defaults to only including if the interpreter is configured to use it.
+- `--all-users`: When searching for all discoverable executables, include all user directories. Otherwise, include only the users home directory.
 - `--cache-duration, -c`: Create or use a caches that expire after the provided number of seconds. A duration of zero will disable caching.
+- `--cache-directory`: Provide an explicit directory to be used for storing caches.
 - `--log, -l`: Enable logging output.
 - `--stderr`: Force all output to stderr.
 
@@ -388,9 +390,11 @@ repos:
 
 ## What is New in Fetter
 
-### dev
+### 2.6.0
 
 Added `all-users` command-line flag to expand default search to all users.
+
+Added `cache-directory` command-line flag to specify cache directory.
 
 
 ### 2.5.0
