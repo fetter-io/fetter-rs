@@ -7,7 +7,9 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // use crate::package::Package;
-use crate::util::{hash_string, logger, path_within_duration, CacheConfig, FlagLog, ResultDynError};
+use crate::util::{
+    hash_string, logger, path_within_duration, CacheConfig, FlagLog, ResultDynError,
+};
 use crate::{package::Package, ureq_client::UreqClient};
 
 //------------------------------------------------------------------------------
@@ -185,7 +187,8 @@ mod tests {
 
         let cache_dir = path_cache(true).unwrap();
         let cache = CacheConfig::new(DURATION_0, &cache_dir);
-        let results = query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
+        let results =
+            query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -211,7 +214,8 @@ mod tests {
         // Test with cache disabled (DURATION_0)
         let cache_dir = path_cache(true).unwrap();
         let cache = CacheConfig::new(DURATION_0, &cache_dir);
-        let results = query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
+        let results =
+            query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], Some(vec!["GHSA-test-disabled".to_string()]));

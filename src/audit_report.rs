@@ -128,20 +128,16 @@ impl AuditReport {
         if bool::from(cache_refresh) {
             cache.duration = DURATION_0;
         }
-        let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
-            client.clone(),
-            packages,
-            cache.clone(),
-            log,
-        ) {
-            Ok(vulns) => vulns,
-            Err(e) => {
-                logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
-                return AuditReport {
-                    records: Vec::new(),
-                };
-            }
-        };
+        let vulns: Vec<Option<Vec<String>>> =
+            match query_osv_batches(client.clone(), packages, cache.clone(), log) {
+                Ok(vulns) => vulns,
+                Err(e) => {
+                    logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
+                    return AuditReport {
+                        records: Vec::new(),
+                    };
+                }
+            };
         logger!(log, module_path!(), "Completed query_osv_batch");
 
         let mut records = Vec::new();
