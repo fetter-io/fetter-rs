@@ -131,8 +131,7 @@ impl AuditReport {
         let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
             client.clone(),
             packages,
-            cache.duration,
-            cache.dir,
+            cache.clone(),
             log,
         ) {
             Ok(vulns) => vulns,

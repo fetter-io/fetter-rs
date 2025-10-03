@@ -1,15 +1,13 @@
 use crate::util::DURATION_0;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // use crate::package::Package;
-use crate::util::{hash_string, logger, path_within_duration, FlagLog, ResultDynError};
+use crate::util::{hash_string, logger, path_within_duration, CacheConfig, FlagLog, ResultDynError};
 use crate::{package::Package, ureq_client::UreqClient};
 
 //------------------------------------------------------------------------------
@@ -107,8 +105,7 @@ fn query_osv_batch(
 pub(crate) fn query_osv_batches(
     client: Arc<dyn UreqClient>,
     packages: &[Package],
-    cache_dur: Duration,
-    cache_dir: &Path,
+    cache: CacheConfig,
     log: FlagLog,
 ) -> ResultDynError<Vec<Option<Vec<String>>>> {
     let packages_osv: Vec<OSVPackageQuery> =
@@ -122,7 +119,7 @@ pub(crate) fn query_osv_batches(
             .collect()
     };
 
-    if cache_dur == DURATION_0 {
+    if cache.duration == DURATION_0 {
         // do not read or write cache
         logger!(log, module_path!(), "Cache OSV batch disabled by duration");
         return Ok(query_api());
@@ -132,11 +129,12 @@ pub(crate) fn query_osv_batches(
         serde_json::to_string(&packages_osv).expect("Failed to serialize packages_osv");
     let cache_key = hash_string(&json);
 
-    let cache_fp = cache_dir
+    let cache_fp = cache
+        .dir
         .join(format!("osv_batch_{cache_key}"))
         .with_extension("json");
 
-    if path_within_duration(&cache_fp, cache_dur) {
+    if path_within_duration(&cache_fp, cache.duration) {
         logger!(
             log,
             module_path!(),
@@ -186,9 +184,8 @@ mod tests {
         ];
 
         let cache_dir = path_cache(true).unwrap();
-        let results =
-            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false))
-                .unwrap();
+        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let results = query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -213,9 +210,8 @@ mod tests {
 
         // Test with cache disabled (DURATION_0)
         let cache_dir = path_cache(true).unwrap();
-        let results =
-            query_osv_batches(client, &packages, DURATION_0, &cache_dir, FlagLog(false))
-                .unwrap();
+        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let results = query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], Some(vec!["GHSA-test-disabled".to_string()]));
