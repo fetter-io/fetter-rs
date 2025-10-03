@@ -1,7 +1,7 @@
 use crate::util::DURATION_0;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -108,7 +108,7 @@ pub(crate) fn query_osv_batches(
     client: Arc<dyn UreqClient>,
     packages: &[Package],
     cache_dur: Duration,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     log: FlagLog,
 ) -> ResultDynError<Vec<Option<Vec<String>>>> {
     let packages_osv: Vec<OSVPackageQuery> =

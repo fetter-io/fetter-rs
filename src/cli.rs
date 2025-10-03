@@ -1,6 +1,6 @@
 use std::collections::HashSet;
+use std::path::Path;
 use std::process;
-// use std::str::FromStr;
 
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -476,7 +476,7 @@ fn from_cache_or_exes(
     config: ScanConfig,
     animate: bool,
     cache_dur: Duration,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
@@ -495,7 +495,7 @@ fn from_cache_or_exes(
         let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
         if cache_dur > DURATION_0 {
-            sfs.to_cache(cache_dur, &cache_dir, log)?;
+            sfs.to_cache(cache_dur, cache_dir, log)?;
         }
 
         if animate {
@@ -527,9 +527,8 @@ where
 
     let cache_dir: PathBuf = match cli.cache_dir.as_deref() {
         Some(p) => path_normalize(p, true)?,
-        None => path_cache(true).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Cannot get default cache dir")
-        })?,
+        None => path_cache(true)
+            .ok_or_else(|| io::Error::other("Cannot get default cache dir"))?,
     };
     logger!(log, module_path!(), "Cache dir: {:?}", cache_dir);
 

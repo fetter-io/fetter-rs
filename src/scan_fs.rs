@@ -393,7 +393,7 @@ impl ScanFS {
         exes: &[PathBuf],
         config: ScanConfig,
         cache_dur: Duration,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         if cache_dur == DURATION_0 {
@@ -547,7 +547,7 @@ impl ScanFS {
     pub(crate) fn to_cache(
         &self,
         cache_dur: Duration,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
         log: FlagLog,
     ) -> ResultDynError<()> {
         // use hash of exes observed at initialization
@@ -604,7 +604,7 @@ impl ScanFS {
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
         cache_dur: Duration,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {

@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 //------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ fn query_osv_vuln(
     client: Arc<dyn UreqClient>,
     vuln_id: &str,
     cache_refresh: FlagCacheRefresh,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     log: FlagLog,
 ) -> Option<OSVVulnInfo> {
     let cache_fp = cache_dir.join(format!("{vuln_id}.json"));
@@ -334,7 +334,7 @@ pub fn query_osv_vulns(
     client: Arc<dyn UreqClient>,
     vuln_ids: &Vec<String>,
     cache_refresh: FlagCacheRefresh,
-    cache_dir: &PathBuf,
+    cache_dir: &Path,
     log: FlagLog,
 ) -> HashMap<String, VulnInfo> {
     vuln_ids

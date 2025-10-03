@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -117,7 +117,7 @@ impl AuditReport {
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
         mut cache_dur: Duration,
-        cache_dir: &PathBuf,
+        cache_dir: &Path,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
