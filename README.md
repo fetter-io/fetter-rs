@@ -214,7 +214,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.19.0
+  rev: v2.7.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -230,7 +230,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v1.19.0
+  rev: v2.7.0
   hooks:
     - id: fetter-audit
 ```
@@ -389,6 +389,12 @@ repos:
 
 
 ## What is New in Fetter
+
+
+### 2.7.0
+
+Extension to the public library interface.
+
 
 ### 2.6.0
 

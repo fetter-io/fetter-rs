@@ -60,6 +60,7 @@ pub use ureq_client::UreqClientLive;
 pub use util::FlagCacheRefresh;
 pub use util::FlagLog;
 pub use util::ResultDynError;
+pub use util::CacheConfig;
 pub use validation_report::ValidationExplain;
 pub use validation_report::ValidationFlags;
 pub use validation_report::ValidationReport;
