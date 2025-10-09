@@ -57,6 +57,7 @@ pub use scan_fs::ScanFS;
 pub use system_tag::SystemTag;
 pub use table::Tableable;
 pub use ureq_client::UreqClientLive;
+pub use util::path_cache;
 pub use util::CacheConfig;
 pub use util::FlagCacheRefresh;
 pub use util::FlagLog;

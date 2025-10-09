@@ -271,7 +271,7 @@ pub(crate) fn path_home() -> Option<PathBuf> {
 const IO_FETTER: &str = "io.fetter";
 
 // TOOD: return error instead of option
-pub(crate) fn path_cache(create: bool) -> Option<PathBuf> {
+pub fn path_cache(create: bool) -> Option<PathBuf> {
     let cache_path = if env::consts::OS == "windows" {
         env::var_os("LOCALAPPDATA").map(|local_app_data| {
             let mut path = PathBuf::from(local_app_data);
