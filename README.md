@@ -34,6 +34,7 @@ Additionally, `fetter` can configure a virtual environment to validate package a
 
 ## Articles
 
+* [What Is the Most Dangerous Python Package on Your System?](https://python.plainenglish.io/what-is-the-most-dangerous-python-package-on-your-system-03d7e3ea2000)
 * [System-Wide Python Package Control: Enforce Allow Lists & Find Vulnerabilities](https://levelup.gitconnected.com/system-wide-python-package-control-enforce-allow-lists-find-vulnerabilities-35f3daeb44a8)
 * [Guarantee a Locked & Reproducible Environment with Every Python Run](https://medium.com/data-science-collective/guarantee-a-locked-reproducible-environment-with-every-python-run-c0e2bf19fb53)
 
