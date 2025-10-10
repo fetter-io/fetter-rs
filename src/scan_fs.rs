@@ -392,20 +392,20 @@ impl ScanFS {
     pub(crate) fn from_cache(
         exes: &[PathBuf],
         config: ScanConfig,
-        cache: CacheConfig,
+        cache_config: CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
-        if cache.duration == DURATION_0 {
+        if cache_config.duration == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else {
             let exes_hash = hash_paths(exes, config);
 
-            let cache_fp = cache
+            let cache_fp = cache_config
                 .directory
                 .join(format!("scan_fs_{exes_hash}"))
                 .with_extension("json");
 
-            if path_within_duration(&cache_fp, cache.duration) {
+            if path_within_duration(&cache_fp, cache_config.duration) {
                 logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
 
                 let mut file = File::open(cache_fp)?;
@@ -546,17 +546,17 @@ impl ScanFS {
 
     pub(crate) fn to_cache(
         &self,
-        cache: CacheConfig,
+        cache_config: CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<()> {
         // use hash of exes observed at initialization
-        let cache_fp = cache
+        let cache_fp = cache_config
             .directory
             .join(format!("scan_fs_{}", self.exes_hash))
             .with_extension("json");
 
         // only write if cache does not exist or it is out of duration
-        if !cache_fp.exists() || !path_within_duration(&cache_fp, cache.duration) {
+        if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_config.duration) {
             logger!(log, module_path!(), "Writing ScanFS cache: {:?}", cache_fp);
 
             let json = serde_json::to_string(self)?;
@@ -603,7 +603,7 @@ impl ScanFS {
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
-        cache: CacheConfig,
+        cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> AuditReport {
@@ -612,7 +612,7 @@ impl ScanFS {
             client,
             &packages,
             cache_refresh,
-            cache,
+            cache_config,
             log,
             filter_cvss,
         )
