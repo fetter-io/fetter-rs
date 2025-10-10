@@ -76,7 +76,10 @@ pub struct CacheConfig {
 
 impl CacheConfig {
     pub fn new(duration: Duration, directory: PathBuf) -> Self {
-        Self { duration, directory }
+        Self {
+            duration,
+            directory,
+        }
     }
 }
 
