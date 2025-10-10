@@ -475,11 +475,11 @@ fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
     config: ScanConfig,
     animate: bool,
-    cache: CacheConfig,
+    cache_config: CacheConfig,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, config, cache.clone(), log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache_config.clone(), log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -493,8 +493,8 @@ fn from_cache_or_exes(
         }
         let sfs = ScanFS::from_exes(exe_paths, config, log)?;
 
-        if cache.duration > DURATION_0 {
-            sfs.to_cache(cache, log)?;
+        if cache_config.duration > DURATION_0 {
+            sfs.to_cache(cache_config, log)?;
         }
 
         if animate {
@@ -534,8 +534,8 @@ where
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
         let config = ScanConfig::new(cli.user_site, cli.all_users);
-        let cache = CacheConfig::new(cache_dur, &cache_dir);
-        from_cache_or_exes(&cli.exe, config, !quiet, cache, log, stderr)
+        let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
+        from_cache_or_exes(&cli.exe, config, !quiet, cache_config, log, stderr)
     };
 
     match &cli.command {
@@ -699,13 +699,13 @@ where
                 );
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
-            let cache = CacheConfig::new(cache_dur, &cache_dir);
+            let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
             let ar = sfs.to_audit_report(
                 pattern,
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
-                cache,
+                cache_config,
                 log,
                 cvss_filter,
             );

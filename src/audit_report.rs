@@ -115,7 +115,7 @@ impl AuditReport {
         client: Arc<dyn UreqClient>,
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
-        mut cache: CacheConfig,
+        mut cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
@@ -126,18 +126,22 @@ impl AuditReport {
         }
         // if cache_refresh is false, force no usage of any caching
         if bool::from(cache_refresh) {
-            cache.duration = DURATION_0;
+            cache_config.duration = DURATION_0;
         }
-        let vulns: Vec<Option<Vec<String>>> =
-            match query_osv_batches(client.clone(), packages, cache.clone(), log) {
-                Ok(vulns) => vulns,
-                Err(e) => {
-                    logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
-                    return AuditReport {
-                        records: Vec::new(),
-                    };
-                }
-            };
+        let vulns: Vec<Option<Vec<String>>> = match query_osv_batches(
+            client.clone(),
+            packages,
+            cache_config.clone(),
+            log,
+        ) {
+            Ok(vulns) => vulns,
+            Err(e) => {
+                logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
+                return AuditReport {
+                    records: Vec::new(),
+                };
+            }
+        };
         logger!(log, module_path!(), "Completed query_osv_batch");
 
         let mut records = Vec::new();
@@ -147,7 +151,7 @@ impl AuditReport {
                     client.clone(),
                     vuln_ids,
                     cache_refresh,
-                    cache.dir,
+                    &cache_config.directory,
                     log,
                 );
 
@@ -259,12 +263,12 @@ mod tests {
         let cache_dir = path_cache(true).unwrap();
 
         // client is Arc
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache_config = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
-            cache,
+            cache_config,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -295,12 +299,12 @@ mod tests {
         let packages: Vec<Package> = vec![];
         let cache_dir = path_cache(true).unwrap();
         // client is Arc
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache_config = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
-            cache,
+            cache_config,
             FlagLog(false),
             CvssFilter::All,
         );
@@ -321,12 +325,12 @@ mod tests {
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
         let cache_dir = path_cache(true).unwrap();
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache_config = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client,
             &packages,
             FlagCacheRefresh(true),
-            cache,
+            cache_config,
             FlagLog(false),
             CvssFilter::All,
         );
