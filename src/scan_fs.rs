@@ -401,7 +401,7 @@ impl ScanFS {
             let exes_hash = hash_paths(exes, config);
 
             let cache_fp = cache
-                .dir
+                .directory
                 .join(format!("scan_fs_{exes_hash}"))
                 .with_extension("json");
 
@@ -551,7 +551,7 @@ impl ScanFS {
     ) -> ResultDynError<()> {
         // use hash of exes observed at initialization
         let cache_fp = cache
-            .dir
+            .directory
             .join(format!("scan_fs_{}", self.exes_hash))
             .with_extension("json");
 

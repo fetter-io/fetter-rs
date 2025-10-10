@@ -534,7 +534,7 @@ where
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
         let config = ScanConfig::new(cli.user_site, cli.all_users);
-        let cache = CacheConfig::new(cache_dur, &cache_dir);
+        let cache = CacheConfig::new(cache_dur, cache_dir.clone());
         from_cache_or_exes(&cli.exe, config, !quiet, cache, log, stderr)
     };
 
@@ -699,7 +699,7 @@ where
                 );
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
-            let cache = CacheConfig::new(cache_dur, &cache_dir);
+            let cache = CacheConfig::new(cache_dur, cache_dir.clone());
             let ar = sfs.to_audit_report(
                 pattern,
                 client,

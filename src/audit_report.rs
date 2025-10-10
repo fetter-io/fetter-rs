@@ -147,7 +147,7 @@ impl AuditReport {
                     client.clone(),
                     vuln_ids,
                     cache_refresh,
-                    cache.dir,
+                    &cache.directory,
                     log,
                 );
 
@@ -259,7 +259,7 @@ mod tests {
         let cache_dir = path_cache(true).unwrap();
 
         // client is Arc
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client.clone(),
             &packages,
@@ -295,7 +295,7 @@ mod tests {
         let packages: Vec<Package> = vec![];
         let cache_dir = path_cache(true).unwrap();
         // client is Arc
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client.clone(),
             &packages,
@@ -321,7 +321,7 @@ mod tests {
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
         let cache_dir = path_cache(true).unwrap();
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client,
             &packages,

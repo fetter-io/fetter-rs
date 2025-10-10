@@ -132,7 +132,7 @@ pub(crate) fn query_osv_batches(
     let cache_key = hash_string(&json);
 
     let cache_fp = cache
-        .dir
+        .directory
         .join(format!("osv_batch_{cache_key}"))
         .with_extension("json");
 
@@ -186,7 +186,7 @@ mod tests {
         ];
 
         let cache_dir = path_cache(true).unwrap();
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache = CacheConfig::new(DURATION_0, cache_dir);
         let results =
             query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 
@@ -213,7 +213,7 @@ mod tests {
 
         // Test with cache disabled (DURATION_0)
         let cache_dir = path_cache(true).unwrap();
-        let cache = CacheConfig::new(DURATION_0, &cache_dir);
+        let cache = CacheConfig::new(DURATION_0, cache_dir);
         let results =
             query_osv_batches(client, &packages, cache, FlagLog(false)).unwrap();
 

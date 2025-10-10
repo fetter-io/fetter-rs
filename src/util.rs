@@ -69,14 +69,14 @@ impl ScanConfig {
 //------------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct CacheConfig<'a> {
+pub struct CacheConfig {
     pub duration: Duration,
-    pub dir: &'a Path,
+    pub directory: PathBuf,
 }
 
-impl<'a> CacheConfig<'a> {
-    pub fn new(duration: Duration, dir: &'a Path) -> Self {
-        Self { duration, dir }
+impl CacheConfig {
+    pub fn new(duration: Duration, directory: PathBuf) -> Self {
+        Self { duration, directory }
     }
 }
 
