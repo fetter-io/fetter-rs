@@ -391,6 +391,11 @@ repos:
 
 ## What is New in Fetter
 
+### 2.9.0
+
+Improvements to `CacheConfig` struct.
+
+
 ### 2.8.0
 
 Extension to the public library interface.
