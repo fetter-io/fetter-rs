@@ -325,12 +325,12 @@ mod tests {
             vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
 
         let cache_dir = path_cache(true).unwrap();
-        let cache = CacheConfig::new(DURATION_0, cache_dir);
+        let cache_config = CacheConfig::new(DURATION_0, cache_dir);
         let ar = AuditReport::from_packages(
             client,
             &packages,
             FlagCacheRefresh(true),
-            cache,
+            cache_config,
             FlagLog(false),
             CvssFilter::All,
         );
