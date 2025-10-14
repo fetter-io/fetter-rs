@@ -145,6 +145,11 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<ScanSubcommand>,
     },
+    /// Inspect all sites for code runnable on interpreter startup.
+    Inspect {
+        #[command(subcommand)]
+        subcommands: Option<InspectSubcommand>,
+    },
     /// Search environment to report on installed packages.
     Search {
         /// Provide a glob-like pattern to match packages.
@@ -318,6 +323,7 @@ impl fmt::Display for Commands {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
             Commands::Scan { .. } => "scan",
+            Commands::Inspect { .. } => "inspect",
             Commands::Search { .. } => "search",
             Commands::Count { .. } => "count",
             Commands::Derive { .. } => "derive",
@@ -337,16 +343,24 @@ impl fmt::Display for Commands {
 
 //------------------------------------------------------------------------------
 
-
-// TODO:
-// fetter scan-packages
-// fetter scan-site
-
 #[derive(Subcommand)]
 enum ScanSubcommand {
     /// Display scan in the terminal.
     Display,
     /// Write a scan report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
+#[derive(Subcommand)]
+enum InspectSubcommand {
+    /// Display inspect in the terminal.
+    Display,
+    /// Write an inspect report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -555,6 +569,20 @@ where
                 let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_writer(stderr);
+            }
+        },
+        Some(Commands::Inspect { subcommands }) => match subcommands {
+            Some(InspectSubcommand::Write { output, delimiter }) => {
+                println!("inspect write");
+                // let sfs = get_sfs()?;
+                // let sr = sfs.to_scan_report();
+                // let _ = sr.to_file(output, *delimiter);
+            }
+            Some(InspectSubcommand::Display) | None => {
+                println!("inspect display");
+                // let sfs = get_sfs()?;
+                // let sr = sfs.to_scan_report();
+                // let _ = sr.to_writer(stderr);
             }
         },
         Some(Commands::Search {
