@@ -33,7 +33,7 @@ impl Rowable for InspectRecord {
 
         let is_tty = *context == RowableContext::Tty;
 
-        for (i, (file, contents)) in self.files.iter().enumerate() {
+        for (i, InspectTarget {file, contents}) in self.files.iter().enumerate() {
             let site = if i > 0 && is_tty {
                 "".to_string()
             } else {
