@@ -26,6 +26,7 @@ mod util;
 mod validation_report;
 mod version_spec;
 mod write_color;
+mod inspect_report;
 
 pub use audit_report::AuditRecord;
 pub use audit_report::AuditReport;

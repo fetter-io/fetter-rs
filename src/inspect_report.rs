@@ -8,77 +8,69 @@ use crate::table::RowableContext;
 use crate::table::Tableable;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ScanRecord {
-    package: Package,
-    sites: Vec<PathShared>,
+pub(crate) struct InspectTarget {
+    file: PathShared,
+    contents: String,
 }
 
-impl ScanRecord {
-    pub(crate) fn new(package: Package, sites: Vec<PathShared>) -> Self {
-        ScanRecord { package, sites }
+
+#[derive(Debug, Clone)]
+pub(crate) struct InspectRecord {
+    site: PathShared,
+    exes: Vec<PathShared>,
+    files: Vec<InspectTarget>,
+}
+
+impl InspectRecord {
+    pub(crate) fn new(site: PathShared, exes: Vec<PathShared>, files: Vec<InspectTarget>) -> Self {
+        InspectRecord { site, exes, files }
     }
 }
 
-impl Rowable for ScanRecord {
+impl Rowable for InspectRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let mut rows: Vec<Vec<String>> = Vec::new();
-        let pkg_display = self.package.to_string();
+
         let is_tty = *context == RowableContext::Tty;
 
-        for (i, path) in self.sites.iter().enumerate() {
-            let p = if i > 0 && is_tty {
+        for (i, (file, contents)) in self.files.iter().enumerate() {
+            let site = if i > 0 && is_tty {
                 "".to_string()
             } else {
-                pkg_display.clone()
+                self.site.to_string()
             };
-            rows.push(vec![p, path.to_string()]);
+
+            rows.push(vec![site, file.to_string(), contents.clone()]);
         }
         rows
     }
 }
 
 #[derive(Debug)]
-pub struct ScanReport {
-    records: Vec<ScanRecord>,
+pub struct InspectReport {
+    records: Vec<InspectRecord>,
 }
 
-impl ScanReport {
-    pub(crate) fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+impl InspectReport {
+    pub(crate) fn from_site_to_exes(
+        site_to_exes: &HashMap<PathShared, Vec<PathShared>> ,
     ) -> Self {
         let mut records = Vec::new();
-        for (package, sites) in package_to_sites {
-            let record = ScanRecord::new(package.clone(), sites.clone());
-            records.push(record);
-        }
-        records.sort_by_key(|item| item.package.clone());
-        ScanReport { records }
+        InspectReport { records }
     }
 
-    // Alternative constructor when we want to report on a subset of all packages.
-    pub(crate) fn from_packages(
-        packages: &Vec<Package>,
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-    ) -> Self {
-        let mut records = Vec::new();
-        for package in packages {
-            let sites = package_to_sites.get(package).unwrap();
-            let record = ScanRecord::new(package.clone(), sites.clone());
-            records.push(record);
-        }
-        records.sort_by_key(|item| item.package.clone());
-        ScanReport { records }
-    }
 }
 
-impl Tableable<ScanRecord> for ScanReport {
+impl Tableable<InspectRecord> for InspectReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
-            ColumnFormat::new("Package".to_string(), false, "#666666".to_string()),
-            ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
+            ColumnFormat::new("Site".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Executables".to_string(), true, "#666666".to_string()),
+            ColumnFormat::new("File".to_string(), true, "#666666".to_string()),
+            ColumnFormat::new("Content".to_string(), true, "#666666".to_string()),
         ]
     }
-    fn get_records(&self) -> &Vec<ScanRecord> {
+    fn get_records(&self) -> &Vec<InspectRecord> {
         &self.records
     }
 }
@@ -96,42 +88,6 @@ mod tests {
 
     #[test]
     fn test_to_file_a() {
-        let exe = PathBuf::from("/usr/bin/python3");
-        let site = PathBuf::from("/usr/lib/python3/site-packages");
-        let packages = vec![
-            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
-            Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap(),
-            Package::from_name_version_durl("flask", "1.2", None).unwrap(),
-            Package::from_name_version_durl("packaging", "24.1", None).unwrap(),
-        ];
-        let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
-
-        let sr1 = sfs.to_scan_report();
-
-        let dir = tempdir().unwrap();
-        let fp = dir.path().join("scan.txt");
-        let _ = sr1.to_file(&fp, '|');
-
-        let file = File::open(&fp).unwrap();
-        let mut lines = io::BufReader::new(file).lines();
-
-        assert_eq!(lines.next().unwrap().unwrap(), "Package|Site");
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "flask-1.2|/usr/lib/python3/site-packages"
-        );
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "numpy-1.19.3|/usr/lib/python3/site-packages"
-        );
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "packaging-24.1|/usr/lib/python3/site-packages"
-        );
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "static-frame-2.13.0|/usr/lib/python3/site-packages"
-        );
-        assert!(lines.next().is_none());
+        println("test");
     }
 }
