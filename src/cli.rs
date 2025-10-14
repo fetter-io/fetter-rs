@@ -336,6 +336,12 @@ impl fmt::Display for Commands {
 }
 
 //------------------------------------------------------------------------------
+
+
+// TODO:
+// fetter scan-packages
+// fetter scan-site
+
 #[derive(Subcommand)]
 enum ScanSubcommand {
     /// Display scan in the terminal.
