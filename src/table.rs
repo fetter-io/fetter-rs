@@ -56,6 +56,7 @@ fn optimize_widths(
     let w_excess: f64 = (w_total - w_terminal as usize) as f64; // width to trim
     let mut widths = Vec::new();
 
+    // get the sum of all ellipsisable widths
     let w_ellipsisable: usize = widths_max
         .iter()
         .zip(ellipsisable.iter())
@@ -65,6 +66,7 @@ fn optimize_widths(
 
     for (i, width) in widths_max.iter().enumerate() {
         if ellipsisable[i] {
+            // we derive proportion based on observed max_widht
             let proportion = *width as f64 / w_ellipsisable as f64;
             let reduction = (proportion * w_excess) as usize;
             let w_field = (*width - reduction).max(3);
@@ -130,11 +132,13 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
         column_formats.iter().map(|hf| hf.header.clone()).collect();
     let ellipsisable: Vec<bool> =
         column_formats.iter().map(|hf| hf.ellipsisable).collect();
-    // evaluate column_formats and all elements in every row to determine max colum widths; store extracted rows for reuse in writing body.
+
+    // evaluate column_formats and all elements in every row to determine max column widths; store extracted rows for reuse in writing body.
     let mut widths_max = vec![0; column_formats.len()];
     for (i, header) in header_labels.iter().enumerate() {
         widths_max[i] = header.len();
     }
+    // Collect results of calling to_rows() on each record into a new Vec
     let mut rows = Vec::new();
     for record in records {
         for row in record.to_rows(&RowableContext::Tty) {
@@ -144,6 +148,8 @@ fn to_table_display<W: Write + AsRawFd, T: Rowable>(
             rows.push(row);
         }
     }
+
+    // if a ColumnFormat sets a width_limit, would need to force some columns to be ellipsisable that may not already be; and would need to send in a different vector of width_target
     let w_gutter = 2;
     let widths = optimize_widths(&widths_max, &ellipsisable, w_gutter);
     // header

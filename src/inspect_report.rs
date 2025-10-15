@@ -28,7 +28,6 @@ impl InspectTarget {
             .to_string();
 
         let file = File::open(&fp)?;
-        // println!("attempting to read: {:?}", file);
         let reader = io::BufReader::new(file);
         let contents: String = reader
             .lines()
@@ -70,18 +69,13 @@ impl Rowable for InspectRecord {
 
         let is_tty = *context == RowableContext::Tty;
         for (i, InspectTarget { name, contents }) in self.files.iter().enumerate() {
-            let site = if i > 0 && is_tty {
-                "".to_string()
+            let (site, exes) = if i > 0 && is_tty {
+                ("".to_string(), "".to_string())
             } else {
-                self.site.to_string()
+                (self.site.to_string(), exes_display.clone())
             };
-            let exes = if i > 0 && is_tty {
-                "".to_string()
-            } else {
-                exes_display.clone()
-            };
-
-            rows.push(vec![site, exes, name.clone(), contents.clone()]);
+            // trim content to no more than 20 chars
+            rows.push(vec![site, name.clone(), contents.chars().take(40).collect()]);
         }
         rows
     }
@@ -93,6 +87,7 @@ pub struct InspectReport {
 }
 
 impl InspectReport {
+    /// Given a `site_to_exes` mapping from a `ScanFS`, search all sites for non-directory content.
     pub(crate) fn from_site_to_exes(
         site_to_exes: &HashMap<PathShared, Vec<PathShared>>,
     ) -> ResultDynError<Self> {
@@ -100,13 +95,12 @@ impl InspectReport {
 
         for (site, exes) in site_to_exes {
             let mut files: Vec<InspectTarget> = Vec::new();
-
-            // Skip sites that don't exist / aren't directories
+            // Skip sites that don't exist or are not dirs
             if !site.as_path().is_dir() {
-                eprintln!("Skipping non-directory or missing path: {:?}", site);
+                // eprintln!("Missing dir: {:?}", site);
                 continue;
             }
-            // Handle read_dir errors w
+            // read_dir errors
             let rd = match fs::read_dir(&site) {
                 Ok(it) => it,
                 Err(e) => {
@@ -115,8 +109,8 @@ impl InspectReport {
                 }
             };
 
-            for entry_res in rd {
-                let entry = match entry_res {
+            for dir_item in rd {
+                let entry = match dir_item {
                     Ok(e) => e,
                     Err(e) => {
                         eprintln!("Failed reading a DirEntry in {:?}: {}", site, e);
@@ -124,12 +118,10 @@ impl InspectReport {
                     }
                 };
                 let fp: PathBuf = entry.path();
-
-                // Skip subdirectories; only process files
+                // if a dir is here it should be standard package; could validate that both .distinfo and package exist
                 if fp.is_dir() {
                     continue;
                 }
-
                 match InspectTarget::from_path(&fp) {
                     Ok(it) => files.push(it),
                     Err(e) => eprintln!("Cannot load file {:?}: {}", fp, e),
@@ -150,7 +142,7 @@ impl Tableable<InspectRecord> for InspectReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
             ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
-            ColumnFormat::new("Executables".to_string(), true, "#666666".to_string()),
+            // ColumnFormat::new("Executables".to_string(), true, "#666666".to_string()),
             ColumnFormat::new("File".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Content".to_string(), true, "#666666".to_string()),
         ]
