@@ -574,10 +574,9 @@ where
         },
         Some(Commands::Inspect { subcommands }) => match subcommands {
             Some(InspectSubcommand::Write { output, delimiter }) => {
-                println!("inspect write");
-                // let sfs = get_sfs()?;
-                // let sr = sfs.to_scan_report();
-                // let _ = sr.to_file(output, *delimiter);
+                let sfs = get_sfs()?;
+                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let _ = it.to_file(output, *delimiter);
             }
             Some(InspectSubcommand::Display) | None => {
                 let sfs = get_sfs()?;

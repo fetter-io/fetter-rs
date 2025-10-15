@@ -31,7 +31,7 @@ impl InspectTarget {
         let reader = io::BufReader::new(file);
         let contents: String = reader
             .lines()
-            .take(10)
+            .take(10) // take first 10 lines; will truncate later
             .filter_map(Result::ok)
             .collect::<Vec<_>>()
             .join(" "); // could be /n
@@ -42,43 +42,31 @@ impl InspectTarget {
 #[derive(Debug, Clone)]
 pub(crate) struct InspectRecord {
     site: PathShared,
-    exes: Vec<PathShared>,
     files: Vec<InspectTarget>,
 }
-
-// impl InspectRecord {
-//     pub(crate) fn new(
-//         site: PathShared,
-//         exes: Vec<PathShared>,
-//         files: Vec<InspectTarget>,
-//     ) -> Self {
-//         InspectRecord { site, exes, files }
-//     }
-// }
 
 impl Rowable for InspectRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let mut rows: Vec<Vec<String>> = Vec::new();
 
-        let exes_display = self
-            .exes
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
+        // let exes_display = self
+        //     .exes
+        //     .iter()
+        //     .map(|p| p.to_string())
+        //     .collect::<Vec<_>>()
+        //     .join(",");
 
         let is_tty = *context == RowableContext::Tty;
         for (i, InspectTarget { name, contents }) in self.files.iter().enumerate() {
-            let (site, exes) = if i > 0 && is_tty {
-                ("".to_string(), "".to_string())
+            let site = if i > 0 && is_tty {
+                "".to_string()
             } else {
-                (self.site.to_string(), exes_display.clone())
+                self.site.to_string()
             };
-            // trim content to no more than 20 chars
             rows.push(vec![
                 site,
                 name.clone(),
-                contents.chars().take(40).collect(),
+                contents.chars().take(60).collect(), // trim content to no more than 20 chars
             ]);
         }
         rows
@@ -90,6 +78,9 @@ pub struct InspectReport {
     records: Vec<InspectRecord>,
 }
 
+const EXT_KEEP: [&str; 2] = ["py", "pth"];
+pub(crate) const PY_NAME_KEEP: [&str; 2] = ["sitecustomize.py", "usercustomize.py"];
+
 impl InspectReport {
     /// Given a `site_to_exes` mapping from a `ScanFS`, search all sites for non-directory content.
     pub(crate) fn from_site_to_exes(
@@ -97,7 +88,7 @@ impl InspectReport {
     ) -> ResultDynError<Self> {
         let mut records = Vec::new();
 
-        for (site, exes) in site_to_exes {
+        for site in site_to_exes.keys() {
             let mut files: Vec<InspectTarget> = Vec::new();
             // Skip sites that don't exist or are not dirs
             if !site.as_path().is_dir() {
@@ -126,14 +117,23 @@ impl InspectReport {
                 if fp.is_dir() {
                     continue;
                 }
-                match InspectTarget::from_path(&fp) {
-                    Ok(it) => files.push(it),
-                    Err(e) => eprintln!("Cannot load file {:?}: {}", fp, e),
+                // skip extensions we do not care about
+                let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+                if EXT_KEEP.contains(&ext) {
+                    let name = fp.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    if ext == "py" && !PY_NAME_KEEP.contains(&name) {
+                        continue;
+                    }
+                    match InspectTarget::from_path(&fp) {
+                        Ok(it) => files.push(it),
+                        Err(e) => eprintln!("Cannot load file {:?}: {}", fp, e),
+                    }
                 }
             }
             records.push(InspectRecord {
                 site: site.clone(),
-                exes: exes.clone(),
                 files,
             });
         }
@@ -146,7 +146,6 @@ impl Tableable<InspectRecord> for InspectReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
             ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
-            // ColumnFormat::new("Executables".to_string(), true, "#666666".to_string()),
             ColumnFormat::new("File".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Content".to_string(), true, "#666666".to_string()),
         ]
@@ -169,6 +168,6 @@ mod tests {
 
     #[test]
     fn test_to_file_a() {
-        println("test");
+        println!("test");
     }
 }

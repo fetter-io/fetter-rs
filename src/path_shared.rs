@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::Path;

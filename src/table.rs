@@ -8,6 +8,7 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 // use crate::util::get_writer;
+use crate::inspect_report::PY_NAME_KEEP;
 use crate::util::get_writer;
 use crate::write_color::write_color;
 
@@ -66,7 +67,7 @@ fn optimize_widths(
 
     for (i, width) in widths_max.iter().enumerate() {
         if ellipsisable[i] {
-            // we derive proportion based on observed max_widht
+            // we derive proportion based on observed max_width
             let proportion = *width as f64 / w_ellipsisable as f64;
             let reduction = (proportion * w_excess) as usize;
             let w_field = (*width - reduction).max(3);
@@ -84,14 +85,17 @@ fn optimize_widths(
     widths
 }
 
+const ELLIPSIS: char = '…';
+const EWIDTH: usize = 1; // ELLIPSIS width
+
 /// Given a string field, trim and ellipse, as well as possible pad field.
 fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     if value.len() <= widths.width_chars {
         format!("{:<w$}", value, w = widths.width_pad)
-    } else if widths.width_chars > 3 && (value.len() - widths.width_chars) > 3 {
+    } else if widths.width_chars > EWIDTH && (value.len() - widths.width_chars) > EWIDTH {
         format!(
             "{:<w$}",
-            format!("{}...", &value[..(widths.width_chars - 3)]),
+            format!("{}{}", &value[..(widths.width_chars - EWIDTH)], ELLIPSIS),
             w = widths.width_pad
         )
     } else {
@@ -207,8 +211,13 @@ impl ColumnFormat {
             }
         } else if self.header == "Site" {
             write_color(writer, "#999999", &field);
-        // } else if message.starts_with("#") {
-        //     write_color(writer, "#999999", &field);
+        } else if self.header == "File" {
+            // used in InspectReport
+            if PY_NAME_KEEP.contains(&message.as_str()) {
+                write_color(writer, "#FF999C", &field);
+            } else {
+                write!(writer, "{field}")?;
+            }
         } else {
             write!(writer, "{field}")?;
         }
