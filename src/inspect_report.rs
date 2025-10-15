@@ -27,7 +27,7 @@ impl InspectTarget {
             .unwrap_or("<invalid utf8>")
             .to_string();
 
-        let file = File::open(&fp)?;
+        let file = File::open(fp)?;
         let reader = io::BufReader::new(file);
         let contents: String = reader
             .lines()
@@ -46,15 +46,15 @@ pub(crate) struct InspectRecord {
     files: Vec<InspectTarget>,
 }
 
-impl InspectRecord {
-    pub(crate) fn new(
-        site: PathShared,
-        exes: Vec<PathShared>,
-        files: Vec<InspectTarget>,
-    ) -> Self {
-        InspectRecord { site, exes, files }
-    }
-}
+// impl InspectRecord {
+//     pub(crate) fn new(
+//         site: PathShared,
+//         exes: Vec<PathShared>,
+//         files: Vec<InspectTarget>,
+//     ) -> Self {
+//         InspectRecord { site, exes, files }
+//     }
+// }
 
 impl Rowable for InspectRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
@@ -75,7 +75,11 @@ impl Rowable for InspectRecord {
                 (self.site.to_string(), exes_display.clone())
             };
             // trim content to no more than 20 chars
-            rows.push(vec![site, name.clone(), contents.chars().take(40).collect()]);
+            rows.push(vec![
+                site,
+                name.clone(),
+                contents.chars().take(40).collect(),
+            ]);
         }
         rows
     }
@@ -101,7 +105,7 @@ impl InspectReport {
                 continue;
             }
             // read_dir errors
-            let rd = match fs::read_dir(&site) {
+            let rd = match fs::read_dir(site) {
                 Ok(it) => it,
                 Err(e) => {
                     eprintln!("Cannot read_dir {:?}: {}", site, e);
