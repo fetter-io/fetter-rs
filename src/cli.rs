@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::process;
 
+use crate::inspect_report::InspectReport;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
@@ -579,10 +580,9 @@ where
                 // let _ = sr.to_file(output, *delimiter);
             }
             Some(InspectSubcommand::Display) | None => {
-                println!("inspect display");
-                // let sfs = get_sfs()?;
-                // let sr = sfs.to_scan_report();
-                // let _ = sr.to_writer(stderr);
+                let sfs = get_sfs()?;
+                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let _ = it.to_writer(stderr);
             }
         },
         Some(Commands::Search {

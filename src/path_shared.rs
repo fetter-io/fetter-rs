@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
@@ -30,6 +31,10 @@ impl PathShared {
     pub(crate) fn as_path(&self) -> &Path {
         self.0.as_path()
     }
+
+    // pub(crate) fn file_name(&self) -> Option<&OsStr> {
+    //     self.0.file_name()
+    // }
 
     pub(crate) fn join(&self, part: &str) -> PathBuf {
         self.0.join(part)
