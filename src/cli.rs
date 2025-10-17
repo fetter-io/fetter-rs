@@ -146,7 +146,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<ScanSubcommand>,
     },
-    /// Inspect all sites for code runnable on interpreter startup.
+    /// Inspect all sites for code files runnable on interpreter startup.
     Inspect {
         #[command(subcommand)]
         subcommands: Option<InspectSubcommand>,

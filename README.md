@@ -391,6 +391,10 @@ repos:
 
 ## What is New in Fetter
 
+### dev
+
+Added `inspet` subcommand to display all code files runnable on interpreter startup.
+
 ### 2.9.0
 
 Improvements to `CacheConfig` struct.
