@@ -31,6 +31,10 @@ impl PathShared {
         self.0.as_path()
     }
 
+    // pub(crate) fn file_name(&self) -> Option<&OsStr> {
+    //     self.0.file_name()
+    // }
+
     pub(crate) fn join(&self, part: &str) -> PathBuf {
         self.0.join(part)
     }

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::process;
 
+use crate::inspect_report::InspectReport;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
@@ -144,6 +145,11 @@ enum Commands {
     Scan {
         #[command(subcommand)]
         subcommands: Option<ScanSubcommand>,
+    },
+    /// Inspect all sites for code runnable on interpreter startup.
+    Inspect {
+        #[command(subcommand)]
+        subcommands: Option<InspectSubcommand>,
     },
     /// Search environment to report on installed packages.
     Search {
@@ -318,6 +324,7 @@ impl fmt::Display for Commands {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
             Commands::Scan { .. } => "scan",
+            Commands::Inspect { .. } => "inspect",
             Commands::Search { .. } => "search",
             Commands::Count { .. } => "count",
             Commands::Derive { .. } => "derive",
@@ -336,11 +343,25 @@ impl fmt::Display for Commands {
 }
 
 //------------------------------------------------------------------------------
+
 #[derive(Subcommand)]
 enum ScanSubcommand {
     /// Display scan in the terminal.
     Display,
     /// Write a scan report to a file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+}
+
+#[derive(Subcommand)]
+enum InspectSubcommand {
+    /// Display inspect in the terminal.
+    Display,
+    /// Write an inspect report to a file.
     Write {
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -549,6 +570,18 @@ where
                 let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
                 let _ = sr.to_writer(stderr);
+            }
+        },
+        Some(Commands::Inspect { subcommands }) => match subcommands {
+            Some(InspectSubcommand::Write { output, delimiter }) => {
+                let sfs = get_sfs()?;
+                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let _ = it.to_file(output, *delimiter);
+            }
+            Some(InspectSubcommand::Display) | None => {
+                let sfs = get_sfs()?;
+                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let _ = it.to_writer(stderr);
             }
         },
         Some(Commands::Search {
