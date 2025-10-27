@@ -393,7 +393,7 @@ repos:
 
 ### dev
 
-Added `inspet` subcommand to display all code files runnable on interpreter startup.
+Added `inspect` subcommand to display all code files runnable on interpreter startup.
 
 ### 2.9.0
 
