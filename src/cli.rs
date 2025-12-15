@@ -17,6 +17,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
+use crate::dep_spec::DepSpec;
 use crate::lookup_report::LookupReport;
 use crate::monitor::monitor_scan_loop;
 use crate::scan_fs::ScanFS;
@@ -32,7 +33,6 @@ use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
-use crate::dep_spec::DepSpec;
 
 //------------------------------------------------------------------------------
 // utility enums

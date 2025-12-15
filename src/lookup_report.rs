@@ -8,10 +8,9 @@ use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::CvssFilter;
+use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
-use serde::Serialize;
-
 
 // given a set of packages (with defined specific versions), check if those versions have vulnerabilities; if so provide vulnerability details for each. Vuln details can reuse AuditRecord, AuditReport
 
