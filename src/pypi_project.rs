@@ -44,8 +44,13 @@ pub struct PYPIProject {
 }
 
 impl PYPIProject {
-    pub fn get_version_specs(&self, filter: Option<&DepSpec>) -> Vec<VersionSpec> {
-        match filter {
+    /// Return all available VersionSpecs for this project. Optional filters can be used, including filtering on a DepSpec as well as a limit, where the limit is the number of most recent versions found.
+    pub fn get_version_specs(
+        &self,
+        filter: Option<&DepSpec>,
+        limit: Option<usize>,
+    ) -> Vec<VersionSpec> {
+        let mut versions: Vec<VersionSpec> = match filter {
             None => self
                 .releases
                 .0
@@ -59,6 +64,14 @@ impl PYPIProject {
                 .map(|v| VersionSpec::new(v))
                 .filter(|v| dep_spec.validate_version(v))
                 .collect(),
+        };
+
+        // most recent first
+        versions.sort_by(|a, b| b.cmp(a));
+
+        match limit {
+            None => versions,
+            Some(n) => versions.into_iter().take(n).collect(),
         }
     }
 }
@@ -233,13 +246,13 @@ mod tests {
         assert!(result.is_some());
         let pypi_project = result.unwrap();
 
-        // Get version specs without filter
-        let mut version_specs = pypi_project.get_version_specs(None);
-        version_specs.sort(); // Sort for consistent ordering in tests
+        // Get version specs without filter or limit (returns sorted descending)
+        let version_specs = pypi_project.get_version_specs(None, None);
 
         assert_eq!(version_specs.len(), 2);
-        assert_eq!(version_specs[0].to_string(), "1.0.0");
-        assert_eq!(version_specs[1].to_string(), "1.0.2");
+        // Should be sorted descending (most recent first)
+        assert_eq!(version_specs[0].to_string(), "1.0.2");
+        assert_eq!(version_specs[1].to_string(), "1.0.0");
     }
 
     #[test]
@@ -266,41 +279,122 @@ mod tests {
 
         // Test filter: >=1.0.1 (should only match 1.0.2)
         let filter_ge = DepSpec::from_string("conditional-futures>=1.0.1").unwrap();
-        let mut filtered_specs = pypi_project.get_version_specs(Some(&filter_ge));
-        filtered_specs.sort();
+        let filtered_specs = pypi_project.get_version_specs(Some(&filter_ge), None);
 
         assert_eq!(filtered_specs.len(), 1);
         assert_eq!(filtered_specs[0].to_string(), "1.0.2");
 
         // Test filter: <1.0.2 (should only match 1.0.0)
         let filter_lt = DepSpec::from_string("conditional-futures<1.0.2").unwrap();
-        let mut filtered_specs = pypi_project.get_version_specs(Some(&filter_lt));
-        filtered_specs.sort();
+        let filtered_specs = pypi_project.get_version_specs(Some(&filter_lt), None);
 
         assert_eq!(filtered_specs.len(), 1);
         assert_eq!(filtered_specs[0].to_string(), "1.0.0");
 
         // Test filter: ==1.0.0 (should only match 1.0.0)
         let filter_eq = DepSpec::from_string("conditional-futures==1.0.0").unwrap();
-        let filtered_specs = pypi_project.get_version_specs(Some(&filter_eq));
+        let filtered_specs = pypi_project.get_version_specs(Some(&filter_eq), None);
 
         assert_eq!(filtered_specs.len(), 1);
         assert_eq!(filtered_specs[0].to_string(), "1.0.0");
 
-        // Test filter: >=1.0.0 (should match both)
+        // Test filter: >=1.0.0 (should match both, sorted descending)
         let filter_all = DepSpec::from_string("conditional-futures>=1.0.0").unwrap();
-        let mut filtered_specs = pypi_project.get_version_specs(Some(&filter_all));
-        filtered_specs.sort();
+        let filtered_specs = pypi_project.get_version_specs(Some(&filter_all), None);
 
         assert_eq!(filtered_specs.len(), 2);
-        assert_eq!(filtered_specs[0].to_string(), "1.0.0");
-        assert_eq!(filtered_specs[1].to_string(), "1.0.2");
+        assert_eq!(filtered_specs[0].to_string(), "1.0.2");
+        assert_eq!(filtered_specs[1].to_string(), "1.0.0");
 
         // Test filter: >2.0.0 (should match none)
         let filter_none = DepSpec::from_string("conditional-futures>2.0.0").unwrap();
-        let filtered_specs = pypi_project.get_version_specs(Some(&filter_none));
+        let filtered_specs = pypi_project.get_version_specs(Some(&filter_none), None);
 
         assert_eq!(filtered_specs.len(), 0);
+    }
+
+    #[test]
+    fn test_get_version_specs_with_limit() {
+        // Extended test data with more versions: 0.9.0, 1.0.0, 1.0.1, 1.0.2, 1.1.0, 1.2.0, 2.0.0, 2.1.0
+        let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures","Issues":"https://github.com/static-frame/conditional-futures/issues","Repository":"https://github.com/static-frame/conditional-futures"}},"releases":{"0.9.0":[{"filename":"conditional_futures-0.9.0-py3-none-any.whl"}],"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"}],"1.0.1":[{"filename":"conditional_futures-1.0.1-py3-none-any.whl"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"}],"1.1.0":[{"filename":"conditional_futures-1.1.0-py3-none-any.whl"}],"1.2.0":[{"filename":"conditional_futures-1.2.0-py3-none-any.whl"}],"2.0.0":[{"filename":"conditional_futures-2.0.0-py3-none-any.whl"}],"2.1.0":[{"filename":"conditional_futures-2.1.0-py3-none-any.whl"}]}}"#;
+
+        let client = Arc::new(UreqClientMock {
+            mock_get: Some(content.to_string()),
+            mock_post: None,
+        });
+
+        let cache_dir = path_cache(true).unwrap();
+        let cache_config = CacheConfig::new(Duration::from_secs(0), cache_dir);
+
+        let result = query_pypi_project(
+            client,
+            "conditional-futures",
+            &cache_config,
+            FlagLog(false),
+        );
+
+        assert!(result.is_some());
+        let pypi_project = result.unwrap();
+
+        // Verify total count: should have 8 versions
+        let all_specs = pypi_project.get_version_specs(None, None);
+        assert_eq!(all_specs.len(), 8);
+        // Verify sorted descending (most recent first)
+        assert_eq!(all_specs[0].to_string(), "2.1.0");
+        assert_eq!(all_specs[7].to_string(), "0.9.0");
+
+        // Test limit: get only 1 most recent version
+        let limited_specs = pypi_project.get_version_specs(None, Some(1));
+        assert_eq!(limited_specs.len(), 1);
+        assert_eq!(limited_specs[0].to_string(), "2.1.0");
+
+        // Test limit: get 3 most recent versions
+        let limited_specs = pypi_project.get_version_specs(None, Some(3));
+        assert_eq!(limited_specs.len(), 3);
+        assert_eq!(limited_specs[0].to_string(), "2.1.0");
+        assert_eq!(limited_specs[1].to_string(), "2.0.0");
+        assert_eq!(limited_specs[2].to_string(), "1.2.0");
+
+        // Test limit: get 5 most recent versions
+        let limited_specs = pypi_project.get_version_specs(None, Some(5));
+        assert_eq!(limited_specs.len(), 5);
+        assert_eq!(limited_specs[0].to_string(), "2.1.0");
+        assert_eq!(limited_specs[4].to_string(), "1.0.2");
+
+        // Test limit: request more than available
+        let limited_specs = pypi_project.get_version_specs(None, Some(20));
+        assert_eq!(limited_specs.len(), 8);
+
+        // Test filter + limit: >=1.0.0,<2.0.0 with limit 3 (should get 3 most recent 1.x versions)
+        let filter = DepSpec::from_string("conditional-futures>=1.0.0,<2.0.0").unwrap();
+        let filtered_limited = pypi_project.get_version_specs(Some(&filter), Some(3));
+        assert_eq!(filtered_limited.len(), 3);
+        assert_eq!(filtered_limited[0].to_string(), "1.2.0");
+        assert_eq!(filtered_limited[1].to_string(), "1.1.0");
+        assert_eq!(filtered_limited[2].to_string(), "1.0.2");
+
+        // Test filter + limit: >=2.0.0 with limit 10 (should get both 2.x versions)
+        let filter = DepSpec::from_string("conditional-futures>=2.0.0").unwrap();
+        let filtered_limited = pypi_project.get_version_specs(Some(&filter), Some(10));
+        assert_eq!(filtered_limited.len(), 2);
+        assert_eq!(filtered_limited[0].to_string(), "2.1.0");
+        assert_eq!(filtered_limited[1].to_string(), "2.0.0");
+
+        // Test filter + limit: <1.0.0 with limit 1 (should get 0.9.0)
+        let filter = DepSpec::from_string("conditional-futures<1.0.0").unwrap();
+        let filtered_limited = pypi_project.get_version_specs(Some(&filter), Some(1));
+        assert_eq!(filtered_limited.len(), 1);
+        assert_eq!(filtered_limited[0].to_string(), "0.9.0");
+
+        // Test filter + limit: ==1.0.1 with limit 5 (should get only 1.0.1)
+        let filter = DepSpec::from_string("conditional-futures==1.0.1").unwrap();
+        let filtered_limited = pypi_project.get_version_specs(Some(&filter), Some(5));
+        assert_eq!(filtered_limited.len(), 1);
+        assert_eq!(filtered_limited[0].to_string(), "1.0.1");
+
+        // Test limit: 0 should return empty
+        let limited_specs = pypi_project.get_version_specs(None, Some(0));
+        assert_eq!(limited_specs.len(), 0);
     }
 
     //--------------------------------------------------------------------------
