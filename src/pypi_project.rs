@@ -1,6 +1,7 @@
 use crate::dep_spec::DepSpec;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
+use crate::util::name_to_key;
 use crate::util::path_within_duration;
 use crate::util::CacheConfig;
 use crate::util::FlagLog;
@@ -50,6 +51,12 @@ impl PYPIProject {
         filter: Option<&DepSpec>,
         limit: Option<usize>,
     ) -> Vec<VersionSpec> {
+        // Early return if filter is for a different package
+        if let Some(dep_spec) = filter {
+            if dep_spec.key != name_to_key(&self.info.name) {
+                return Vec::new();
+            }
+        }
         let mut versions: Vec<VersionSpec> = match filter {
             None => self
                 .releases
@@ -395,6 +402,42 @@ mod tests {
         // Test limit: 0 should return empty
         let limited_specs = pypi_project.get_version_specs(None, Some(0));
         assert_eq!(limited_specs.len(), 0);
+    }
+
+    #[test]
+    fn test_get_version_specs_wrong_package() {
+        // Test that filtering with a DepSpec for a different package returns empty
+        let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures"}},"releases":{"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"}]}}"#;
+
+        let client = Arc::new(UreqClientMock {
+            mock_get: Some(content.to_string()),
+            mock_post: None,
+        });
+
+        let cache_dir = path_cache(true).unwrap();
+        let cache_config = CacheConfig::new(Duration::from_secs(0), cache_dir);
+
+        let result = query_pypi_project(
+            client,
+            "conditional-futures",
+            &cache_config,
+            FlagLog(false),
+        );
+
+        assert!(result.is_some());
+        let pypi_project = result.unwrap();
+
+        // Create a DepSpec for a DIFFERENT package (numpy instead of conditional-futures)
+        let wrong_filter = DepSpec::from_string("numpy>=1.0.0").unwrap();
+        let filtered_specs = pypi_project.get_version_specs(Some(&wrong_filter), None);
+
+        // Should return empty because the package names don't match
+        assert_eq!(filtered_specs.len(), 0);
+
+        // Verify it still works with the correct package name
+        let correct_filter = DepSpec::from_string("conditional-futures>=1.0.0").unwrap();
+        let filtered_specs = pypi_project.get_version_specs(Some(&correct_filter), None);
+        assert_eq!(filtered_specs.len(), 2);
     }
 
     //--------------------------------------------------------------------------
