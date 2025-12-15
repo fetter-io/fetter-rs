@@ -85,7 +85,8 @@ impl PYPIProject {
 
 //------------------------------------------------------------------------------
 
-fn query_pypi_project(
+// NOTE: at present this returns None on error; might want to return proper Err
+pub fn query_pypi_project(
     client: Arc<dyn UreqClient>,
     project: &str,
     cache_config: &CacheConfig,

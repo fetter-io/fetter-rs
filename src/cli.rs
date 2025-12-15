@@ -17,6 +17,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
+use crate::lookup_report::LookupReport;
 use crate::monitor::monitor_scan_loop;
 use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
@@ -31,6 +32,7 @@ use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
+use crate::dep_spec::DepSpec;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -250,6 +252,25 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
     },
+    LookupName {
+        /// Provide a glob-like pattern to select packages.
+        #[arg(short, long)]
+        name: String,
+
+        #[arg(long, required = false, default_value = "50")]
+        limit: usize,
+
+        /// Ignore any OSV caches and re-fetch vulnerability details.
+        #[arg(long)]
+        cache_refresh: bool,
+
+        /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CVSS")]
+        cvss: Option<Option<f64>>,
+
+        #[command(subcommand)]
+        subcommands: Option<LookupNameSubcommand>,
+    },
     /// Discover counts of all installed packages artifacts.
     UnpackCount {
         /// Provide a glob-like pattern to select packages.
@@ -332,6 +353,7 @@ impl fmt::Display for Commands {
             Commands::SiteInstall { .. } => "site-install",
             Commands::SiteUninstall => "site-uninstall",
             Commands::Audit { .. } => "audit",
+            Commands::LookupName { .. } => "lookup-name",
             Commands::UnpackCount { .. } => "unpack-count",
             Commands::UnpackFiles { .. } => "unpack-files",
             Commands::PurgePattern { .. } => "purge-pattern",
@@ -454,6 +476,26 @@ enum AuditSubcommand {
         delimiter: char,
     },
     /// Print a Json representation of audit report results.
+    Json,
+    /// Return an exit code, 0 on success, 3 (by default) on error.
+    Exit {
+        #[arg(short, long, default_value = "3")]
+        code: i32,
+    },
+}
+
+#[derive(Subcommand)]
+enum LookupNameSubcommand {
+    /// Display lookup results in the terminal.
+    Display,
+    /// Write lookup results to a delimited file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+    /// Print a Json representation of lookup report results.
     Json,
     /// Return an exit code, 0 on success, 3 (by default) on error.
     Exit {
@@ -763,6 +805,57 @@ where
                 }
             }
         }
+        Some(Commands::LookupName {
+            subcommands,
+            name, // not a name
+            limit,
+            cache_refresh,
+            cvss,
+        }) => {
+            // network lookup makes this potentially slow
+            let active = Arc::new(AtomicBool::new(true));
+            if !quiet {
+                spin(
+                    active.clone(),
+                    "vulnerability searching".to_string(),
+                    stderr,
+                );
+            }
+            let cvss_filter = CvssFilter::from_arg(*cvss);
+            let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
+            let ds = DepSpec::from_string(&name)?;
+
+            let lr = LookupReport::from_dep_spec(
+                client,
+                &ds,
+                Some(*limit),
+                &cache_config,
+                FlagCacheRefresh(*cache_refresh),
+                log,
+                cvss_filter,
+            );
+            if !quiet {
+                active.store(false, Ordering::Relaxed);
+                thread::sleep(Duration::from_millis(100));
+            }
+            match subcommands {
+                Some(LookupNameSubcommand::Json) => {
+                    println!("{}", serde_json::to_string(&lr)?);
+                }
+                Some(LookupNameSubcommand::Write { output, delimiter }) => {
+                    let _ = lr.to_file(output, *delimiter);
+                }
+                Some(LookupNameSubcommand::Exit { code }) => {
+                    process::exit(if !lr.is_empty() { *code } else { 0 });
+                }
+                Some(LookupNameSubcommand::Display) | None => {
+                    // default
+                    let _ = lr.to_writer(stderr);
+                    process::exit(if !lr.is_empty() { ERROR_EXIT_CODE } else { 0 });
+                }
+            }
+        }
+
         Some(Commands::UnpackCount {
             subcommands,
             pattern,

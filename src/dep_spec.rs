@@ -658,7 +658,6 @@ mod tests {
         let ds1 = DepSpec::from_string(input).unwrap();
         assert!(ds1.validate_version(&VersionSpec::new("1.0")));
         assert!(ds1.validate_version(&VersionSpec::new("100.0.0.0")));
-
     }
 
     //--------------------------------------------------------------------------

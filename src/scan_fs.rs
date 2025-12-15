@@ -618,7 +618,7 @@ impl ScanFS {
         )
     }
 
-    /// The `count` Boolean determine if what type of UnpackReport is returned
+    /// The `count` Boolean determine what type of UnpackReport is returned
     pub(crate) fn to_unpack_report(
         &self,
         pattern: &str,
