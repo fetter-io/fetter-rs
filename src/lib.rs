@@ -14,6 +14,7 @@ mod package;
 mod package_durl;
 mod package_match;
 mod path_shared;
+mod pypi_project;
 mod pyproject;
 mod scan_fs;
 mod scan_report;
@@ -49,6 +50,11 @@ pub use osv_vulns::OSVSeverity;
 pub use osv_vulns::OSVVulnInfo;
 pub use osv_vulns::OSVVulnReference;
 pub use osv_vulns::VulnInfo;
+
+pub use pypi_project::PYPIInfo;
+pub use pypi_project::PYPIProjectURLs;
+pub use pypi_project::PYPIRelease;
+pub use pypi_project::PYPIReleases;
 
 pub use package::Package;
 pub use package_durl::DirectURL;
