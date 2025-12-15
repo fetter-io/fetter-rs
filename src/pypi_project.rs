@@ -1,6 +1,7 @@
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
-use crate::util::FlagCacheRefresh;
+use crate::util::path_within_duration;
+use crate::util::CacheConfig;
 use crate::util::FlagLog;
 
 // use rayon::prelude::*;
@@ -8,7 +9,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 //------------------------------------------------------------------------------
@@ -46,14 +46,13 @@ pub struct PYPIProject {
 fn query_pypi_project(
     client: Arc<dyn UreqClient>,
     project: &str,
-    cache_refresh: FlagCacheRefresh,
-    cache_dir: &Path,
+    cache_config: &CacheConfig,
     log: FlagLog,
 ) -> Option<PYPIProject> {
-    let cache_fp = cache_dir.join(format!("{project}.json"));
+    let cache_fp = cache_config.directory.join(format!("{project}.json"));
 
-    // Try reading from cache
-    if !bool::from(cache_refresh) && cache_fp.exists() {
+    // Try reading from cache if within duration
+    if path_within_duration(&cache_fp, cache_config.duration) {
         match std::fs::read_to_string(&cache_fp) {
             Ok(cached_data) => {
                 if let Ok(pypi_project) = serde_json::from_str(&cached_data) {
@@ -126,18 +125,15 @@ mod tests {
     #[test]
     #[ignore] // This is a temporary test that hits the live PyPI endpoint
     fn test_query_pypi_project_live() {
+        use std::time::Duration;
+
         // Test with a well-known package
         let project = "conditional-futures";
         let client = Arc::new(UreqClientLive);
         let cache_dir = path_cache(true).unwrap();
+        let cache_config = CacheConfig::new(Duration::from_secs(0), cache_dir); // 0 duration = always fetch
 
-        let result = query_pypi_project(
-            client,
-            project,
-            FlagCacheRefresh(true), // Force fresh fetch
-            &cache_dir,
-            FlagLog(true),
-        );
+        let result = query_pypi_project(client, project, &cache_config, FlagLog(true));
 
         assert!(result.is_some(), "Failed to fetch {project} from PyPI");
 
