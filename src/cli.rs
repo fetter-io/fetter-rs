@@ -823,7 +823,7 @@ where
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
-            let ds = DepSpec::from_string(&name)?;
+            let ds = DepSpec::from_string(name)?;
 
             let lr = LookupReport::from_dep_spec(
                 client,
