@@ -11,6 +11,8 @@ use crate::CvssFilter;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
+use crate::util::logger;
+
 
 // given a set of packages (with defined specific versions), check if those versions have vulnerabilities; if so provide vulnerability details for each. Vuln details can reuse AuditRecord, AuditReport
 
@@ -31,6 +33,7 @@ impl LookupReport {
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> Self {
+
         let pypi_project = query_pypi_project(client.clone(), &ds.key, cache_config, log);
 
         // convert VersionSpecs to Packages
@@ -48,7 +51,13 @@ impl LookupReport {
             None => Vec::new(),
         };
 
-        println!("packages: {packages:?}");
+        logger!(
+            log,
+            module_path!(),
+            "Found {:?} packages in PyPI",
+            packages.len()
+        );
+
         let audit_report = AuditReport::from_packages(
             client,
             &packages,

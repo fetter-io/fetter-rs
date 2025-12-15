@@ -253,12 +253,12 @@ enum Commands {
         subcommands: Option<AuditSubcommand>,
     },
     LookupName {
-        /// Provide a glob-like pattern to select packages.
-        #[arg(short, long)]
+        /// Provide a package name or dependency specification.
+        #[arg()]
         name: String,
 
-        #[arg(long, required = false, default_value = "10")]
-        limit: usize,
+        #[arg(long)]
+        limit: Option<usize>,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -807,7 +807,7 @@ where
         }
         Some(Commands::LookupName {
             subcommands,
-            name, // not a name
+            name,
             limit,
             cache_refresh,
             cvss,
@@ -828,7 +828,7 @@ where
             let lr = LookupReport::from_dep_spec(
                 client,
                 &ds,
-                Some(*limit),
+                *limit,
                 &cache_config,
                 FlagCacheRefresh(*cache_refresh),
                 log,

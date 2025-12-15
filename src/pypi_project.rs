@@ -96,7 +96,7 @@ pub fn query_pypi_project(
     cache_config: &CacheConfig,
     log: FlagLog,
 ) -> Option<PYPIProject> {
-    let cache_fp = cache_config.directory.join(format!("{project}.json"));
+    let cache_fp = cache_config.directory.join(format!("pypi_project_{project}.json"));
 
     // Try reading from cache if within duration
     if path_within_duration(&cache_fp, cache_config.duration) {
