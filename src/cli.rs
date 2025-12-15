@@ -257,7 +257,7 @@ enum Commands {
         #[arg(short, long)]
         name: String,
 
-        #[arg(long, required = false, default_value = "50")]
+        #[arg(long, required = false, default_value = "10")]
         limit: usize,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
