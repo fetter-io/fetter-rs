@@ -651,6 +651,16 @@ mod tests {
         assert!(ds1.validate_version(&VersionSpec::new("1.9")));
         assert!(!ds1.validate_version(&VersionSpec::new("2.1")));
     }
+
+    #[test]
+    fn test_dep_spec_validate_version_m() {
+        let input = "name";
+        let ds1 = DepSpec::from_string(input).unwrap();
+        assert!(ds1.validate_version(&VersionSpec::new("1.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("100.0.0.0")));
+
+    }
+
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_package_a() {
