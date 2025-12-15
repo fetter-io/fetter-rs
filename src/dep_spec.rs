@@ -329,7 +329,7 @@ impl DepSpec {
     // }
 
     //--------------------------------------------------------------------------
-    fn validate_version(&self, version: &VersionSpec) -> bool {
+    pub fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             let valid = match op {
