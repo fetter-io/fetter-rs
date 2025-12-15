@@ -3,51 +3,42 @@ use crate::util::logger;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 
-use rayon::prelude::*;
+// use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIProjectURLs {
-    documentation: String,
-    homepage: String,
-    repository: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PYPIInfo {
-    author: String, // might be a collection
-    name: String,
-    project_urls: PYPIProjectURLs,
+    pub author: Option<String>, // might be a collection or null
+    pub name: String,
+    pub project_urls: Option<HashMap<String, String>>,
 }
 
 //------------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PYPIRelease {
-    filename: String,
-    // url: String,
+    pub filename: String,
+    // pub url: String,
     // much more here
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIReleases(HashMap<String, PYPIRelease>);
+pub struct PYPIReleases(pub HashMap<String, Vec<PYPIRelease>>);
 
 //------------------------------------------------------------------------------
 /// This is a query object designed to match the response from the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PYPIProject {
-    pub info: String,
+    pub info: PYPIInfo,
     pub releases: PYPIReleases,
     // pub urls: Vec<PYPIRelease>,
-    // vulnerabilities: String, // might be useful
+    // pub vulnerabilities: Option<Vec<String>>, // might be useful
 }
 
 //------------------------------------------------------------------------------
@@ -65,9 +56,9 @@ fn query_pypi_project(
     if !bool::from(cache_refresh) && cache_fp.exists() {
         match std::fs::read_to_string(&cache_fp) {
             Ok(cached_data) => {
-                if let Ok(osv_vuln) = serde_json::from_str(&cached_data) {
+                if let Ok(pypi_project) = serde_json::from_str(&cached_data) {
                     logger!(log, module_path!(), "Loaded PyPI {project} from cache");
-                    return Some(osv_vuln);
+                    return Some(pypi_project);
                 } else {
                     logger!(
                         log,
@@ -89,7 +80,7 @@ fn query_pypi_project(
     // Fetch from API
     match client.get(&format!("https://pypi.org/pypi/{project}/json")) {
         Ok(body_str) => match serde_json::from_str(&body_str) {
-            Ok(osv_vuln) => {
+            Ok(pypi_project) => {
                 if let Err(e) = std::fs::write(&cache_fp, &body_str) {
                     logger!(
                         log,
@@ -100,16 +91,16 @@ fn query_pypi_project(
                     logger!(
                         log,
                         module_path!(),
-                        "Cached OSV vuln response for {vuln_id}"
+                        "Cached PYPI project response for {project}"
                     );
                 }
-                Some(osv_vuln)
+                Some(pypi_project)
             }
             Err(e) => {
                 logger!(
                     log,
                     module_path!(),
-                    "Failed to deserialize OSV vuln {vuln_id}: {e}"
+                    "Failed to deserialize PYPI project {project}: {e}"
                 );
                 None
             }
@@ -118,9 +109,65 @@ fn query_pypi_project(
             logger!(
                 log,
                 module_path!(),
-                "HTTP request failed for {vuln_id}: {e}"
+                "HTTP request failed for {project}: {e}"
             );
             None
+        }
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ureq_client::UreqClientLive, util::path_cache};
+
+    #[test]
+    #[ignore] // This is a temporary test that hits the live PyPI endpoint
+    fn test_query_pypi_project_live() {
+        // Test with a well-known package
+        let project = "conditional-futures";
+        let client = Arc::new(UreqClientLive);
+        let cache_dir = path_cache(true).unwrap();
+
+        let result = query_pypi_project(
+            client,
+            project,
+            FlagCacheRefresh(true), // Force fresh fetch
+            &cache_dir,
+            FlagLog(true),
+        );
+
+        assert!(result.is_some(), "Failed to fetch {project} from PyPI");
+
+        let pypi_project = result.unwrap();
+
+        // Check info fields
+        assert_eq!(pypi_project.info.name, project);
+        println!("Project name: {}", pypi_project.info.name);
+
+        if let Some(author) = &pypi_project.info.author {
+            println!("Author: {}", author);
+        }
+
+        if let Some(urls) = &pypi_project.info.project_urls {
+            println!("Project URLs:");
+            for (key, value) in urls.iter() {
+                println!("  {}: {}", key, value);
+            }
+        }
+
+        // Check releases - numpy should have many versions
+        assert!(!pypi_project.releases.0.is_empty(), "Expected at least one release");
+        println!("Number of releases: {}", pypi_project.releases.0.len());
+
+        // Check a recent version has multiple files (wheels, source dist, etc.)
+        if let Some((version, files)) = pypi_project.releases.0.iter().next() {
+            println!("Sample version {}: {} files", version, files.len());
+            if !files.is_empty() {
+                println!("  First file: {}", files[0].filename);
+            }
         }
     }
 }

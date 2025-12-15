@@ -52,7 +52,7 @@ pub use osv_vulns::OSVVulnReference;
 pub use osv_vulns::VulnInfo;
 
 pub use pypi_project::PYPIInfo;
-pub use pypi_project::PYPIProjectURLs;
+pub use pypi_project::PYPIProject;
 pub use pypi_project::PYPIRelease;
 pub use pypi_project::PYPIReleases;
 
