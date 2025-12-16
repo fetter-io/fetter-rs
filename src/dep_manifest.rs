@@ -342,7 +342,6 @@ impl DepManifest {
         file_path: &Path,
         bound_options: Option<&Vec<String>>,
     ) -> ResultDynError<Self> {
-
         println!("reading: {:?}", file_path);
         match file_path.to_str() {
             Some(s) if s.ends_with(".git") => {
