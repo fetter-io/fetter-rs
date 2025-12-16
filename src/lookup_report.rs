@@ -76,6 +76,7 @@ impl LookupReport {
         LookupReport(audit_report)
     }
 
+    /// Get a LookupReport from a single `DepManifest`.
     pub fn from_dep_manifest(
         client: Arc<dyn UreqClient>,
         dep_manifest: &DepManifest,
@@ -85,9 +86,8 @@ impl LookupReport {
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> ResultDynError<Self> {
-        // Iterate through all dep_specs and collect them, flattening OOM variants
-        let mut dep_specs: Vec<DepSpec> = Vec::new();
 
+        let mut dep_specs: Vec<DepSpec> = Vec::new();
         for ds in dep_manifest.iter_dep_specs() {
             if ds.env_marker.is_empty() {
                 dep_specs.push(ds.clone());
