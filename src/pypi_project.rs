@@ -73,7 +73,7 @@ impl PYPIProject {
                 .collect(),
         };
 
-        // Sort ascending (oldest to newest, most recent last)
+        // most recent last
         versions.sort();
 
         match limit {
