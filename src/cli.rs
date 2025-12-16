@@ -271,6 +271,28 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<LookupNameSubcommand>,
     },
+
+    LookupBound {
+        /// File path or URL from which to read bound requirements.
+        #[arg(value_name = "FILE")]
+        bound: PathBuf,
+
+        /// Names of additional optional (extra) dependency groups.
+        #[arg(long, value_name = "OPTIONS")]
+        bound_options: Option<Vec<String>>,
+
+        /// Ignore any OSV caches and re-fetch vulnerability details.
+        #[arg(long)]
+        cache_refresh: bool,
+
+        /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CVSS")]
+        cvss: Option<Option<f64>>,
+
+        #[command(subcommand)]
+        subcommands: Option<LookupBoundSubcommand>,
+    },
+
     /// Discover counts of all installed packages artifacts.
     UnpackCount {
         /// Provide a glob-like pattern to select packages.
@@ -354,6 +376,7 @@ impl fmt::Display for Commands {
             Commands::SiteUninstall => "site-uninstall",
             Commands::Audit { .. } => "audit",
             Commands::LookupName { .. } => "lookup-name",
+            Commands::LookupBound { .. } => "lookup-bound",
             Commands::UnpackCount { .. } => "unpack-count",
             Commands::UnpackFiles { .. } => "unpack-files",
             Commands::PurgePattern { .. } => "purge-pattern",
@@ -486,6 +509,26 @@ enum AuditSubcommand {
 
 #[derive(Subcommand)]
 enum LookupNameSubcommand {
+    /// Display lookup results in the terminal.
+    Display,
+    /// Write lookup results to a delimited file.
+    Write {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(short, long, default_value = ",")]
+        delimiter: char,
+    },
+    /// Print a Json representation of lookup report results.
+    Json,
+    /// Return an exit code, 0 on success, 3 (by default) on error.
+    Exit {
+        #[arg(short, long, default_value = "3")]
+        code: i32,
+    },
+}
+
+#[derive(Subcommand)]
+enum LookupBoundSubcommand {
     /// Display lookup results in the terminal.
     Display,
     /// Write lookup results to a delimited file.
@@ -849,6 +892,63 @@ where
                     process::exit(if !lr.is_empty() { *code } else { 0 });
                 }
                 Some(LookupNameSubcommand::Display) | None => {
+                    // default
+                    let _ = lr.to_writer(stderr);
+                    process::exit(if !lr.is_empty() { ERROR_EXIT_CODE } else { 0 });
+                }
+            }
+        }
+        Some(Commands::LookupBound {
+            subcommands,
+            bound,
+            bound_options,
+            cache_refresh,
+            cvss,
+        }) => {
+            // network lookup makes this potentially slow
+            let active = Arc::new(AtomicBool::new(true));
+            if !quiet {
+                spin(
+                    active.clone(),
+                    "vulnerability searching".to_string(),
+                    stderr,
+                );
+            }
+            let cvss_filter = CvssFilter::from_arg(*cvss);
+            let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
+
+            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
+
+            // NOTE: not loading EnvMarkerState as not sure for which exe... maybe the currently active Python
+            // if let Some(exe_def) = get_absolute_path_from_exe("python3") {
+            //     paths.insert(exe_def);
+            // }
+            // EnvMarkerState::from_exe(exe.as_path()).unwrap(),
+
+            let lr = LookupReport::from_dep_manifest(
+                client,
+                &dm,
+                None,
+                &cache_config,
+                FlagCacheRefresh(*cache_refresh),
+                log,
+                cvss_filter,
+            )?;
+            if !quiet {
+                active.store(false, Ordering::Relaxed);
+                thread::sleep(Duration::from_millis(100));
+            }
+            match subcommands {
+                Some(LookupBoundSubcommand::Json) => {
+                    println!("{}", serde_json::to_string(&lr)?);
+                }
+                Some(LookupBoundSubcommand::Write { output, delimiter }) => {
+                    let _ = lr.to_file(output, *delimiter);
+                }
+                Some(LookupBoundSubcommand::Exit { code }) => {
+                    process::exit(if !lr.is_empty() { *code } else { 0 });
+                }
+                Some(LookupBoundSubcommand::Display) | None => {
                     // default
                     let _ = lr.to_writer(stderr);
                     process::exit(if !lr.is_empty() { ERROR_EXIT_CODE } else { 0 });
