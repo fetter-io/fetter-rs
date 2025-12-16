@@ -85,6 +85,10 @@ impl PYPIProject {
             }
         }
     }
+
+    pub fn get_releases_count(&self) -> usize {
+        self.releases.0.len()
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -96,7 +100,9 @@ pub fn query_pypi_project(
     cache_config: &CacheConfig,
     log: FlagLog,
 ) -> Option<PYPIProject> {
-    let cache_fp = cache_config.directory.join(format!("pypi_project_{project}.json"));
+    let cache_fp = cache_config
+        .directory
+        .join(format!("pypi_project_{project}.json"));
 
     // Try reading from cache if within duration
     if path_within_duration(&cache_fp, cache_config.duration) {
@@ -196,6 +202,8 @@ mod tests {
 
         assert!(result.is_some());
         let pypi_project = result.unwrap();
+
+        assert_eq!(pypi_project.get_releases_count(), 2);
 
         assert_eq!(pypi_project.info.name, "conditional-futures");
         assert_eq!(
@@ -347,6 +355,7 @@ mod tests {
 
         assert!(result.is_some());
         let pypi_project = result.unwrap();
+        assert_eq!(pypi_project.get_releases_count(), 8);
 
         // Verify total count: should have 8 versions
         let all_specs = pypi_project.get_version_specs(None, None);
