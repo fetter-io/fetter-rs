@@ -86,7 +86,6 @@ impl LookupReport {
         log: FlagLog,
         filter_cvss: CvssFilter,
     ) -> ResultDynError<Self> {
-
         let mut dep_specs: Vec<DepSpec> = Vec::new();
         for ds in dep_manifest.iter_dep_specs() {
             if ds.env_marker.is_empty() {
