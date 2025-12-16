@@ -95,7 +95,7 @@ impl DepSpecOOM {
 // A DepManifest is a requirements listing, implemented as HashMap for quick lookup by package name.
 #[derive(Debug, Clone)]
 pub struct DepManifest {
-    dep_specs: HashMap<String, DepSpecOOM>,
+    pub(crate) dep_specs: HashMap<String, DepSpecOOM>,
     pub(crate) env_marker_active: bool,
 }
 
