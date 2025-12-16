@@ -615,6 +615,7 @@ impl ScanFS {
             cache_config,
             log,
             filter_cvss,
+            false,
         )
     }
 

@@ -72,6 +72,7 @@ impl LookupReport {
             cache_config.clone(),
             log,
             filter_cvss,
+            true,
         );
         LookupReport(audit_report)
     }
