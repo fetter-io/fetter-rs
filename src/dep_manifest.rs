@@ -355,6 +355,14 @@ impl DepManifest {
     }
 
     //--------------------------------------------------------------------------
+    /// Iterator that yields all DepSpecs, flattening the OneOrMany enum
+    pub(crate) fn iter_dep_specs(&self) -> impl Iterator<Item = &DepSpec> {
+        self.dep_specs.values().flat_map(|dsoom| match dsoom {
+            DepSpecOOM::One(ds) => vec![ds].into_iter(),
+            DepSpecOOM::Many(ds_vec) => ds_vec.iter().collect::<Vec<_>>().into_iter(),
+        })
+    }
+
     fn keys(&self) -> Vec<String> {
         let mut keys: Vec<String> = self.dep_specs.keys().cloned().collect();
         keys.sort_by_key(|name| name.to_lowercase());
