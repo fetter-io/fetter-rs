@@ -12,6 +12,7 @@ use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::CvssFilter;
+use rayon::prelude::*;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -83,26 +84,26 @@ impl LookupReport {
                 }
             }
         }
-        let mut packages: Vec<Package> = Vec::new();
-        for ds in dep_specs {
-            let pypi_project =
-                query_pypi_project(client.clone(), &ds.key, cache_config, log);
-
-            // get one most-recent package that match DepSpec (ds) constraints
-            if let Ok(project) = pypi_project {
-                packages.extend(
-                    project
-                        .get_version_specs(Some(&ds), Some(1))
-                        .into_iter()
-                        .map(|version| Package {
-                            name: ds.name.clone(),
-                            key: name_to_key(&ds.name),
-                            version,
-                            direct_url: None,
-                        }),
-                );
-            }
-        }
+        let packages: Vec<Package> = dep_specs
+            .par_iter()
+            .filter_map(|ds| {
+                query_pypi_project(client.clone(), &ds.key, cache_config, log)
+                    .ok()
+                    .map(|project| {
+                        project
+                            .get_version_specs(Some(ds), Some(1))
+                            .into_iter()
+                            .map(|version| Package {
+                                name: ds.name.clone(),
+                                key: name_to_key(&ds.name),
+                                version,
+                                direct_url: None,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+            })
+            .flatten()
+            .collect();
 
         let audit_report = AuditReport::from_packages(
             client,
