@@ -23,6 +23,7 @@ pub struct LookupReport(pub AuditReport);
 
 impl LookupReport {
     /// Get a LookupReport from a single `DepSpec`.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_dep_spec(
         client: Arc<dyn UreqClient>,
         ds: &DepSpec,
@@ -67,6 +68,7 @@ impl LookupReport {
     }
 
     /// Get a LookupReport from a single `DepManifest`.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_dep_manifest(
         client: Arc<dyn UreqClient>,
         dep_manifest: &DepManifest,
