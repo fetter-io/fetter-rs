@@ -89,6 +89,7 @@ impl LookupReport {
                 }
             }
         }
+        // TODO: for pinned DepSpec, do not need to query pypi
         let packages: Vec<Package> = dep_specs
             .par_iter()
             .filter_map(|ds| {
@@ -96,7 +97,7 @@ impl LookupReport {
                     .ok()
                     .map(|project| {
                         project
-                            .get_version_specs(Some(ds), Some(1))
+                            .get_version_specs(Some(ds), Some(1)) // filter with DepSpec
                             .into_iter()
                             .map(|version| Package {
                                 name: ds.name.clone(),
