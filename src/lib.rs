@@ -70,6 +70,7 @@ pub use util::path_cache;
 pub use util::CacheConfig;
 pub use util::FlagCacheRefresh;
 pub use util::FlagLog;
+pub use util::FlagRetainPassing;
 pub use util::ResultDynError;
 pub use validation_report::ValidationExplain;
 pub use validation_report::ValidationFlags;

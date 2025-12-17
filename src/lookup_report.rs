@@ -16,6 +16,8 @@ use rayon::prelude::*;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
+use crate::util::FlagRetainPassing;
+
 
 #[derive(Debug, Serialize)]
 pub struct LookupReport(pub AuditReport);
@@ -30,7 +32,7 @@ impl LookupReport {
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
         filter_cvss: CvssFilter,
-        retain_empty: bool,
+        retain_passing: FlagRetainPassing,
     ) -> ResultDynError<Self> {
         let pypi_project =
             query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
@@ -60,7 +62,7 @@ impl LookupReport {
             cache_config.clone(),
             log,
             filter_cvss,
-            retain_empty,
+            retain_passing,
         );
         Ok(LookupReport(audit_report))
     }
@@ -74,7 +76,7 @@ impl LookupReport {
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
         filter_cvss: CvssFilter,
-        retain_empty: bool,
+        retain_passing: FlagRetainPassing,
     ) -> ResultDynError<Self> {
         let mut dep_specs: Vec<DepSpec> = Vec::new();
         for ds in dep_manifest.iter_dep_specs() {
@@ -114,7 +116,7 @@ impl LookupReport {
             cache_config.clone(),
             log,
             filter_cvss,
-            retain_empty,
+            retain_passing,
         );
         Ok(LookupReport(audit_report))
     }
@@ -154,6 +156,7 @@ mod tests {
         let cache_dir = path_cache(true).unwrap();
         let cache_config = CacheConfig::new(DURATION_0, cache_dir);
         let cache_refresh = FlagCacheRefresh(false);
+        let retain_passing = FlagRetainPassing(false);
         let log = FlagLog(false);
         let filter_cvss = CvssFilter::All;
 
@@ -165,6 +168,7 @@ mod tests {
             cache_refresh,
             log,
             filter_cvss,
+            retain_passing,
         );
 
         assert!(result.is_ok());
@@ -201,6 +205,7 @@ mod tests {
             cache_refresh,
             log,
             filter_cvss,
+            FlagRetainPassing(false),
         );
 
         assert!(result.is_ok());

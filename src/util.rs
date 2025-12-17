@@ -100,6 +100,23 @@ impl From<FlagCacheRefresh> for bool {
     }
 }
 
+
+#[derive(Clone, Copy, Debug)]
+pub struct FlagRetainPassing(pub bool);
+
+impl From<bool> for FlagRetainPassing {
+    fn from(value: bool) -> Self {
+        FlagRetainPassing(value)
+    }
+}
+
+impl From<FlagRetainPassing> for bool {
+    fn from(val: FlagRetainPassing) -> Self {
+        val.0
+    }
+}
+
+
 //------------------------------------------------------------------------------
 
 // Global Mutex to ensure thread-safe logging

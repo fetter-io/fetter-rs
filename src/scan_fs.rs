@@ -44,6 +44,7 @@ use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
+use crate::util::FlagRetainPassing;
 
 //------------------------------------------------------------------------------
 
@@ -606,7 +607,7 @@ impl ScanFS {
         cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
-        retain_empty: bool,
+        retain_passing: FlagRetainPassing,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
         AuditReport::from_packages(
@@ -616,7 +617,7 @@ impl ScanFS {
             cache_config,
             log,
             filter_cvss,
-            retain_empty,
+            retain_passing,
         )
     }
 

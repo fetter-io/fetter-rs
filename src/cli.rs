@@ -35,6 +35,7 @@ use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
 use crate::EnvMarkerState;
+use crate::util::FlagRetainPassing;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -840,7 +841,7 @@ where
                 cache_config,
                 log,
                 cvss_filter,
-                *all, // retain_empty
+                FlagRetainPassing(*all),
             );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -892,7 +893,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
-                *all,
+                FlagRetainPassing(*all),
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -951,7 +952,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
-                *all,
+                FlagRetainPassing(*all),
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
