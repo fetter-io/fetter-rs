@@ -29,13 +29,13 @@ use crate::ureq_client::UreqClient;
 use crate::util::path_normalize;
 use crate::util::CacheConfig;
 use crate::util::FlagLog;
+use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
 use crate::EnvMarkerState;
-use crate::util::FlagRetainPassing;
 
 //------------------------------------------------------------------------------
 // utility enums

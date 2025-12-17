@@ -39,12 +39,12 @@ use crate::util::Anchor;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
-use crate::util::FlagRetainPassing;
 
 //------------------------------------------------------------------------------
 

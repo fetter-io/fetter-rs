@@ -10,14 +10,13 @@ use crate::util::name_to_key;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::CvssFilter;
 use rayon::prelude::*;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
-use crate::util::FlagRetainPassing;
-
 
 #[derive(Debug, Serialize)]
 pub struct LookupReport(pub AuditReport);

@@ -100,7 +100,6 @@ impl From<FlagCacheRefresh> for bool {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 pub struct FlagRetainPassing(pub bool);
 
@@ -115,7 +114,6 @@ impl From<FlagRetainPassing> for bool {
         val.0
     }
 }
-
 
 //------------------------------------------------------------------------------
 
