@@ -22,6 +22,31 @@ use std::sync::Arc;
 pub struct LookupReport(pub AuditReport);
 
 impl LookupReport {
+    /// Convert a DepSpec to a list of Packages by querying PyPI if the DepSpec is not a pinned resource.
+    fn dep_spec_to_packages(
+        client: Arc<dyn UreqClient>,
+        ds: &DepSpec,
+        limit: Option<usize>,
+        cache_config: &CacheConfig,
+        log: FlagLog,
+    ) -> Option<Vec<Package>> {
+        // TODO: identify pinned packages and do not query pypi
+        query_pypi_project(client, &ds.key, cache_config, log)
+            .ok()
+            .map(|project| {
+                project
+                    .get_version_specs(Some(ds), limit)
+                    .into_iter()
+                    .map(|version| Package {
+                        name: ds.name.clone(),
+                        key: name_to_key(&ds.name),
+                        version,
+                        direct_url: None,
+                    })
+                    .collect()
+            })
+    }
+
     /// Get a LookupReport from a single `DepSpec`.
     #[allow(clippy::too_many_arguments)]
     pub fn from_dep_spec(
@@ -84,6 +109,7 @@ impl LookupReport {
             if ds.env_marker.is_empty() {
                 dep_specs.push(ds.clone());
             } else if let Some(ems) = env_marker_state {
+                // NOTE: this will take any passing DepSpec that passes with this EMS; it does not limit that only one passes per package as we are iterating over all DepSpec
                 if ds.validate_env_marker(ems) {
                     dep_specs.push(ds.clone());
                 }
@@ -93,20 +119,13 @@ impl LookupReport {
         let packages: Vec<Package> = dep_specs
             .par_iter()
             .filter_map(|ds| {
-                query_pypi_project(client.clone(), &ds.key, cache_config, log)
-                    .ok()
-                    .map(|project| {
-                        project
-                            .get_version_specs(Some(ds), Some(1)) // filter with DepSpec
-                            .into_iter()
-                            .map(|version| Package {
-                                name: ds.name.clone(),
-                                key: name_to_key(&ds.name),
-                                version,
-                                direct_url: None,
-                            })
-                            .collect::<Vec<_>>()
-                    })
+                Self::dep_spec_to_packages(
+                    client.clone(),
+                    ds,
+                    Some(1), // Get only the most recent version
+                    cache_config,
+                    log,
+                )
             })
             .flatten()
             .collect();
