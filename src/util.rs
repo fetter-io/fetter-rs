@@ -24,6 +24,8 @@ pub type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
+pub(crate) const WILDCARD: &str = "*";
+
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
 pub enum Anchor {
