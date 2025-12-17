@@ -606,6 +606,7 @@ impl ScanFS {
         cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
+        retain_empty: bool,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
         AuditReport::from_packages(
@@ -615,7 +616,7 @@ impl ScanFS {
             cache_config,
             log,
             filter_cvss,
-            false,
+            retain_empty,
         )
     }
 

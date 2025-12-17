@@ -30,6 +30,7 @@ impl LookupReport {
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
         filter_cvss: CvssFilter,
+        retain_empty: bool,
     ) -> ResultDynError<Self> {
         let pypi_project =
             query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
@@ -59,7 +60,7 @@ impl LookupReport {
             cache_config.clone(),
             log,
             filter_cvss,
-            true,
+            retain_empty,
         );
         Ok(LookupReport(audit_report))
     }
@@ -73,6 +74,7 @@ impl LookupReport {
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
         filter_cvss: CvssFilter,
+        retain_empty: bool,
     ) -> ResultDynError<Self> {
         let mut dep_specs: Vec<DepSpec> = Vec::new();
         for ds in dep_manifest.iter_dep_specs() {
@@ -112,7 +114,7 @@ impl LookupReport {
             cache_config.clone(),
             log,
             filter_cvss,
-            true,
+            retain_empty,
         );
         Ok(LookupReport(audit_report))
     }

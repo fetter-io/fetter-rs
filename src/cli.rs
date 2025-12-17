@@ -243,6 +243,10 @@ enum Commands {
         #[arg(long)]
         case: bool,
 
+        /// Enable showing all packages, even if there are no vulnerabilities.
+        #[arg(long)]
+        all: bool,
+
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
         cache_refresh: bool,
@@ -259,8 +263,13 @@ enum Commands {
         #[arg(value_name = "NAME")]
         name: String,
 
+        /// If the package does not specify a version, determine how many recent versions to audit.
         #[arg(long)]
         limit: Option<usize>,
+
+        /// Enable showing all packages, even if there are no vulnerabilities.
+        #[arg(long)]
+        all: bool,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -281,6 +290,10 @@ enum Commands {
         /// Names of additional optional (extra) dependency groups.
         #[arg(long, value_name = "OPTIONS")]
         bound_options: Option<Vec<String>>,
+
+        /// Enable showing all packages, even if there are no vulnerabilities.
+        #[arg(long)]
+        all: bool,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -803,6 +816,7 @@ where
             subcommands,
             pattern,
             case,
+            all,
             cache_refresh,
             cvss,
         }) => {
@@ -826,6 +840,7 @@ where
                 cache_config,
                 log,
                 cvss_filter,
+                *all, // retain_empty
             );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -854,6 +869,7 @@ where
             limit,
             cache_refresh,
             cvss,
+            all,
         }) => {
             // network lookup makes this potentially slow
             let active = Arc::new(AtomicBool::new(true));
@@ -876,6 +892,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
+                *all,
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -902,6 +919,7 @@ where
             subcommands,
             bound,
             bound_options,
+            all,
             cache_refresh,
             cvss,
         }) => {
@@ -933,6 +951,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
+                *all,
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
