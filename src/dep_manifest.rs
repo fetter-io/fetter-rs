@@ -656,7 +656,7 @@ opentelemetry-semantic-conventions==0.45b0
     }
 
     #[test]
-    fn test_from_requirements_d() {
+    fn test_from_requirements_d1() {
         let content = r#"
 python-slugify==8.0.4
     # via
@@ -690,6 +690,34 @@ regex==2024.4.16
         assert!(dm1.validate(&p2, false, None).0);
         let p2 = Package::from_name_version_durl("regex", "2024.04.17", None).unwrap();
         assert!(!dm1.validate(&p2, false, None).0);
+    }
+
+    #[test]
+    fn test_from_requirements_d2() {
+        let content = r#"
+python-slugify==8.0.4
+pytzdata==2020.1    # foo
+pyzmq==26.0.0
+readme-renderer==43.0      # bar
+https://files.pythonhosted.org/packages/01/bb/7f594a891b8e2d9f26e07fa79bd63bb9e426c8dddf0dedf5429f008cdcda/arraykit-1.2.0-cp313-cp313-musllinux_1_2_x86_64.whl # BAZ
+"#;
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("requirements.txt");
+        let mut file = File::create(&file_path).unwrap();
+        write!(file, "{}", content).unwrap();
+
+        let dm1 = DepManifest::from_requirements_file(&file_path).unwrap();
+        let names: Vec<String> = dm1.keys().to_vec();
+        assert_eq!(
+            names,
+            vec![
+                "arraykit",
+                "python_slugify",
+                "pytzdata",
+                "pyzmq",
+                "readme_renderer"
+            ]
+        )
     }
 
     #[test]
