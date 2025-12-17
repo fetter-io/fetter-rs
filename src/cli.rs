@@ -244,9 +244,9 @@ enum Commands {
         #[arg(long)]
         case: bool,
 
-        /// Enable showing all packages, even if there are no vulnerabilities.
+        /// Show a record for all packages, even if the package has no vulnerabilities.
         #[arg(long)]
-        all: bool,
+        retain_passing: bool,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -268,9 +268,9 @@ enum Commands {
         #[arg(long)]
         limit: Option<usize>,
 
-        /// Enable showing all packages, even if there are no vulnerabilities.
+        /// Show a record for all packages, even if the package has no vulnerabilities.
         #[arg(long)]
-        all: bool,
+        retain_passing: bool,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -292,9 +292,9 @@ enum Commands {
         #[arg(long, value_name = "OPTIONS")]
         bound_options: Option<Vec<String>>,
 
-        /// Enable showing all packages, even if there are no vulnerabilities.
+        /// Show a record for all packages, even if the package has no vulnerabilities.
         #[arg(long)]
-        all: bool,
+        retain_passing: bool,
 
         /// Ignore any OSV caches and re-fetch vulnerability details.
         #[arg(long)]
@@ -817,7 +817,7 @@ where
             subcommands,
             pattern,
             case,
-            all,
+            retain_passing,
             cache_refresh,
             cvss,
         }) => {
@@ -841,7 +841,7 @@ where
                 cache_config,
                 log,
                 cvss_filter,
-                FlagRetainPassing(*all),
+                FlagRetainPassing(*retain_passing),
             );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -870,7 +870,7 @@ where
             limit,
             cache_refresh,
             cvss,
-            all,
+            retain_passing,
         }) => {
             // network lookup makes this potentially slow
             let active = Arc::new(AtomicBool::new(true));
@@ -893,7 +893,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
-                FlagRetainPassing(*all),
+                FlagRetainPassing(*retain_passing),
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
@@ -920,7 +920,7 @@ where
             subcommands,
             bound,
             bound_options,
-            all,
+            retain_passing,
             cache_refresh,
             cvss,
         }) => {
@@ -952,7 +952,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
-                FlagRetainPassing(*all),
+                FlagRetainPassing(*retain_passing),
             )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
