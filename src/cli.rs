@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::process;
 
 use crate::inspect_report::InspectReport;
+use crate::util::get_absolute_path_from_exe;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
@@ -33,6 +34,7 @@ use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
+use crate::EnvMarkerState;
 
 //------------------------------------------------------------------------------
 // utility enums
@@ -254,7 +256,7 @@ enum Commands {
     },
     LookupName {
         /// Provide a package name or dependency specification.
-        #[arg()]
+        #[arg(value_name = "NAME")]
         name: String,
 
         #[arg(long)]
@@ -271,7 +273,6 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<LookupNameSubcommand>,
     },
-
     LookupBound {
         /// File path or URL from which to read bound requirements.
         #[arg(value_name = "FILE")]
@@ -292,7 +293,6 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<LookupBoundSubcommand>,
     },
-
     /// Discover counts of all installed packages artifacts.
     UnpackCount {
         /// Provide a glob-like pattern to select packages.
@@ -919,16 +919,16 @@ where
 
             let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
 
-            // NOTE: not loading EnvMarkerState as not sure for which exe... maybe the currently active Python
-            // if let Some(exe_def) = get_absolute_path_from_exe("python3") {
-            //     paths.insert(exe_def);
-            // }
-            // EnvMarkerState::from_exe(exe.as_path()).unwrap(),
+            // NOTE: loading EnvMarkerState from the currently active Python if available
+            let ems = match get_absolute_path_from_exe("python3") {
+                Some(exe) => Some(EnvMarkerState::from_exe(exe.as_path())?),
+                None => None,
+            };
 
             let lr = LookupReport::from_dep_manifest(
                 client,
                 &dm,
-                None,
+                ems.as_ref(),
                 &cache_config,
                 FlagCacheRefresh(*cache_refresh),
                 log,
