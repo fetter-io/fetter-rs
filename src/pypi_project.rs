@@ -5,6 +5,7 @@ use crate::util::name_to_key;
 use crate::util::path_within_duration;
 use crate::util::CacheConfig;
 use crate::util::FlagLog;
+use crate::util::ResultDynError;
 use crate::version_spec::VersionSpec;
 
 // use rayon::prelude::*;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 
 //------------------------------------------------------------------------------
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIInfo {
+pub struct PyPIInfo {
     pub author: Option<String>, // might be a collection or null
     pub name: String,
     pub project_urls: Option<HashMap<String, String>>,
@@ -25,26 +26,24 @@ pub struct PYPIInfo {
 //------------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIRelease {
+pub struct PyPIRelease {
     pub filename: String,
-    // pub url: String,
     // much more here
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIReleases(pub HashMap<String, Vec<PYPIRelease>>);
+pub struct PyPIReleases(pub HashMap<String, Vec<PyPIRelease>>);
 
 //------------------------------------------------------------------------------
 /// This is a query object designed to match the response from the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PYPIProject {
-    pub info: PYPIInfo,
-    pub releases: PYPIReleases,
-    // pub urls: Vec<PYPIRelease>,
+pub struct PyPIProject {
+    pub info: PyPIInfo,
+    pub releases: PyPIReleases,
     // pub vulnerabilities: Option<Vec<String>>, // might be useful
 }
 
-impl PYPIProject {
+impl PyPIProject {
     /// Return all available VersionSpecs for this project. Optional filters can be used, including filtering on a DepSpec as well as a limit, where the limit is the number of most recent versions found.
     pub fn get_version_specs(
         &self,
@@ -93,13 +92,12 @@ impl PYPIProject {
 
 //------------------------------------------------------------------------------
 
-// NOTE: at present this returns None on error; might want to return proper Err
 pub fn query_pypi_project(
     client: Arc<dyn UreqClient>,
     project: &str,
     cache_config: &CacheConfig,
     log: FlagLog,
-) -> Option<PYPIProject> {
+) -> ResultDynError<PyPIProject> {
     let cache_fp = cache_config
         .directory
         .join(format!("pypi_project_{project}.json"));
@@ -114,7 +112,7 @@ pub fn query_pypi_project(
                         module_path!(),
                         "Loaded PyPI {project} from {cache_fp:?}"
                     );
-                    return Some(pypi_project);
+                    return Ok(pypi_project);
                 } else {
                     logger!(
                         log,
@@ -134,42 +132,26 @@ pub fn query_pypi_project(
     }
 
     // Fetch from API
-    match client.get(&format!("https://pypi.org/pypi/{project}/json")) {
-        Ok(body_str) => match serde_json::from_str(&body_str) {
-            Ok(pypi_project) => {
-                if let Err(e) = std::fs::write(&cache_fp, &body_str) {
-                    logger!(
-                        log,
-                        module_path!(),
-                        "Failed to write cache file {cache_fp:?}: {e}"
-                    );
-                } else {
-                    logger!(
-                        log,
-                        module_path!(),
-                        "Cached PYPI project response for {project}"
-                    );
-                }
-                Some(pypi_project)
-            }
-            Err(e) => {
-                logger!(
-                    log,
-                    module_path!(),
-                    "Failed to deserialize PYPI project {project}: {e}"
-                );
-                None
-            }
-        },
-        Err(e) => {
-            logger!(
-                log,
-                module_path!(),
-                "HTTP request failed for {project}: {e}"
-            );
-            None
-        }
+    let body_str = client
+        .get(&format!("https://pypi.org/pypi/{project}/json"))
+        .map_err(|e| format!("{e}: {project} not found on PyPI"))?;
+    let pypi_project: PyPIProject = serde_json::from_str(&body_str)
+        .map_err(|e| format!("Failed to parse PyPI response for {project}: {e}"))?;
+
+    if let Err(e) = std::fs::write(&cache_fp, &body_str) {
+        logger!(
+            log,
+            module_path!(),
+            "Failed to write cache file {cache_fp:?}: {e}"
+        );
+    } else {
+        logger!(
+            log,
+            module_path!(),
+            "Cached PYPI project response for {project}"
+        );
     }
+    Ok(pypi_project)
 }
 
 //------------------------------------------------------------------------------
@@ -200,7 +182,7 @@ mod tests {
             FlagLog(false),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let pypi_project = result.unwrap();
 
         assert_eq!(pypi_project.get_releases_count(), 2);
@@ -263,7 +245,7 @@ mod tests {
             FlagLog(false),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let pypi_project = result.unwrap();
 
         // Get version specs without filter or limit (returns sorted ascending)
@@ -294,7 +276,7 @@ mod tests {
             FlagLog(false),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let pypi_project = result.unwrap();
 
         // Test filter: >=1.0.1 (should only match 1.0.2)
@@ -353,7 +335,7 @@ mod tests {
             FlagLog(false),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let pypi_project = result.unwrap();
         assert_eq!(pypi_project.get_releases_count(), 8);
 
@@ -438,7 +420,7 @@ mod tests {
             FlagLog(false),
         );
 
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let pypi_project = result.unwrap();
 
         // Create a DepSpec for a DIFFERENT package (numpy instead of conditional-futures)
@@ -466,7 +448,7 @@ mod tests {
 
         let result = query_pypi_project(client, project, &cache_config, FlagLog(true));
 
-        assert!(result.is_some(), "Failed to fetch {project} from PyPI");
+        assert!(result.is_ok(), "Failed to fetch {project} from PyPI");
 
         let pypi_project = result.unwrap();
 

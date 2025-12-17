@@ -29,33 +29,20 @@ impl LookupReport {
         cache_refresh: FlagCacheRefresh,
         log: FlagLog,
         filter_cvss: CvssFilter,
-    ) -> Self {
-        // TODO: need to handle error here
-        let pypi_project = query_pypi_project(client.clone(), &ds.key, cache_config, log);
+    ) -> ResultDynError<Self> {
+        let pypi_project =
+            query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
 
-        if let Some(ref project) = pypi_project {
-            logger!(
-                log,
-                module_path!(),
-                "Found {:?} releases in PyPI",
-                project.get_releases_count()
-            );
-        }
-
-        // convert VersionSpecs to Packages
-        let packages: Vec<Package> = match pypi_project {
-            Some(project) => project
-                .get_version_specs(Some(ds), limit)
-                .into_iter()
-                .map(|version| Package {
-                    name: ds.name.clone(),
-                    key: name_to_key(&ds.name),
-                    version,
-                    direct_url: None,
-                })
-                .collect(),
-            None => Vec::new(),
-        };
+        let packages: Vec<Package> = pypi_project
+            .get_version_specs(Some(ds), limit)
+            .into_iter()
+            .map(|version| Package {
+                name: ds.name.clone(),
+                key: name_to_key(&ds.name),
+                version,
+                direct_url: None,
+            })
+            .collect();
 
         logger!(
             log,
@@ -73,7 +60,7 @@ impl LookupReport {
             filter_cvss,
             true,
         );
-        LookupReport(audit_report)
+        Ok(LookupReport(audit_report))
     }
 
     /// Get a LookupReport from a single `DepManifest`.
@@ -102,7 +89,7 @@ impl LookupReport {
                 query_pypi_project(client.clone(), &ds.key, cache_config, log);
 
             // get one most-recent package that match DepSpec (ds) constraints
-            if let Some(project) = pypi_project {
+            if let Ok(project) = pypi_project {
                 packages.extend(
                     project
                         .get_version_specs(Some(&ds), Some(1))

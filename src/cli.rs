@@ -876,7 +876,7 @@ where
                 FlagCacheRefresh(*cache_refresh),
                 log,
                 cvss_filter,
-            );
+            )?;
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));

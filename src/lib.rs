@@ -53,10 +53,10 @@ pub use osv_vulns::OSVVulnInfo;
 pub use osv_vulns::OSVVulnReference;
 pub use osv_vulns::VulnInfo;
 
-pub use pypi_project::PYPIInfo;
-pub use pypi_project::PYPIProject;
-pub use pypi_project::PYPIRelease;
-pub use pypi_project::PYPIReleases;
+pub use pypi_project::PyPIInfo;
+pub use pypi_project::PyPIProject;
+pub use pypi_project::PyPIRelease;
+pub use pypi_project::PyPIReleases;
 
 pub use package::Package;
 pub use package_durl::DirectURL;
