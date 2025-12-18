@@ -72,6 +72,8 @@ impl LookupReport {
         let pypi_project =
             query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
 
+        // TODO: if ds.get_exact(), do not query pypi
+
         // Versions are sorted when returned here
         let packages: Vec<Package> = pypi_project
             .get_version_specs(Some(ds), limit) // filter by DepSpec
