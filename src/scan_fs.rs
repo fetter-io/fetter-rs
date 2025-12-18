@@ -610,6 +610,7 @@ impl ScanFS {
         retain_passing: FlagRetainPassing,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
+        // NOTE: packages is sorted upstream
         AuditReport::from_packages(
             client,
             &packages,

@@ -30,21 +30,31 @@ impl LookupReport {
         cache_config: &CacheConfig,
         log: FlagLog,
     ) -> Option<Vec<Package>> {
-        // TODO: identify pinned packages and do not query pypi
-        query_pypi_project(client, &ds.key, cache_config, log)
-            .ok()
-            .map(|project| {
-                project
-                    .get_version_specs(Some(ds), limit)
-                    .into_iter()
-                    .map(|version| Package {
-                        name: ds.name.clone(),
-                        key: name_to_key(&ds.name),
-                        version,
-                        direct_url: None,
+        // if a package is pinned (exact) do not query pypi
+        match ds.get_exact() {
+            Some(version) => Some(vec![Package {
+                name: ds.name.clone(),
+                key: name_to_key(&ds.name),
+                version,
+                direct_url: None,
+            }]),
+            None => {
+                query_pypi_project(client, &ds.key, cache_config, log)
+                    .ok()
+                    .map(|project| {
+                        project
+                            .get_version_specs(Some(ds), limit) // filter by ds, limit
+                            .into_iter()
+                            .map(|version| Package {
+                                name: ds.name.clone(),
+                                key: name_to_key(&ds.name),
+                                version,
+                                direct_url: None,
+                            })
+                            .collect()
                     })
-                    .collect()
-            })
+            }
+        }
     }
 
     /// Get a LookupReport from a single `DepSpec`.
@@ -62,8 +72,9 @@ impl LookupReport {
         let pypi_project =
             query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
 
+        // Versions are sorted when returned here
         let packages: Vec<Package> = pypi_project
-            .get_version_specs(Some(ds), limit)
+            .get_version_specs(Some(ds), limit) // filter by DepSpec
             .into_iter()
             .map(|version| Package {
                 name: ds.name.clone(),
@@ -115,8 +126,8 @@ impl LookupReport {
                 }
             }
         }
-        // TODO: for pinned DepSpec, do not need to query pypi
-        let packages: Vec<Package> = dep_specs
+
+        let mut packages: Vec<Package> = dep_specs
             .par_iter()
             .filter_map(|ds| {
                 Self::dep_spec_to_packages(
@@ -129,6 +140,8 @@ impl LookupReport {
             })
             .flatten()
             .collect();
+
+        packages.sort();
 
         let audit_report = AuditReport::from_packages(
             client,

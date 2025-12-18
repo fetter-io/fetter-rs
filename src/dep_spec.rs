@@ -384,12 +384,16 @@ impl DepSpec {
 
     //--------------------------------------------------------------------------
 
-    /// Return True if the DepSpec specifies an exact version. We assume this only applyes to "==" dependencies, not arbitrary equal "===" dependencies
-    pub fn is_exact(&self) -> bool {
-        self.versions.len() == 1
+    /// If the DepSpec specifies an exact version, return that VersionSpec. We assume this only applyes to "==" dependencies, not arbitrary equal "===" dependencies
+    pub fn get_exact(&self) -> Option<VersionSpec> {
+        match self.versions.len() == 1
             && !self.versions[0].has_wildcard()
             && self.operators.len() == 1
             && self.operators[0] == DepOperator::Eq
+        {
+            true => Some(self.versions[0].clone()),
+            false => None,
+        }
     }
 
     /// Return the dependency specification; either the version or URL as string
@@ -1052,27 +1056,27 @@ mod tests {
     #[test]
     fn test_dep_spec_is_exact_a() {
         let ds1 = DepSpec::from_string("package>=0.2,<0.3").unwrap();
-        assert!(!ds1.is_exact());
+        assert!(ds1.get_exact().is_none());
 
         let ds2 = DepSpec::from_string("package>=0.2").unwrap();
-        assert!(!ds2.is_exact());
+        assert!(ds2.get_exact().is_none());
 
         let ds3 = DepSpec::from_string("package!=0.2").unwrap();
-        assert!(!ds3.is_exact());
+        assert!(ds3.get_exact().is_none());
 
         let ds4 = DepSpec::from_string("package~=0.2").unwrap();
-        assert!(!ds4.is_exact());
+        assert!(ds4.get_exact().is_none());
 
         let ds5 = DepSpec::from_string("package").unwrap();
-        assert!(!ds5.is_exact());
+        assert!(ds5.get_exact().is_none());
     }
 
     #[test]
     fn test_dep_spec_is_exact_b() {
         let ds1 = DepSpec::from_string("package==0.2").unwrap();
-        assert!(ds1.is_exact());
+        assert!(ds1.get_exact().is_some());
 
         let ds2 = DepSpec::from_string("package==3").unwrap();
-        assert!(ds2.is_exact());
+        assert!(ds2.get_exact().is_some());
     }
 }
