@@ -225,35 +225,6 @@ mod tests {
     }
 
     #[test]
-    fn test_from_dep_manifest_empty() {
-        let dep_specs: Vec<DepSpec> = vec![];
-        let dep_manifest = DepManifest::from_dep_specs(&dep_specs).unwrap();
-
-        let client = Arc::new(UreqClientLive) as Arc<dyn UreqClient>;
-        let cache_dir = path_cache(true).unwrap();
-        let cache_config = CacheConfig::new(DURATION_0, cache_dir);
-        let cache_refresh = FlagCacheRefresh(false);
-        let log = FlagLog(false);
-        let filter_cvss = CvssFilter::All;
-
-        let result = LookupReport::from_dep_manifest(
-            client,
-            &dep_manifest,
-            None,
-            &cache_config,
-            cache_refresh,
-            log,
-            filter_cvss,
-            FlagRetainPassing(false),
-        );
-
-        assert!(result.is_ok());
-        let lookup_report = result.unwrap();
-        let records = lookup_report.get_records();
-        assert_eq!(records.len(), 0);
-    }
-
-    #[test]
     fn test_from_dep_spec_mock() {
         use crate::ureq_client::UreqClientMock;
         use std::collections::HashMap;

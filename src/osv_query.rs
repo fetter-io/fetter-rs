@@ -183,7 +183,6 @@ mod tests {
             mock_post: Some(mock_post_map),
             mock_get: None,
         });
-        // let client = UreqClientLive;
         let packages = vec![
             Package::from_name_version_durl("gradio", "4.0.0", None).unwrap(),
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
