@@ -1521,9 +1521,12 @@ six>=1.15.0
 numpy>= 2.0
         "#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("http://example.com".to_string(), mock_get.to_string());
+
         let client = UreqClientMock {
             mock_post: None,
-            mock_get: Some(mock_get.to_string()),
+            mock_get: Some(mock_get_map),
         };
 
         let url = PathBuf::from("http://example.com/requirements.txt");

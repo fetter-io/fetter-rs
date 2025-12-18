@@ -167,8 +167,11 @@ mod tests {
     fn test_query_pypi_project_a() {
         let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures","Issues":"https://github.com/static-frame/conditional-futures/issues","Repository":"https://github.com/static-frame/conditional-futures"}},"releases":{"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"},{"filename":"conditional_futures-1.0.0.tar.gz"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"},{"filename":"conditional_futures-1.0.2.tar.gz"}]}}"#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://pypi.org".to_string(), content.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_get: Some(content.to_string()),
+            mock_get: Some(mock_get_map),
             mock_post: None,
         });
 
@@ -230,8 +233,11 @@ mod tests {
     fn test_get_version_specs() {
         let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures","Issues":"https://github.com/static-frame/conditional-futures/issues","Repository":"https://github.com/static-frame/conditional-futures"}},"releases":{"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"},{"filename":"conditional_futures-1.0.0.tar.gz"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"},{"filename":"conditional_futures-1.0.2.tar.gz"}]}}"#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://pypi.org".to_string(), content.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_get: Some(content.to_string()),
+            mock_get: Some(mock_get_map),
             mock_post: None,
         });
 
@@ -261,8 +267,11 @@ mod tests {
     fn test_get_version_specs_with_filter() {
         let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures","Issues":"https://github.com/static-frame/conditional-futures/issues","Repository":"https://github.com/static-frame/conditional-futures"}},"releases":{"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"},{"filename":"conditional_futures-1.0.0.tar.gz"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"},{"filename":"conditional_futures-1.0.2.tar.gz"}]}}"#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://pypi.org".to_string(), content.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_get: Some(content.to_string()),
+            mock_get: Some(mock_get_map),
             mock_post: None,
         });
 
@@ -320,8 +329,11 @@ mod tests {
         // Extended test data with more versions: 0.9.0, 1.0.0, 1.0.1, 1.0.2, 1.1.0, 1.2.0, 2.0.0, 2.1.0
         let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures","Issues":"https://github.com/static-frame/conditional-futures/issues","Repository":"https://github.com/static-frame/conditional-futures"}},"releases":{"0.9.0":[{"filename":"conditional_futures-0.9.0-py3-none-any.whl"}],"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"}],"1.0.1":[{"filename":"conditional_futures-1.0.1-py3-none-any.whl"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"}],"1.1.0":[{"filename":"conditional_futures-1.1.0-py3-none-any.whl"}],"1.2.0":[{"filename":"conditional_futures-1.2.0-py3-none-any.whl"}],"2.0.0":[{"filename":"conditional_futures-2.0.0-py3-none-any.whl"}],"2.1.0":[{"filename":"conditional_futures-2.1.0-py3-none-any.whl"}]}}"#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://pypi.org".to_string(), content.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_get: Some(content.to_string()),
+            mock_get: Some(mock_get_map),
             mock_post: None,
         });
 
@@ -405,8 +417,11 @@ mod tests {
         // Test that filtering with a DepSpec for a different package returns empty
         let content = r#"{"info":{"author":"Christopher Ariza","name":"conditional-futures","project_urls":{"Homepage":"https://github.com/static-frame/conditional-futures"}},"releases":{"1.0.0":[{"filename":"conditional_futures-1.0.0-py3-none-any.whl"}],"1.0.2":[{"filename":"conditional_futures-1.0.2-py3-none-any.whl"}]}}"#;
 
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://pypi.org".to_string(), content.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_get: Some(content.to_string()),
+            mock_get: Some(mock_get_map),
             mock_post: None,
         });
 
