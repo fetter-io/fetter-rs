@@ -69,22 +69,25 @@ impl LookupReport {
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,
     ) -> ResultDynError<Self> {
-        let pypi_project =
-            query_pypi_project(client.clone(), &ds.key, cache_config, log)?;
-
-        // TODO: if ds.get_exact(), do not query pypi
-
         // Versions are sorted when returned here
-        let packages: Vec<Package> = pypi_project
-            .get_version_specs(Some(ds), limit) // filter by DepSpec
-            .into_iter()
-            .map(|version| Package {
+        let packages: Vec<Package> = match ds.get_exact() {
+            Some(version) => vec![Package {
                 name: ds.name.clone(),
                 key: name_to_key(&ds.name),
                 version,
                 direct_url: None,
-            })
-            .collect();
+            }],
+            None => query_pypi_project(client.clone(), &ds.key, cache_config, log)?
+                .get_version_specs(Some(ds), limit) // filter by DepSpec
+                .into_iter()
+                .map(|version| Package {
+                    name: ds.name.clone(),
+                    key: name_to_key(&ds.name),
+                    version,
+                    direct_url: None,
+                })
+                .collect(),
+        };
 
         logger!(
             log,
