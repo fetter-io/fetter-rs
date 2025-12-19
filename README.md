@@ -260,6 +260,15 @@ repos:
     - `--output, -o <FILE>`: Specify the output file.
     - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
 
+### Command: `fetter inspect`
+
+- Description: Inspect all sites for code files runnable on interpreter startup.
+- Subcommands
+  - `display`: Show inspect results in the terminal.
+  - `write`: Save inspect results to a file.
+    - `--output, -o <FILE>`: Specify the output file.
+    - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
+
 ### Command: `fetter search`
 
 - Description: Search the environment to report on installed packages based on a pattern.
@@ -341,6 +350,42 @@ repos:
   - `display`: Show audit results in the terminal.
   - `json`: Print validation results in JSON format.
   - `write`: Save audit results to a file.
+    - `--output, -o <FILE>`: Specify the output file.
+    - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
+  - `exit`: Return an exit code (0 for success, customizable for errors).
+    - `--code, -c <INT>`: Specify the error code (default: `3`).
+
+### Command: `fetter lookup-name`
+
+- Description: Search for security vulnerabilities for a package name or dependency specification via the OSV DB.
+- Options
+  - `<NAME>`: Provide a package name or dependency specification.
+  - `--limit <INT>`: If the package does not specify a version, determine how many recent versions to audit.
+  - `--retain-passing`: Show a record for all packages, even if the package has no vulnerabilities.
+  - `--cache-refresh`: Ignore any OSV caches and re-fetch vulnerability details.
+  - `--cvss`: Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+- Subcommands
+  - `display`: Show lookup results in the terminal.
+  - `json`: Print lookup results in JSON format.
+  - `write`: Save lookup results to a file.
+    - `--output, -o <FILE>`: Specify the output file.
+    - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
+  - `exit`: Return an exit code (0 for success, customizable for errors).
+    - `--code, -c <INT>`: Specify the error code (default: `3`).
+
+### Command: `fetter lookup-bound`
+
+- Description: Search for security vulnerabilities for all packages in a bound requirements file via the OSV DB.
+- Options
+  - `<FILE>`: File path or URL from which to read bound requirements, which can be a requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`.
+  - `--bound-options <OPTIONS>`: Names of additional optional dependency groups.
+  - `--retain-passing`: Show a record for all packages, even if the package has no vulnerabilities.
+  - `--cache-refresh`: Ignore any OSV caches and re-fetch vulnerability details.
+  - `--cvss`: Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+- Subcommands
+  - `display`: Show lookup results in the terminal.
+  - `json`: Print lookup results in JSON format.
+  - `write`: Save lookup results to a file.
     - `--output, -o <FILE>`: Specify the output file.
     - `--delimiter, -d <char>`: Set the delimiter for the file (default: `,`).
   - `exit`: Return an exit code (0 for success, customizable for errors).
