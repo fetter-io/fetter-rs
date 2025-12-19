@@ -399,7 +399,7 @@ impl ScanFS {
         if cache_config.duration == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else {
-            let exes_hash = hash_paths(exes, config);
+            let exes_hash = hash_paths(exes, &config);
 
             let cache_fp = cache_config
                 .directory
@@ -447,7 +447,7 @@ impl ScanFS {
             })
             .collect();
 
-        let exes_hash = hash_paths(exes, config);
+        let exes_hash = hash_paths(exes, &config);
         Self::from_exe_to_sites(exe_to_sites, config, exes_hash)
     }
 
@@ -482,7 +482,7 @@ impl ScanFS {
                 .push(site_shared.clone());
         }
         let config = ScanConfig::new(false, false);
-        let exes_hash = hash_paths(&exes, config);
+        let exes_hash = hash_paths(&exes, &config);
 
         Ok(ScanFS {
             exe_to_sites,
@@ -1982,7 +1982,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         site_to_exes.insert(site_shared2.clone(), exes2);
 
         let config = ScanConfig::new(false, false);
-        let exes_hash = hash_paths(&exes, config);
+        let exes_hash = hash_paths(&exes, &config);
         let sfs = ScanFS {
             exe_to_sites,
             package_to_sites,
