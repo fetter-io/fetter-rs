@@ -53,7 +53,7 @@ use crate::validation_report::ValidationReport;
 const PY_SITE_PACKAGES: &str = "import sys;import site;import types;sys.modules['fetter_validate'] = types.ModuleType('fetter_validate');site.main();print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
 fn get_site_package_dirs(
     executable: &Path,
-    config: ScanConfig,
+    config: &ScanConfig,
     log: FlagLog,
 ) -> Vec<PathShared> {
     match Command::new(executable)
@@ -345,7 +345,7 @@ impl ScanFS {
     /// Main entry point for creating a ScanFS. All public creation should go through this interface.
     fn from_exe_to_sites(
         exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
-        config: ScanConfig,
+        config: &ScanConfig,
         exes_hash: String,
     ) -> ResultDynError<Self> {
         // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
@@ -384,7 +384,7 @@ impl ScanFS {
             package_to_sites,
             site_to_exes,
             exe_to_ems: None,
-            config,
+            config: *config,
             exes_hash,
         })
     }
@@ -392,14 +392,14 @@ impl ScanFS {
     /// Create a ScanFS from a cache: exes provided here should be pre-normalization.
     pub(crate) fn from_cache(
         exes: &[PathBuf],
-        config: ScanConfig,
-        cache_config: CacheConfig,
+        config: &ScanConfig,
+        cache_config: &CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         if cache_config.duration == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else {
-            let exes_hash = hash_paths(exes, &config);
+            let exes_hash = hash_paths(exes, config);
 
             let cache_fp = cache_config
                 .directory
@@ -426,7 +426,7 @@ impl ScanFS {
     /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide path search will be conducted.
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
-        config: ScanConfig,
+        config: &ScanConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
@@ -447,7 +447,7 @@ impl ScanFS {
             })
             .collect();
 
-        let exes_hash = hash_paths(exes, &config);
+        let exes_hash = hash_paths(exes, config);
         Self::from_exe_to_sites(exe_to_sites, config, exes_hash)
     }
 
@@ -547,7 +547,7 @@ impl ScanFS {
 
     pub(crate) fn to_cache(
         &self,
-        cache_config: CacheConfig,
+        cache_config: &CacheConfig,
         log: FlagLog,
     ) -> ResultDynError<()> {
         // use hash of exes observed at initialization
@@ -767,10 +767,10 @@ mod tests {
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
         let config_force = ScanConfig::new(true, false);
-        let paths1 = get_site_package_dirs(p1, config_force, FlagLog(false));
+        let paths1 = get_site_package_dirs(p1, &config_force, FlagLog(false));
         assert!(!paths1.is_empty());
         let config_no_force = ScanConfig::new(false, false);
-        let paths2 = get_site_package_dirs(p1, config_no_force, FlagLog(false));
+        let paths2 = get_site_package_dirs(p1, &config_no_force, FlagLog(false));
         assert!(paths1.len() >= paths2.len());
     }
     #[test]
@@ -795,7 +795,7 @@ mod tests {
         );
         let config = ScanConfig::new(false, false);
         let mut sfs =
-            ScanFS::from_exe_to_sites(exe_to_sites, config, "".to_string()).unwrap();
+            ScanFS::from_exe_to_sites(exe_to_sites, &config, "".to_string()).unwrap();
         assert_eq!(sfs.package_to_sites.len(), 2);
 
         let dm1 = DepManifest::try_from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
@@ -2018,7 +2018,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exe2 = PathBuf::from("b");
         let exes = vec![exe1, exe2];
         let config = ScanConfig::new(false, false);
-        let post = ScanFS::from_exes(&exes, config, FlagLog(false));
+        let post = ScanFS::from_exes(&exes, &config, FlagLog(false));
         // error for bad exe
         assert!(post.is_err());
     }
@@ -2031,9 +2031,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exes = vec![exe1.clone(), exe2.clone()];
 
         let config = ScanConfig::new(false, false);
-        let scan1 = ScanFS::from_exes(&exes, config, FlagLog(false))
+        let scan1 = ScanFS::from_exes(&exes, &config, FlagLog(false))
             .expect("Failed to build ScanFS from the first ordering");
-        let scan2 = ScanFS::from_exes(&exes, config, FlagLog(false))
+        let scan2 = ScanFS::from_exes(&exes, &config, FlagLog(false))
             .expect("Failed to build ScanFS from the shuffled executables");
 
         let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");

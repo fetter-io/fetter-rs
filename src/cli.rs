@@ -593,13 +593,13 @@ enum UnpackFilesSubcommand {
 // Provided `exe_paths` are not normalize.
 fn from_cache_or_exes(
     exe_paths: &Vec<PathBuf>,
-    config: ScanConfig,
+    config: &ScanConfig,
     animate: bool,
-    cache_config: CacheConfig,
+    cache_config: &CacheConfig,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, config, cache_config.clone(), log).or_else(|err| {
+    ScanFS::from_cache(exe_paths, config, cache_config, log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -655,7 +655,7 @@ where
     let get_sfs = || -> ResultDynError<ScanFS> {
         let config = ScanConfig::new(cli.user_site, cli.all_users);
         let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
-        from_cache_or_exes(&cli.exe, config, !quiet, cache_config, log, stderr)
+        from_cache_or_exes(&cli.exe, &config, !quiet, &cache_config, log, stderr)
     };
 
     match &cli.command {
@@ -1044,7 +1044,7 @@ where
             // let ureq clone for increment ref count
             let config = ScanConfig::new(cli.user_site, cli.all_users);
             let _ =
-                monitor_scan_loop(&cli.exe, client, url, tenant, config, *period, log);
+                monitor_scan_loop(&cli.exe, client, url, tenant, &config, *period, log);
         }
         None => {}
     }
