@@ -5,6 +5,8 @@ use std::hash::Hasher;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::util::WILDCARD;
+
 //------------------------------------------------------------------------------
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
 enum VersionPart {
@@ -87,6 +89,8 @@ impl VersionSpec {
     }
 
     // https://python-poetry.org/docs/dependency-specification/#caret-requirements
+    // ^1.2.3 	>=1.2.3 <2.0.0
+    // ^1.2 	>=1.2.0 <2.0.0
     pub(crate) fn is_caret(&self, other: &Self) -> bool {
         if other < self {
             return false;
@@ -110,6 +114,9 @@ impl VersionSpec {
     }
 
     // https://python-poetry.org/docs/dependency-specification/#tilde-requirements
+    // ~1.2.3 	>=1.2.3 <1.3.0
+    // ~1.2 	>=1.2.0 <1.3.0
+    // ~1 	    >=1.0.0 <2.0.0
     pub(crate) fn is_tilde(&self, other: &Self) -> bool {
         if other < self {
             return false;
@@ -130,6 +137,14 @@ impl VersionSpec {
             }
         }
         other < &VersionSpec(ub)
+    }
+
+    // Return True if this VersionSpec has a woldcard
+    pub(crate) fn has_wildcard(&self) -> bool {
+        self.0.iter().rev().any(|part| match part {
+            VersionPart::Number(_) => false,
+            VersionPart::Text(text) => text == WILDCARD,
+        })
     }
 }
 impl fmt::Display for VersionSpec {
@@ -156,7 +171,7 @@ impl Hash for VersionSpec {
     }
 }
 
-// This ordering implemenation is handling wild cards and zero-padding, but may not yet be handling "post" release correctly
+// This ordering implementation is handling wild cards and zero-padding, but may not yet be handling "post" release correctly
 // https://packaging.python.org/en/latest/specifications/version-specifiers/#post-releases
 impl Ord for VersionSpec {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -169,21 +184,21 @@ impl Ord for VersionSpec {
             let ordering = match (self_part, other_part) {
                 (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(b),
                 (VersionPart::Text(a), VersionPart::Text(b)) => {
-                    if a == "*" || b == "*" {
+                    if a == WILDCARD || b == WILDCARD {
                         Ordering::Equal
                     } else {
                         a.cmp(b)
                     }
                 }
                 (VersionPart::Number(_), VersionPart::Text(b)) => {
-                    if b == "*" {
+                    if b == WILDCARD {
                         Ordering::Equal
                     } else {
                         Ordering::Greater // numbers are always greater than text
                     }
                 }
                 (VersionPart::Text(a), VersionPart::Number(_)) => {
-                    if a == "*" {
+                    if a == WILDCARD {
                         Ordering::Equal
                     } else {
                         Ordering::Less
@@ -213,11 +228,17 @@ impl PartialEq for VersionSpec {
 
             match (self_part, other_part) {
                 // if wildcard "*" both equal
-                (VersionPart::Text(a), VersionPart::Text(b)) if a == "*" || b == "*" => {
+                (VersionPart::Text(a), VersionPart::Text(b))
+                    if a == WILDCARD || b == WILDCARD =>
+                {
                     continue
                 }
-                (VersionPart::Text(a), VersionPart::Number(_)) if a == "*" => continue,
-                (VersionPart::Number(_), VersionPart::Text(b)) if b == "*" => continue,
+                (VersionPart::Text(a), VersionPart::Number(_)) if a == WILDCARD => {
+                    continue
+                }
+                (VersionPart::Number(_), VersionPart::Text(b)) if b == WILDCARD => {
+                    continue
+                }
                 // parts must match exactly
                 (VersionPart::Number(a), VersionPart::Number(b)) if a != b => {
                     return false
@@ -385,5 +406,12 @@ mod tests {
         assert!(VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.0.2.5")),);
         assert!(!VersionSpec::new("0.0").is_caret(&VersionSpec::new("0.1.0")),);
         assert!(!VersionSpec::new("0.0").is_caret(&VersionSpec::new("1")),);
+    }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_version_spec_has_wildcard_a() {
+        assert!(VersionSpec::new("1.7.*").has_wildcard());
+        assert!(!VersionSpec::new("1.7.3").has_wildcard());
     }
 }

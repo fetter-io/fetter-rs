@@ -18,6 +18,7 @@ use crate::ureq_client::UreqClient;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use crate::util::FlagRetainPassing;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Serialize)]
@@ -57,6 +58,15 @@ impl Rowable for AuditRecord {
                 "".to_string()
             }
         };
+
+        if self.vuln_ids.is_empty() {
+            rows.push(vec![
+                package_display(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+            ]);
+        };
         for vuln_id in self.vuln_ids.iter() {
             let vuln_display = || {
                 if is_tty {
@@ -65,7 +75,6 @@ impl Rowable for AuditRecord {
                     vuln_id.clone()
                 }
             };
-
             if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
                 rows.push(vec![
                     package_display(),
@@ -118,6 +127,7 @@ impl AuditReport {
         mut cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
+        retain_passing: FlagRetainPassing,
     ) -> Self {
         if packages.is_empty() {
             return AuditReport {
@@ -159,6 +169,13 @@ impl AuditReport {
                     package: package.clone(),
                     vuln_ids: vuln_ids.clone(),
                     vuln_infos, // move
+                };
+                records.push(record);
+            } else if bool::from(retain_passing) {
+                let record = AuditRecord {
+                    package: package.clone(),
+                    vuln_ids: Vec::new(),
+                    vuln_infos: HashMap::new(),
                 };
                 records.push(record);
             }
@@ -247,15 +264,22 @@ mod tests {
 
     use crate::table::Tableable;
     use crate::ureq_client::UreqClientMock;
+    use std::collections::HashMap;
 
     #[test]
     fn test_audit_report_a() {
         let mock_get = r#"
         {"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","details":" Impact\nThis CVE covers the ability of 3rd party websites to access routes and upload files to users running Gradio applications locally.  For example, the malicious owners of [www.dontvisitme.com](http://www.dontvisitme.com/) could put a script on their website that uploads a large file to http://localhost:7860/upload and anyone who visits their website and has a Gradio app will now have that large file uploaded on their computer\n\n### Patches\nYes, the problem has been patched in Gradio version 4.19.2 or higher. We have no knowledge of this exploit being used against users of Gradio applications, but we encourage all users to upgrade to Gradio 4.19.2 or higher.\n\nFixed in: https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a\nCVE: https://nvd.nist.gov/vuln/detail/CVE-2024-1727","aliases":["CVE-2024-1727"],"modified":"2024-05-21T15:12:35.101662Z","published":"2024-05-21T14:43:50Z","database_specific":{"github_reviewed_at":"2024-05-21T14:43:50Z","github_reviewed":true,"severity":"MODERATE","cwe_ids":["CWE-352"],"nvd_published_at":null},"references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"affected":[{"package":{"name":"gradio","ecosystem":"PyPI","purl":"pkg:pypi/gradio"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"4.19.2"}]}],"versions":["4.18.0","4.19.0","4.19.1","4.2.0","4.3.0","4.4.0","4.4.1","4.5.0","4.7.0","4.7.1","4.8.0","4.9.0","4.9.1"],"database_specific":{"source":"https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/05/GHSA-48cq-79qq-6f7x/GHSA-48cq-79qq-6f7x.json"}}],"schema_version":"1.6.0","severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}"#;
 
+        let mut mock_post_map = HashMap::new();
+        mock_post_map.insert("https://api.osv.dev".to_string(), "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]}]}".to_string());
+
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://api.osv.dev".to_string(), mock_get.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]}]}".to_string()),
-            mock_get : Some(mock_get.to_string()),
+            mock_post: Some(mock_post_map),
+            mock_get: Some(mock_get_map),
         });
 
         let packages =
@@ -271,6 +295,7 @@ mod tests {
             cache_config,
             FlagLog(false),
             CvssFilter::All,
+            FlagRetainPassing(false),
         );
 
         let dir = tempdir().unwrap();
@@ -292,8 +317,8 @@ mod tests {
     #[test]
     fn test_audit_report_b() {
         let client = Arc::new(UreqClientMock {
-            mock_post: Some(String::new()),
-            mock_get: Some(String::new()),
+            mock_post: None,
+            mock_get: None,
         });
 
         let packages: Vec<Package> = vec![];
@@ -307,6 +332,7 @@ mod tests {
             cache_config,
             FlagLog(false),
             CvssFilter::All,
+            FlagRetainPassing(false),
         );
         assert!(ar.get_records().is_empty());
     }
@@ -316,9 +342,15 @@ mod tests {
         let mock_get = r#"
         {"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","details":" Impact\nThis CVE covers the ability of 3rd party websites to access routes and upload files to users running Gradio applications locally.  For example, the malicious owners of [www.dontvisitme.com](http://www.dontvisitme.com/) could put a script on their website that uploads a large file to http://localhost:7860/upload and anyone who visits their website and has a Gradio app will now have that large file uploaded on their computer\n\n### Patches\nYes, the problem has been patched in Gradio version 4.19.2 or higher. We have no knowledge of this exploit being used against users of Gradio applications, but we encourage all users to upgrade to Gradio 4.19.2 or higher.\n\nFixed in: https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a\nCVE: https://nvd.nist.gov/vuln/detail/CVE-2024-1727","aliases":["CVE-2024-1727"],"modified":"2024-05-21T15:12:35.101662Z","published":"2024-05-21T14:43:50Z","database_specific":{"github_reviewed_at":"2024-05-21T14:43:50Z","github_reviewed":true,"severity":"MODERATE","cwe_ids":["CWE-352"],"nvd_published_at":null},"references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"affected":[{"package":{"name":"gradio","ecosystem":"PyPI","purl":"pkg:pypi/gradio"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"4.19.2"}]}],"versions":["4.18.0","4.19.0","4.19.1","4.2.0","4.3.0","4.4.0","4.4.1","4.5.0","4.7.0","4.7.1","4.8.0","4.9.0","4.9.1"],"database_specific":{"source":"https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/05/GHSA-48cq-79qq-6f7x/GHSA-48cq-79qq-6f7x.json"}}],"schema_version":"1.6.0","severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}"#;
 
+        let mut mock_post_map = HashMap::new();
+        mock_post_map.insert("https://api.osv.dev".to_string(), "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]}]}".to_string());
+
+        let mut mock_get_map = HashMap::new();
+        mock_get_map.insert("https://api.osv.dev".to_string(), mock_get.to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]}]}".to_string()),
-            mock_get : Some(mock_get.to_string()),
+            mock_post: Some(mock_post_map),
+            mock_get: Some(mock_get_map),
         });
 
         let packages =
@@ -333,11 +365,11 @@ mod tests {
             cache_config,
             FlagLog(false),
             CvssFilter::All,
+            FlagRetainPassing(false),
         );
         let ar_json = serde_json::to_string_pretty(&ar).unwrap();
         let expected_json = r#"{"records":[{"package":{"name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"cvss_details":[{"version":"V3_1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L","score":4.3,"severity":"medium"}]}}}]}"#;
 
-        println!("Generated JSON: {}", ar_json);
         let expected_json: serde_json::Value =
             serde_json::from_str(expected_json).unwrap();
         let actual_json: serde_json::Value = serde_json::from_str(&ar_json).unwrap();

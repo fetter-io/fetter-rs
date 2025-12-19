@@ -129,7 +129,7 @@ fn extract_marker_expr(
     }
 }
 
-// Dependency Specification: A model of a specification for one package with pairs of versions and operators, such as "numpy>1.18,<2.0".
+// Dependency Specification: A model of a specification for one package with pairs of versions and operators, such as "numpy>1.18,<2.0". The length of `operators` and `versions` must always be the same.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DepSpec {
     pub name: String,
@@ -329,7 +329,7 @@ impl DepSpec {
     // }
 
     //--------------------------------------------------------------------------
-    fn validate_version(&self, version: &VersionSpec) -> bool {
+    pub fn validate_version(&self, version: &VersionSpec) -> bool {
         // operators and versions are always the same length
         for (op, spec_version) in self.operators.iter().zip(&self.versions) {
             let valid = match op {
@@ -383,6 +383,19 @@ impl DepSpec {
     }
 
     //--------------------------------------------------------------------------
+
+    /// If the DepSpec specifies an exact version, return that VersionSpec. We assume this only applyes to "==" dependencies, not arbitrary equal "===" dependencies
+    pub fn get_exact(&self) -> Option<VersionSpec> {
+        match self.versions.len() == 1
+            && !self.versions[0].has_wildcard()
+            && self.operators.len() == 1
+            && self.operators[0] == DepOperator::Eq
+        {
+            true => Some(self.versions[0].clone()),
+            false => None,
+        }
+    }
+
     /// Return the dependency specification; either the version or URL as string
     pub fn to_spec(&self) -> String {
         let marker = match self.env_marker.is_empty() {
@@ -651,6 +664,15 @@ mod tests {
         assert!(ds1.validate_version(&VersionSpec::new("1.9")));
         assert!(!ds1.validate_version(&VersionSpec::new("2.1")));
     }
+
+    #[test]
+    fn test_dep_spec_validate_version_m() {
+        let input = "name";
+        let ds1 = DepSpec::from_string(input).unwrap();
+        assert!(ds1.validate_version(&VersionSpec::new("1.0")));
+        assert!(ds1.validate_version(&VersionSpec::new("100.0.0.0")));
+    }
+
     //--------------------------------------------------------------------------
     #[test]
     fn test_dep_spec_validate_package_a() {
@@ -1028,5 +1050,33 @@ mod tests {
 
         let em = get_ems_darwin();
         assert!(!ds1.validate_env_marker(&em));
+    }
+
+    //--------------------------------------------------------------------------
+    #[test]
+    fn test_dep_spec_is_exact_a() {
+        let ds1 = DepSpec::from_string("package>=0.2,<0.3").unwrap();
+        assert!(ds1.get_exact().is_none());
+
+        let ds2 = DepSpec::from_string("package>=0.2").unwrap();
+        assert!(ds2.get_exact().is_none());
+
+        let ds3 = DepSpec::from_string("package!=0.2").unwrap();
+        assert!(ds3.get_exact().is_none());
+
+        let ds4 = DepSpec::from_string("package~=0.2").unwrap();
+        assert!(ds4.get_exact().is_none());
+
+        let ds5 = DepSpec::from_string("package").unwrap();
+        assert!(ds5.get_exact().is_none());
+    }
+
+    #[test]
+    fn test_dep_spec_is_exact_b() {
+        let ds1 = DepSpec::from_string("package==0.2").unwrap();
+        assert!(ds1.get_exact().is_some());
+
+        let ds2 = DepSpec::from_string("package==3").unwrap();
+        assert!(ds2.get_exact().is_some());
     }
 }

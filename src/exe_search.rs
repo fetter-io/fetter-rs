@@ -148,6 +148,7 @@ pub(crate) fn find_exe(all_users: bool) -> HashSet<PathBuf> {
         .par_iter()
         .flat_map(|(path, recurse)| find_exe_inner(path, &exclude, *recurse))
         .collect();
+    // get default exe
     if let Some(exe_def) = get_absolute_path_from_exe("python3") {
         paths.insert(exe_def);
     }

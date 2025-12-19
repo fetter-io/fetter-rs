@@ -39,6 +39,7 @@ use crate::util::Anchor;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
+use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
 use crate::util::DURATION_0;
@@ -606,8 +607,10 @@ impl ScanFS {
         cache_config: CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
+        retain_passing: FlagRetainPassing,
     ) -> AuditReport {
         let packages = self.search_by_match(pattern, case_insensitive);
+        // NOTE: packages is sorted upstream
         AuditReport::from_packages(
             client,
             &packages,
@@ -615,10 +618,11 @@ impl ScanFS {
             cache_config,
             log,
             filter_cvss,
+            retain_passing,
         )
     }
 
-    /// The `count` Boolean determine if what type of UnpackReport is returned
+    /// The `count` Boolean determine what type of UnpackReport is returned
     pub(crate) fn to_unpack_report(
         &self,
         pattern: &str,

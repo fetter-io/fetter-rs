@@ -172,14 +172,17 @@ pub(crate) fn query_osv_batches(
 mod tests {
     use super::*;
     use crate::{ureq_client::UreqClientMock, util::path_cache};
+    use std::collections::HashMap;
 
     #[test]
     fn test_osv_querybatch_a() {
+        let mut mock_post_map = HashMap::new();
+        mock_post_map.insert("https://api.osv.dev".to_string(), "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-34rf-p3r3-58x2\",\"modified\":\"2024-05-06T14:46:47.572046Z\"},{\"id\":\"GHSA-3f95-mxq2-2f63\",\"modified\":\"2024-04-10T22:19:39.095481Z\"},{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]},{\"vulns\":[{\"id\":\"GHSA-pmv9-3xqp-8w42\",\"modified\":\"2024-09-18T19:36:03.377591Z\"}]}]}".to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-34rf-p3r3-58x2\",\"modified\":\"2024-05-06T14:46:47.572046Z\"},{\"id\":\"GHSA-3f95-mxq2-2f63\",\"modified\":\"2024-04-10T22:19:39.095481Z\"},{\"id\":\"GHSA-48cq-79qq-6f7x\",\"modified\":\"2024-05-21T14:58:25.710902Z\"}]},{\"vulns\":[{\"id\":\"GHSA-pmv9-3xqp-8w42\",\"modified\":\"2024-09-18T19:36:03.377591Z\"}]}]}".to_string()),
-            mock_get : None,
+            mock_post: Some(mock_post_map),
+            mock_get: None,
         });
-        // let client = UreqClientLive;
         let packages = vec![
             Package::from_name_version_durl("gradio", "4.0.0", None).unwrap(),
             Package::from_name_version_durl("mesop", "0.11.1", None).unwrap(),
@@ -204,9 +207,12 @@ mod tests {
 
     #[test]
     fn test_osv_querybatch_cache_disabled() {
+        let mut mock_post_map = HashMap::new();
+        mock_post_map.insert("https://api.osv.dev".to_string(), "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-disabled\",\"modified\":\"2024-05-06T14:46:47.572046Z\"}]}]}".to_string());
+
         let client = Arc::new(UreqClientMock {
-            mock_post : Some("{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-disabled\",\"modified\":\"2024-05-06T14:46:47.572046Z\"}]}]}".to_string()),
-            mock_get : None,
+            mock_post: Some(mock_post_map),
+            mock_get: None,
         });
         let packages =
             vec![Package::from_name_version_durl("test-package", "1.0.0", None).unwrap()];

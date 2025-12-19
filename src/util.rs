@@ -24,6 +24,8 @@ pub type ResultDynError<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) const DURATION_0: Duration = Duration::from_secs(0);
 
+pub(crate) const WILDCARD: &str = "*";
+
 //------------------------------------------------------------------------------
 #[derive(Debug, Copy, Clone)]
 pub enum Anchor {
@@ -96,6 +98,21 @@ impl From<bool> for FlagCacheRefresh {
 
 impl From<FlagCacheRefresh> for bool {
     fn from(val: FlagCacheRefresh) -> Self {
+        val.0
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct FlagRetainPassing(pub bool);
+
+impl From<bool> for FlagRetainPassing {
+    fn from(value: bool) -> Self {
+        FlagRetainPassing(value)
+    }
+}
+
+impl From<FlagRetainPassing> for bool {
+    fn from(val: FlagRetainPassing) -> Self {
         val.0
     }
 }
