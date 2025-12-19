@@ -400,7 +400,7 @@ pub(crate) fn path_within_duration<P: AsRef<Path>>(
 }
 
 /// Create a hash of an iterable of PathBuf plus scan configuration options.
-pub(crate) fn hash_paths(paths: &[PathBuf], config: ScanConfig) -> String {
+pub(crate) fn hash_paths(paths: &[PathBuf], config: &ScanConfig) -> String {
     let mut ps: Vec<PathBuf> = paths.to_owned();
     ps.sort();
 
@@ -615,7 +615,7 @@ mod tests {
             Path::new("/b/foo/bar").to_path_buf(),
         ];
         let config = ScanConfig::new(true, true);
-        let hashed = hash_paths(&paths, config);
+        let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
             "83259d61ab78d5a4afb670e167bab74b0d1532878a45aa5c2848a8bb05f41903"
@@ -626,7 +626,7 @@ mod tests {
     fn test_hash_paths_b() {
         let paths = vec![Path::new("*").to_path_buf()];
         let config = ScanConfig::new(true, true);
-        let hashed = hash_paths(&paths, config);
+        let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
             "aa0a2150615aa2de8849dedd49f8fb9bb6114270c98bfbf4d117faf39b172720"

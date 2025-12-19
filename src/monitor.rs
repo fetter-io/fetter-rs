@@ -24,7 +24,7 @@ fn monitor_scan(
     log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_exes().");
-    let sfs = ScanFS::from_exes(&exe_paths, config, log).expect("from_exes() failed.");
+    let sfs = ScanFS::from_exes(&exe_paths, &config, log).expect("from_exes() failed.");
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -57,7 +57,7 @@ pub(crate) fn monitor_scan_loop(
     client: Arc<dyn UreqClient>,
     url: &String,
     tenant: &String,
-    config: ScanConfig,
+    config: &ScanConfig,
     period: u64,
     log: FlagLog,
 ) -> ResultDynError<()> {
@@ -77,7 +77,7 @@ pub(crate) fn monitor_scan_loop(
             client,
             url_arc,
             tenant_arc,
-            config,
+            *config,
             log,
         );
         return Ok(());
@@ -102,7 +102,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&client),
             Arc::clone(&url_arc),
             Arc::clone(&tenant_arc),
-            config,
+            *config,
             log,
         )) {
             logger!(log, module_path!(), "Worker panicked: {e}");
