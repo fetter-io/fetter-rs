@@ -838,7 +838,7 @@ where
                 client,
                 !case,
                 FlagCacheRefresh(*cache_refresh),
-                cache_config,
+                &cache_config,
                 log,
                 cvss_filter,
                 FlagRetainPassing(*retain_passing),

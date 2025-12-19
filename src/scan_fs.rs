@@ -604,7 +604,7 @@ impl ScanFS {
         client: Arc<dyn UreqClient>,
         case_insensitive: bool,
         cache_refresh: FlagCacheRefresh,
-        cache_config: CacheConfig,
+        cache_config: &CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,

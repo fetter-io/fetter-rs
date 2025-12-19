@@ -124,7 +124,7 @@ impl AuditReport {
         client: Arc<dyn UreqClient>,
         packages: &[Package],
         cache_refresh: FlagCacheRefresh,
-        mut cache_config: CacheConfig,
+        cache_config: &CacheConfig,
         log: FlagLog,
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,
@@ -134,10 +134,12 @@ impl AuditReport {
                 records: Vec::new(),
             };
         }
-        // if cache_refresh is false, force no usage of any caching
-        if bool::from(cache_refresh) {
-            cache_config.duration = DURATION_0;
-        }
+        // if cache_refresh is true, derive a new cache_config with duration set to 0
+        let cache_config = if bool::from(cache_refresh) {
+            CacheConfig::new(DURATION_0, cache_config.directory.clone())
+        } else {
+            cache_config.clone()
+        };
         let vulns: Vec<Option<Vec<String>>> =
             match query_osv_batches(client.clone(), packages, &cache_config, log) {
                 Ok(vulns) => vulns,
@@ -288,7 +290,7 @@ mod tests {
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
-            cache_config,
+            &cache_config,
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
@@ -325,7 +327,7 @@ mod tests {
             client.clone(),
             &packages,
             FlagCacheRefresh(true),
-            cache_config,
+            &cache_config,
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
@@ -358,7 +360,7 @@ mod tests {
             client,
             &packages,
             FlagCacheRefresh(true),
-            cache_config,
+            &cache_config,
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
