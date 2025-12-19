@@ -391,9 +391,14 @@ repos:
 
 ## What is New in Fetter
 
-### dev
+### 3.0.0
 
 Added `inspect` subcommand to display all code files runnable on interpreter startup.
+
+Added `lookup-name` subcommand to display all vulnerabilities for a single package.
+
+Added `lookup-bound` subcommand to display all vulnerabilities for all packages in bound requirements, which can be a requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`
+
 
 ### 2.9.0
 
