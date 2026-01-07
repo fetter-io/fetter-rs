@@ -89,7 +89,7 @@ $ fetter lookup-bound --bound git@github.com:psf/clabot.git
 ```
 
 
-## Using `fetter` from the Command Line
+## Using `fetter` to Scan, Validate, and Audit Packages
 
 For complete command-line documentation, see [CLI Documentation](#Command-Line-Interface-Documentation).
 
@@ -242,7 +242,7 @@ To run `fetter validate` with `pre-commit`, add the following to your `.pre-comm
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v2.8.0
+  rev: v3.1.0
   hooks:
     - id: fetter-validate
       args: [--bound, {FILE}, --superset, --subset, display, --code, 3]
@@ -258,7 +258,7 @@ To run `fetter audit` with `pre-commit`, add the following to your `.pre-commit-
 ```yaml
 repos:
 - repo: https://github.com/fetter-io/fetter-rs
-  rev: v2.8.0
+  rev: v3.1.0
   hooks:
     - id: fetter-audit
 ```
