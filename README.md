@@ -47,7 +47,7 @@ $ pip install fetter
 $ fetter --help
 ```
 
-As `fetter` can operate accross multiple virtual environments, installation via [`pipx`](https://pipx.pypa.io) might be desirable:
+As `fetter` can operate across multiple virtual environments, installation via [`pipx`](https://pipx.pypa.io) might be desirable:
 
 ```shell
 $ pipx install fetter
@@ -86,6 +86,12 @@ To audit dependencies defined in an online git repository:
 
 ```shell
 $ fetter lookup-bound --bound git@github.com:psf/clabot.git
+```
+
+The `fetter lookup-name` command can be used to find vulnerabilities for a single package or version, or multiple versions across a dependency specification.
+
+```shell
+$ fetter lookup-name "pip>=25"
 ```
 
 
@@ -462,6 +468,11 @@ repos:
 
 
 ## What is New in Fetter
+
+### 3.1.0
+
+Extended `lookup-bound` subcommand to, by default, search the current working directory for a bound requirements file; alternatively, a path to a project directory can now be provided.
+
 
 ### 3.0.0
 
