@@ -60,9 +60,9 @@ An "ephemeral" `fetter` installation and run is also possible with [`uvx`](https
 $ uvx fetter --version
 ```
 
-## Using `fetter` as `pip-audit`
+## Using `fetter` to Replace `pip-audit`
 
-The `fetter lookup-bound` command can perform numerous operations similar to `pip-audit`, though with broader file format support and (by using the OSV Database) greater vulnerability details.
+The `fetter lookup-bound` command can perform numerous operations similar to `pip-audit`, though with broader file format support and (by using the OSV Database) greater vulnerability details (including CVSS scores).
 
 To audit dependencies for a local Python project:
 
@@ -79,7 +79,7 @@ $ fetter lookup-bound --bound requirements.txt
 To audit dependencies for a lock file created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`:
 
 ```shell
-$ fetter lookup-bound --bound uv.txt
+$ fetter lookup-bound --bound uv.lock
 ```
 
 To audit dependencies defined in an online git repository:
