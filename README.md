@@ -9,22 +9,21 @@
 <a href="https://pypi.org/project/fetter/">
     <img src="https://img.shields.io/pypi/v/fetter?label=PyPI&logo=pypi"></img>
 </a>
-<!-- <a href="https://crates.io/crates/fetter">
-    <img src="https://img.shields.io/crates/d/fetter?label=Downloads&logo=rust"></img>
-</a> -->
 
 ## System-wide Python Package Discovery, Validation, and Allow-Listing.
 
 
 The `fetter` command-line tool scans and validates Python packages across virtual environments or entire systems, ensuring packages conform to specified requirements or lock files. It identifies unapproved or vulnerable packages, supports continuous integration with 'pre-commit', and offers excellent performance thanks to a multi-threaded Rust implementation.
 
+As an alternative to `pip-audit`, `fetter` can lookup vulnerabilities for packages defined in requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`; further, full vulnerability details, including CVSS scores, are provided.
+
 Additionally, `fetter` can configure a virtual environment to validate package alignment before every Python run, enforcing a locked and reproducible development environment.
 
 
 * 🔎 System Scanning: Finds Python packages across system environments.
+* 🛡️ Vulnerability Audit: Scans defined or installed packages for security vulnerabilities in the Open Source Vulnerability database.
 * ⚖️ Package Validation: Checks installed packages against requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools` that are sourced locally, via URLs, or via `git` repositories.
 * 🔒 Locked & Reproducible Environments: Automatically validate packages against a lock file before every Python run.
-* 🛡️ Vulnerability Audit: Scans packages for security vulnerabilites in the Open Source Vulnerability database.
 * ⚙️ CI Integration: Validate and audit with `pre-commit` [hooks](#Using-fetter-with-pre-commit).
 * 🚀 Fast: Multi-threaded Rust implementation.
 * 🪢 Bound Requirements: Derive lock-file-like bound requirements from observed system packages.
@@ -48,7 +47,7 @@ $ pip install fetter
 $ fetter --help
 ```
 
-As `fetter` can operate on multiple virtual environments, installation via [`pipx`](https://pipx.pypa.io) might be desirable:
+As `fetter` can operate accross multiple virtual environments, installation via [`pipx`](https://pipx.pypa.io) might be desirable:
 
 ```shell
 $ pipx install fetter
@@ -59,6 +58,34 @@ An "ephemeral" `fetter` installation and run is also possible with [`uvx`](https
 
 ```shell
 $ uvx fetter --version
+```
+
+## Using `fetter` as `pip-audit`
+
+The `fetter lookup-bound` command can perform numerous operations similar to `pip-audit`, though with broader file format support and (by using the OSV Database) greater vulnerability details.
+
+To audit dependencies for a local Python project:
+
+```shell
+$ fetter lookup-bound
+```
+
+To audit dependencies for a specified requirements file:
+
+```shell
+$ fetter lookup-bound --bound requirements.txt
+```
+
+To audit dependencies for a lock file created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`:
+
+```shell
+$ fetter lookup-bound --bound uv.txt
+```
+
+To audit dependencies defined in an online git repository:
+
+```shell
+$ fetter lookup-bound --bound git@github.com:psf/clabot.git
 ```
 
 
@@ -89,7 +116,7 @@ urllib3-2.2.3             ~/.env-wp/lib/python3.12/site-packages
 zipp-3.18.1               ~/.env-wp/lib/python3.12/site-packages
 ```
 
-This evnironment was built from this "requirements.txt":
+This environment was built from this "requirements.txt":
 
 ```
 jinja2==3.1.3
@@ -377,7 +404,7 @@ repos:
 
 - Description: Search for security vulnerabilities for all packages in a bound requirements file via the OSV DB.
 - Options
-  - `<FILE>`: File path or URL from which to read bound requirements, which can be a requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`.
+  - `<SOURCE>`: Directory, file path, URL, or git repository from which to read bound requirements. The provided file can be requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`. If no argument is provided (or a directory is provided), the current directory is searched for a lock file, requirements.txt, or pyproject.toml.
   - `--bound-options <OPTIONS>`: Names of additional optional dependency groups.
   - `--retain-passing`: Show a record for all packages, even if the package has no vulnerabilities.
   - `--cache-refresh`: Ignore any OSV caches and re-fetch vulnerability details.

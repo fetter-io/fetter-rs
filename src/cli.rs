@@ -284,7 +284,7 @@ enum Commands {
         subcommands: Option<LookupNameSubcommand>,
     },
     LookupBound {
-        /// File path or URL from which to read bound requirements.
+        /// Directory, file path, URL, or git repository from which to read bound requirements. The provided file can be requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`. If no argument is provided (or a directory is provided), the current directory is searched for a lock file, requirements.txt, or pyproject.toml.
         #[arg(value_name = "FILE")]
         bound: Option<PathBuf>,
 
