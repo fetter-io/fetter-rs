@@ -9,7 +9,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -286,7 +286,7 @@ enum Commands {
     LookupBound {
         /// File path or URL from which to read bound requirements.
         #[arg(value_name = "FILE")]
-        bound: PathBuf,
+        bound: Option<PathBuf>,
 
         /// Names of additional optional (extra) dependency groups.
         #[arg(long, value_name = "OPTIONS")]
@@ -741,7 +741,7 @@ where
         }) => {
             // a DepManifest can be specialized for different python versions; if any DepManifest constituents have
             let mut sfs = get_sfs()?;
-            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
+            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref(), log)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
 
@@ -937,8 +937,21 @@ where
             let cvss_filter = CvssFilter::from_arg(*cvss);
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
 
-            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
-
+            let dm = match bound {
+                Some(b) => {
+                    let path = Path::new(b);
+                    if path.is_dir() {
+                        DepManifest::from_dir(path, bound_options.as_ref(), log)?
+                    } else {
+                        DepManifest::from_path_or_url(b, bound_options.as_ref(), log)?
+                    }
+                }
+                None => DepManifest::from_dir(
+                    &env::current_dir()?,
+                    bound_options.as_ref(),
+                    log,
+                )?,
+            };
             // NOTE: loading EnvMarkerState from the currently active Python if available
             let ems = match get_absolute_path_from_exe("python3") {
                 Some(exe) => Some(EnvMarkerState::from_exe(exe.as_path())?),
@@ -1024,7 +1037,7 @@ where
             superset,
         }) => {
             let mut sfs = get_sfs()?;
-            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref())?;
+            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref(), log)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
             let _ = sfs.to_purge_invalid(

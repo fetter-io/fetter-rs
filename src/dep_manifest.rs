@@ -25,13 +25,16 @@ use crate::lock_file::LockFile;
 use crate::package::Package;
 use crate::pyproject::PyProjectInfo;
 use crate::ureq_client::UreqClientLive;
+use crate::util::logger;
 use crate::util::path_normalize;
 use crate::util::Anchor;
+use crate::util::FlagLog;
 use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
 static LOCK_PRIORITY: &[&str] = &[
     "uv.lock",
+    "pylock.toml",
     "poetry.lock",
     "Pipfile.lock",
     "requirements.lock",
@@ -296,26 +299,38 @@ impl DepManifest {
         }
     }
 
-    /// Given a directory, load the first canddiate file based on LOCK_PRIORITY.
+    /// Given a directory, load the first candidate file based on LOCK_PRIORITY.
     pub(crate) fn from_dir(
         dir: &Path,
         bound_options: Option<&Vec<String>>,
+        log: FlagLog,
     ) -> ResultDynError<Self> {
         match LOCK_PRIORITY
             .iter()
             .map(|file| dir.join(file))
             .find(|path| path.exists())
         {
-            Some(file_path) => Self::from_path(&file_path, bound_options),
-            None => {
-                Err("Cannot find lock file, requirements file, or pyproject.toml".into())
+            Some(file_path) => {
+                logger!(
+                    log,
+                    module_path!(),
+                    "Using file: {}",
+                    file_path.display()
+                );
+                Self::from_path(&file_path, bound_options)
             }
+            None => Err(format!(
+                "Cannot find lock file, requirements file, or pyproject.toml in directory: {}",
+                dir.display()
+            )
+            .into()),
         }
     }
 
     pub fn from_git_repo(
         url: &Path,
         bound_options: Option<&Vec<String>>,
+        log: FlagLog,
     ) -> ResultDynError<Self> {
         let tmp_dir = tempdir()
             .map_err(|e| format!("Failed to create temporary directory: {e}"))?;
@@ -335,16 +350,17 @@ impl DepManifest {
         if !status.success() {
             return Err(format!("Git clone failed: {}", url.display()).into());
         }
-        Self::from_dir(&repo_path, bound_options)
+        Self::from_dir(&repo_path, bound_options, log)
     }
 
     pub(crate) fn from_path_or_url(
         file_path: &Path,
         bound_options: Option<&Vec<String>>,
+        log: FlagLog,
     ) -> ResultDynError<Self> {
         match file_path.to_str() {
             Some(s) if s.ends_with(".git") => {
-                Self::from_git_repo(file_path, bound_options)
+                Self::from_git_repo(file_path, bound_options, log)
             }
             Some(s) if s.starts_with("http") => {
                 Self::from_url(&UreqClientLive, file_path, bound_options)
@@ -1684,7 +1700,7 @@ dependencies = [
         let file_path = dir.path().join("pyproject.toml");
         let mut file = File::create(&file_path).unwrap();
         write!(file, "{}", content).unwrap();
-        let dm = DepManifest::from_dir(dir.path(), None).unwrap();
+        let dm = DepManifest::from_dir(dir.path(), None, FlagLog(false)).unwrap();
         assert!(dm.env_marker_active);
         assert_eq!(dm.keys(), vec!["django", "gidgethub", "httpx"]);
     }
@@ -1725,7 +1741,7 @@ pyzmq==26.0.0
         let mut file2 = File::create(&fp2).unwrap();
         write!(file2, "{}", content2).unwrap();
 
-        let dm = DepManifest::from_dir(dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None, FlagLog(false));
         assert_eq!(
             dm.unwrap().keys(),
             vec!["python_slugify", "pytz", "pytzdata", "pyyaml", "pyzmq"]
@@ -1768,7 +1784,7 @@ pyzmq==26.0.0
         let mut file2 = File::create(&fp2).unwrap();
         write!(file2, "{}", content2).unwrap();
 
-        let dm = DepManifest::from_dir(dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None, FlagLog(false));
         assert_eq!(
             dm.unwrap().keys(),
             vec!["python_slugify", "pytz", "pytzdata", "pyyaml", "pyzmq"]
@@ -1839,7 +1855,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/6c/89/1d8b77225282b1a37
         let mut file3 = File::create(&fp3).unwrap();
         write!(file3, "{}", content3).unwrap();
 
-        let dm = DepManifest::from_dir(dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None, FlagLog(false));
         assert_eq!(dm.unwrap().keys(), vec!["arraykit", "arraymap"]);
     }
 
@@ -1907,7 +1923,7 @@ groups = ["main"]
         let mut file3 = File::create(&fp3).unwrap();
         write!(file3, "{}", content3).unwrap();
 
-        let dm = DepManifest::from_dir(dir.path(), None);
+        let dm = DepManifest::from_dir(dir.path(), None, FlagLog(false));
         assert_eq!(dm.unwrap().keys(), vec!["certifi", "charset_normalizer"]);
     }
 }
