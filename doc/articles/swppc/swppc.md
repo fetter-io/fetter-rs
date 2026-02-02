@@ -1,10 +1,4 @@
 
-
-<!--
-# `fetter`: A Command-line tool for system-wide Python package allow-listing and vulnerability scanning
-# Scan Your Entire System for Python Packages with Vulnerabilities
--->
-
 # System-Wide Python Package Control: Enforce Allow Lists & Find Vulnerabilities
 <!-- Introducing the `fetter` command line application -->
 

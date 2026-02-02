@@ -1,9 +1,4 @@
 
-
-<!--
-# Find the Highest Severity Python Package on Your System
-# The Highest Severity Python Package on Your System
--->
 # What Is the Most Dangerous Python Package on Your System?
 
 The Common Vulnerability Scoring System (CVSS) is a widely used metric to rank the severity of software vulnerabilities from 0 to 10. If you work with Python, you have Python dependencies on your system, and it is likely that some of those packages have vulnerabilities. But which vulnerabilities are important?
