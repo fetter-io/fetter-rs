@@ -1,5 +1,7 @@
 #![allow(clippy::result_large_err)]
 
+use std::collections::HashMap;
+
 pub trait UreqClient: Send + Sync {
     /// A post request to the given URL with the provided JSON body.
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
@@ -23,17 +25,12 @@ impl UreqClient for UreqClientLive {
     }
 }
 
-#[cfg(test)]
-use std::collections::HashMap;
-
-#[cfg(test)]
 #[derive(Debug)]
 pub struct UreqClientMock {
     pub mock_post: Option<HashMap<String, String>>,
     pub mock_get: Option<HashMap<String, String>>,
 }
 
-#[cfg(test)]
 impl UreqClientMock {
     /// Helper to find a matching response based on URL prefix
     fn find_response(map: &Option<HashMap<String, String>>, url: &str) -> Option<String> {
@@ -48,7 +45,6 @@ impl UreqClientMock {
     }
 }
 
-#[cfg(test)]
 impl UreqClient for UreqClientMock {
     fn post(&self, url: &str, _body: &str) -> Result<String, ureq::Error> {
         Self::find_response(&self.mock_post, url).ok_or_else(|| {
