@@ -469,6 +469,11 @@ repos:
 
 ## What is New in Fetter
 
+### 3.4.0
+
+Testing and building on Python 3.14
+
+
 ### 3.3.0
 
 Testing and building on Python 3.14
