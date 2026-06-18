@@ -14,7 +14,7 @@ Fetter solves this by scanning installed packages across all Python virtual envi
 ## Demo
 
 What to Include in Your Demo
-
+Recorded Demo length: 10–20 minutes
 Your recorded demo should cover:
 
     Introduction – Briefly introduce yourself
