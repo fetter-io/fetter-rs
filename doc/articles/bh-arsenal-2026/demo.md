@@ -22,3 +22,19 @@ Your recorded demo should cover:
     Tool demonstration – Walk through your tool and its key features
 
 
+## Introduction
+
+Greetings. My name is Chris Ariza and I will be demonstrating the fetter command-line utility as part of Black Hat Arsenal 2026.
+
+I will start with a little bit about me. I started coding in Python back in 2000 while I was in graduate school. Back then I was exploring was of using algorithmic processes to generate musical structures, and Python was a natural fit.
+
+After a number of years in academia I took a position as a software engineer at Research Affiliates, a finance firm located in Newport Beach, California. I went on to build and lead a team of engineers, and was later appointed CTO. It was in that role that that I began to focus on cybersecurity: understanding the threats, the commercial tooling that was available, and exploring the implementation of my own tools.
+
+## Your Work
+
+While I have been a manager of engineers for many years, I have remained very hands-on in software engineering. Now, with agentic coding tools, I have been able to expand my work considerably.
+
+
+
+
+
