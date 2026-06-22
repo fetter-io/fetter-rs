@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest] #, windows-latest]
         rust: ["1.85.0", stable]
-        python: ["3.9", "3.13"]
+        python: ["3.9", "3.14"]
 
     name: Build & Test / ${{ matrix.os }} / Rust ${{ matrix.rust }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -41,13 +41,13 @@ jobs:
         run: cargo test --verbose
 
       - name: Build auditable
-        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
         run: | # https://github.com/rust-secure-code/cargo-auditable#usage
           cargo install cargo-auditable cargo-audit
           cargo auditable build
 
       - name: Fail auditable build on high/critical vulnerabilities
-        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: rootfs # https://trivy.dev/latest/docs/coverage/language/rust/#binaries

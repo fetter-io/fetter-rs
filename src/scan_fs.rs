@@ -218,10 +218,10 @@ impl Serialize for ScanFS {
     {
         // Collect and sort by keys for stable ordering
         let mut exe_to_sites: Vec<_> = self.exe_to_sites.iter().collect();
-        exe_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        exe_to_sites.sort_by_key(|(k, _)| *k);
 
         let mut package_to_sites: Vec<_> = self.package_to_sites.iter().collect();
-        package_to_sites.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        package_to_sites.sort_by_key(|(k, _)| *k);
 
         let mut site_to_exes: Vec<_> = self.site_to_exes.iter().collect();
         site_to_exes.sort_by_key(|(k, _)| k.to_string());

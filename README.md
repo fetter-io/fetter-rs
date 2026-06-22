@@ -469,6 +469,21 @@ repos:
 
 ## What is New in Fetter
 
+### 3.4.0
+
+Testing and building on Python 3.14
+
+
+### 3.3.0
+
+Testing and building on Python 3.14
+
+
+### 3.2.0
+
+Extension to the public library interface.
+
+
 ### 3.1.0
 
 Extended `lookup-bound` subcommand to, by default, search the current working directory for a bound requirements file; alternatively, a path to a project directory can now be provided.
