@@ -44,11 +44,13 @@ More recently I have been using Rust to build a tool, called `disclude`, special
 
 ## Tool demonstration
 
-Our focus for today is `fetter`, a command-line application written in Rust. Fetter is designed for bottom-up Python package discovery. Rather than relying on the Python packages you know about, fetter discovers every Python executable and, from that, every site-packages directory and every importable Python package. Once we have discovered all packages, we can do vulnerability discovery and allow list enforcement.
+Our focus for today is `fetter`, a command-line application written in Rust. Fetter is designed for bottom-up Python package discovery. Rather than relying on the Python packages as defined in requirements or lock files, fetter discovers every Python executable and, from that, every site-packages directory and every importable Python package. Once we have discovered all packages, we can do vulnerability discovery, allow-list enforcement, and number of other things.
 
-Lets start with a basic system-wide search. The `fetter count` command, by default, will search your entire system to find all unique Pythons and `site-packages`.
+### System Searching
 
-```
+Lets start with a basic system-wide search. The `fetter count` command, by default, will search your entire system to find all unique Pythons and `site-packages`. Using multi-threaded Rust, this is quite fast.
+
+```bash
 $ pip3 install fetter
 $ fetter count
              Count
@@ -57,7 +59,69 @@ Sites        46
 Packages     595
 ```
 
-What is great about this approach is that you probably do not know really what is one your system! You might have old Python versions, abandonded virtual environments, or system installed packages that you have never considered before.
+What is great about this approach is that you probably do not really know what is on your system! You might have old Python versions, abandoned virtual environments, or system-installed packages that you have did not know were there.
+
+Many `fetter` commands permit using the `-e` parameter to optionally specify the Python executables used to discover importable packages. For example, to use the current active `python` executable:
+
+```bash
+$ fetter -e python3  count
+             Count
+Executables  1
+Sites        1
+Packages     2
+```
+
+More than one `-e` argument can be provided:
+
+```bash
+{.env314-temp}{default} % fetter -e python3 -e ~/.env314-sf/bin/python3 count
+             Count
+Executables  2
+Sites        2
+Packages     103
+```
+
+Each call to `fetter` establishes a context of one or more Python environments; either full system wide or with specifically targetted environments.
+
+### Listing and Searching all Packages
+
+Given the context of full-system search or a more narrow selection, we can list all packages, as well as all virtual environments within within which those packages reside.
+
+```bash
+$ fetter scan
+```
+
+Instead of listing all packages, we can search for packages matching a pattern. For example, to find all version of NumPy on my system, I can do the followingL
+
+```bash
+$ fetter search -p numpy*
+Package       Site
+numpy-1.26.4  ~/.env312-dft/lib/python3.12/site-packages
+              ~/.env311-sage/lib/python3.11/site-packages
+numpy-2.0.0   ~/.env311-ff/lib/python3.11/site-packages
+              ~/.env311-am/lib/python3.11/site-packages
+numpy-2.1.3   ~/.env313-am/lib/python3.13/site-packages
+numpy-2.2.2   ~/_x/src/test-uv/.venv/lib/python3.13/site-packages
+numpy-2.2.3   ~/.env313-test/lib/python3.13/site-packages
+              ~/.env313-eg/lib/python3.13/site-packages
+numpy-2.2.5   ~/.env313-ak/lib/python3.13/site-packages
+numpy-2.3.1   ~/.env313-sf/lib/python3.13/site-packages
+              ~/.env313-aredox/lib/python3.13/site-packages
+numpy-2.3.4   ~/.env314t-ft/lib/python3.14t/site-packages
+              ~/.env314-ft/lib/python3.14/site-packages
+numpy-2.3.5   ~/.env314-condfut/lib/python3.14/site-packages
+              ~/.env314t-condfut/lib/python3.14t/site-packages
+numpy-2.4.3   ~/.env313-tidelathe/lib/python3.13/site-packages
+              ~/.env314-tidelathe/lib/python3.14/site-packages
+numpy-2.4.4   ~/_x/src/spinwright-sf/.venv/lib/python3.14/site-packages
+              ~/.env314-sf/lib/python3.14/site-packages
+```
+
+
+### Discovering Vulnerabilities
+
+Given the context of full-system search or a more narrow selection, we can check if any package has a vulnerability. This is done efficiently using multi-threaded queries to the Open Source Vulnerabiltiy database.
+
 
 
 
