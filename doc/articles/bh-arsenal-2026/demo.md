@@ -64,7 +64,7 @@ What is great about this approach is that you probably do not really know what i
 Many `fetter` commands permit using the `-e` parameter to optionally specify the Python executables used to discover importable packages. For example, to use the current active `python` executable:
 
 ```bash
-$ fetter -e python3  count
+$ fetter -e python3 count
              Count
 Executables  1
 Sites        1
@@ -74,24 +74,25 @@ Packages     2
 More than one `-e` argument can be provided:
 
 ```bash
-{.env314-temp}{default} % fetter -e python3 -e ~/.env314-sf/bin/python3 count
+$ fetter -e python3 -e ~/.env314-sf/bin/python3 count
              Count
 Executables  2
 Sites        2
 Packages     103
 ```
 
-Each call to `fetter` establishes a context of one or more Python environments; either full system wide or with specifically targetted environments.
+Each call to `fetter` establishes a context of one or more Python environments.
+
 
 ### Listing and Searching all Packages
 
-Given the context of full-system search or a more narrow selection, we can list all packages, as well as all virtual environments within within which those packages reside.
+The `fetter` CLI has many subcommands: we have been using `count`. Another is `scan`: given the context of one or more Python environments, list all packages and their environment directory.
 
 ```bash
 $ fetter scan
 ```
 
-Instead of listing all packages, we can search for packages matching a pattern. For example, to find all version of NumPy on my system, I can do the followingL
+With the same context, we can search for packages matching a pattern. For example, to find all versions of NumPy on my system, I can do the following:
 
 ```bash
 $ fetter search -p numpy*
@@ -117,10 +118,23 @@ numpy-2.4.4   ~/_x/src/spinwright-sf/.venv/lib/python3.14/site-packages
               ~/.env314-sf/lib/python3.14/site-packages
 ```
 
+### Deriving a Requirements File
+
+With a full listing of packages across many environments, we can derive a requirements file. By specifying a "lower" anchor we find the lowest version for each package and set the requirement to be greater than or equal to that version.
+
+```bash
+$ fetter -e python3 derive --anchor lower
+# via fetter
+fetter>=3.4.0
+pip>=25.2
+```
+
+We will see later how we can use these files to validate the current state of packages.
+
 
 ### Discovering Vulnerabilities
 
-Given the context of full-system search or a more narrow selection, we can check if any package has a vulnerability. This is done efficiently using multi-threaded queries to the Open Source Vulnerabiltiy database.
+Given the context of a set of packages, we can check if any package has a vulnerability. This is done efficiently using multi-threaded queries to the Open Source Vulnerabiltiy database.
 
 
 
