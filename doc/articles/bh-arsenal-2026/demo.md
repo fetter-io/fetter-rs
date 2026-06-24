@@ -132,22 +132,63 @@ pip>=25.2
 We will see later how we can use these files to validate the current state of packages.
 
 
-### Discovering Vulnerabilities
+### Discovering Local Vulnerabilities
 
-Given the context of a set of packages, we can check if any package has a vulnerability. This is done efficiently using multi-threaded queries to the Open Source Vulnerabiltiy database.
+Given the context of a set of packages, we can check if any package has a vulnerability. This is done efficiently using multi-threaded queries to the Open Source Vulnerabiltiy database. The following command, for example, lists all vulnerabilities in all packages on your system:
+
+```bash
+$ fetter audit
+```
+
+You will probably see a lot results. If we just want to see the highest vulnerability with the highest CVSS score, we can use the following command:
+
+```bash
+$ fetter audit --cvss
+Package              Vulnerabilities  Attribute  Value
+cryptography-45.0.4  PYSEC-2026-36    URL        https://osv.dev/vulnerability/PYSEC-2026-36
+                                      Reference  http://www.openwall.com/lists/oss-security/2026/04/08/12
+                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+cryptography-46.0.4  PYSEC-2026-36    URL        https://osv.dev/vulnerability/PYSEC-2026-36
+                                      Reference  http://www.openwall.com/lists/oss-security/2026/04/08/12
+                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+torch-2.3.1          PYSEC-2024-259   URL        https://osv.dev/vulnerability/PYSEC-2024-259
+                                      Reference  https://rumbling-slice-eb0.notion.site/Distributed-RPC-Framework-RemoteMo…
+                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+                     PYSEC-2025-41    URL        https://osv.dev/vulnerability/PYSEC-2025-41
+                                      Reference  https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6
+                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+```
+
+Of course, we can target this search to one or more specific environments.
+
+We can discover all the files associated with package with the `unpack-count` command:
+
+```bash
+$ fetter unpack-count --pattern torch-2.3.1
+Package      Site                                         Files  Dirs
+torch-2.3.1  ~/.env311-sage/lib/python3.11/site-packages  12652  2
+```
+
+And we can remove these packages with the `purge-pattern` command:
+
+```bash
+$ fetter purge-pattern --pattern torch-2.3.1
+# via fetter
+fetter>=3.4.0
+pip>=25.2
+```
+
+### Discovering Package Vulnerabilities
+
+While `fetter` provides a unique resources for discovering local packages, the tools for checking package vulnerabilities can be used for any package. For example, to see all vulnerabilities associated with the "cryptography" package we can use the following command:
+
+```bash
+$ fetter lookup-name cryptography
+```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+```bash
+$ fetter lookup-name cryptography  --cvss="9.8"
+```
 
 
