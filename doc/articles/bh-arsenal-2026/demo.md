@@ -30,24 +30,23 @@ A little bit about me first.
 
 I started coding in Python 26 years ago while I was in graduate school. Back then I was exploring the usage of algorithmic processes to generate music, and Python was a natural fit.
 
-After a number of years in academia I took a position as a software engineer at Research Affiliates, a finance firm in Newport Beach, California. I went on to build and lead a team of engineers, and was later appointed CTO. It was in that role that I began to focus on cybersecurity: understanding the threats, getting familiar with commercial tools, and exploring the implementation of new tools. The risks associated with open-source supply chains stood out as a weakness.
+After a number of years in academia I took a position as a software engineer at Research Affiliates, a finance firm in Newport Beach, California. I went on to build and lead a team of engineers, and was later appointed CTO. It was in that role that I began to focus on cybersecurity: understanding the threats, getting familiar with commercial tools, and exploring the implementation of new tools. The open-source supply chain stood out as a significant risk, inspiring my work on `fetter`.
 
 ## Your Work
 
-While I have been in leadership roles for many years, I have remained very active in software engineering. Now with agentic coding tools, I have been able to expand my work considerably.
+While I have been in leadership roles for many years, I have remained very active in software engineering. Now, with agentic-coding tools, I have been able to expand my work considerably.
 
-For over eight years I have been developing StaticFrame, an alternative Python DataFrame library built on an immutable data model. This library was critical to developing maintainable systems for portfolio construction, data ingestion, and analytics reporting. Further, as performance is critical for such libraries, I implemented numerous optimized routines as Python C extensions in a library called ArrayKit.
+For over eight years I have been developing StaticFrame, an alternative Python DataFrame library built on an immutable data model. This library was critical to developing maintainable systems for portfolio construction, data ingestion, and analytics. Further, as performance is critical for such libraries, I implemented numerous optimized routines as Python C extensions in a library called ArrayKit.
 
-My search for better performance led me to Rust. After some initial experiments I set out to implement a tool to do bottom-up Python package discovery and vulnerability analysis, which became the `fetter` tool I will be demonstrating shortly.
+My search for performance led me (like many) to Rust. After some initial experiments I set out to implement a tool to do bottom-up Python package discovery and vulnerability analysis, which became the `fetter` tool I will be demonstrating shortly.
 
-More recently I have exploring broader cybersecurity and developer tools. I created a tool called `disclude` which is specialized for discovering code obfuscation with AST heuristics and LLM review. Using typescript, I built a tool called VulnSig that encodes CVSS scores as distinct visual glyphs. And in Python I have built an AI agent called Spinwright that, via a GitHub action, performs performance analysis and optimization.
+More recently I have been exploring broader cybersecurity and developer tools. In Rust I created a tool called `disclude` which is specialized for discovering code obfuscation with AST heuristics and LLM review. Using typescript, I built a tool called VulnSig that encodes CVSS scores as distinct visual glyphs. And in Python I built an AI agent called Spinwright that, via a GitHub action, performs iterative performance analysis and optimization.
 
 ## Tool demonstration
 
-Our focus for today is `fetter`, a command-line application written in Rust. Fetter is designed for bottom-up Python package discovery. Rather than relying on the Python packages as defined in requirements or lock files, fetter discovers every Python executable and, from that, every site-packages directory and importable Python package. Once we have discovered all packages, we can do vulnerability discovery, allow-list enforcement, and a number of other things.
+Our focus for today is `fetter`, a command-line application written in Rust. Fetter is designed for bottom-up Python package discovery. Rather than relying just on the packages named in requirements or lock files, fetter discovers every Python executable and, from that, every site-packages directory and importable Python package. Once we have discovered all packages, we can do vulnerability discovery, allow-list enforcement, and a number of other things.
 
-Now there are numerous other tools that attempt to solve related problems by putting barriers between users and package repositories. My view, however, is that every one of those barriers can be circumvented, sometimes trivially, and as such, there is still a need for a tool that discovers packages from the ground up, regardless of assumed controls or lock-file enforcement.
-
+Now there are numerous other tools that attempt to solve related problems by putting barriers between users and package repositories. My view, however, is that every one of those barriers can be circumvented, sometimes trivially, and as such, there is still a need for a tool that discovers packages from the ground up.
 
 ### System Searching
 
@@ -64,7 +63,7 @@ Packages     595
 
 What is great about this approach is that you probably do not really know what is on your system! You might have old Python versions, abandoned virtual environments, or system-installed packages that you you did not even know were there.
 
-`fetter` commands permit using a `-e` (short for `--exe`) parameter to optionally specify the Python executables used to discover importable packages. For example, we can provide the current active `python` executable:
+`fetter` commands permit using an `-e` (short for `--exe`) parameter to optionally specify the Python executables used to discover importable packages. For example, we can provide the current active `python` executable as a value for `-e`:
 
 ```bash
 $ fetter -e python3 count
@@ -95,7 +94,7 @@ The `fetter` CLI has many subcommands beyond `count`. Another is `scan`: given t
 $ fetter scan
 ```
 
-With the same context, we can search for packages matching a pattern. For example, to find all versions of NumPy on my system I can do the following:
+Rather than return all results, we can search for packages matching a pattern. For example, to find all versions of NumPy on my system I can do the following:
 
 ```bash
 $ fetter search -p numpy*
@@ -123,7 +122,7 @@ numpy-2.4.4   ~/_x/src/spinwright-sf/.venv/lib/python3.14/site-packages
 
 ### Deriving a Bound Requirements File
 
-With a full listing of packages across many environments, we can derive what I call a "bound" requirements file. By specifying a "lower" anchor we will find the lowest version for each package and set the requirement to be greater than or equal to that version.
+With a full inventory of all packages across many environments, we can derive what I call a "bound" requirements file. By specifying a "lower" anchor we will find the lowest version for each package and set the requirement to be greater than or equal to that version.
 
 ```bash
 $ fetter -e python3 derive --anchor lower
@@ -132,7 +131,7 @@ fetter>=3.4.0
 pip>=25.2
 ```
 
-We will see later how we can use these files as an allow list to validate all packages.
+We will see later how we can use these files as a system-wide allow list.
 
 
 ### Discovering Local Vulnerabilities
@@ -145,7 +144,8 @@ $ fetter audit
 
 You will probably see a lot results. Notice that, for each vulnerability, we get a number of reference URLs, the CVSS score, and the CVSS vector.
 
-Now if we just want to see the vulnerabilities with the highest CVSS scores, we can use the `--cvss` flag without arguments:
+Now if we just want to see the vulnerabilities with the highest CVSS scores, we can use the `--cvss` flag without arguments. With an argument, we can set a minimum CVSS score.
+
 
 ```bash
 $ fetter audit --cvss
@@ -164,10 +164,6 @@ torch-2.3.1          PYSEC-2024-259   URL        https://osv.dev/vulnerability/P
                                       Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
 ```
 
-<< With an argument, we can specify the minimum CVSS score to report on >>
-
-As with other commands, we can target this search to one or many environments.
-
 
 ### Enumerating & Purging Packages
 
@@ -179,7 +175,7 @@ Package      Site                                         Files  Dirs
 torch-2.3.1  ~/.env311-sage/lib/python3.11/site-packages  12652  2
 ```
 
-And, with a similar interface, we can entirely remove these packages with the `purge-pattern` command:
+And, with a similar interface, we can entirely remove these packages from all environments with the `purge-pattern` command:
 
 ```bash
 $ fetter purge-pattern --pattern torch-2.3.1
@@ -207,26 +203,25 @@ fetter lookup-bound https://github.com/ModelTC/LightLLM.git
 
 ### Systen-Wide Package Allow Listing
 
-Given a lock or requirements file, such as derived above, we can use that file to measure the conformity to the current environment. For example, to write out a requirements file for all packages on my system I can do the following:
+Given a lock or requirements file such as derived above, we can use that file to measure conformity to the current environment. For example, to write out a bound requirements file for all packages on my system I can do the following:
 
 ```bash
 $ fetter derive --anchor lower write -o /tmp/bound.txt
 ```
 
-To validate my environment against the current state of packages, I can use the `fetter validate` command and provide this bound requirements file.
+To validate my environment against the current state of packages, I can use the `fetter validate` command and provide this file. Of course, this will fully validate unless we change the installed packages or the bound requirements. We can remove a few lines and then validate to see that we now have a few "Unrequired" parameters.
 
 ```bash
+$ sed -i '' '19,20d' /tmp/bound.txt
 $ fetter validate --bound /tmp/bound.txt
 ```
 
-<< need to show some examples if violations >>
+Convenient options such as `--subset` and `--superset` permit the observed packages to be either a subset or superset (respectively) of the bound requirements. If we want to permit unrequired packages, we can use the `--superset` flag:
 
-Convenient options such as `--subset` and `--superset` permit the observed packages to be either a subset or superset (respectively) of the bound requirements.
-
-
+```bash
+$ fetter validate --superset --bound /tmp/bound.txt
+```
 
 ### Conclusion
 
-I hope to have shown you that `fetter` offers a powerful resource for local, bottom-up package discovery, vulnerability lookup, and system-wide allow-list enforcement.
-
-<!-- There are a few other things we can do with `fetter` not shown here: we can set up automatic validation of package installation conformity to an allow list that is run on every command, or we can use `fetter` as a persistent agent that sends scan results at some periodicity. -->
+I hope to have shown you that `fetter` offers a powerful resource for local, bottom-up package and vulnerability discovery. These tools can be used on local or arbitrary packages and project requirements. With a bound requirements file, system-wide, cross-project allow-list monitoring is also possible.
