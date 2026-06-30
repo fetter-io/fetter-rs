@@ -22,31 +22,60 @@ Your recorded demo should cover:
     Tool demonstration – Walk through your tool and its key features
 
 
+
+
 ## Introduction
 
 Greetings. My name is Chris Ariza and I will be demonstrating the `fetter` command-line utility as part of this year's Black Hat Arsenal.
 
+<< slide >>
+
+Fetter is a command-line application for "bottom-up" Python vulnerability discovery and allow list enforcement. Fetter presently works on Linux and MacOS.
+
+You can learn more about fetter at the GitHub page shown below.
+
+If you want to try it out immediately, you can use pipx or uvx to install and run it immediately
+
+<< slide >>
+
 A little bit about me first.
 
-I started coding in Python 26 years ago while I was in graduate school. Back then I was exploring the usage of algorithmic processes to generate music, and Python was a natural fit.
+I am presently CTO at Research Affiliates, a finance firm located in Newport Beach, California.
 
-After a number of years in academia I took a position as a software engineer at Research Affiliates, a finance firm in Newport Beach, California. I went on to build and lead a team of engineers, and was later appointed CTO. It was in that role that I began to focus on cybersecurity: understanding the threats, getting familiar with commercial tools, and exploring the implementation of new tools. The open-source supply chain stood out as a significant risk, inspiring my work on `fetter`.
+Having been a software engineer for over 20 years, in this role I began to to explore the implementation of new cybersecurity tools.
 
-## Your Work
+An early area of focus was risks in the open-source supply chain. It is for this reason I created fetter.
 
-While I have been in leadership roles for many years, I have remained very active in software engineering. Now, with agentic-coding tools, I have been able to expand my work considerably.
+<< slide >>
 
-For over eight years I have been developing StaticFrame, an alternative Python DataFrame library built on an immutable data model. This library was critical to developing maintainable systems for portfolio construction, data ingestion, and analytics. Further, as performance is critical for such libraries, I implemented numerous optimized routines as Python C extensions in a library called ArrayKit.
+Beyond fetter I develop a number of other open-source tools
 
-My search for performance led me (like many) to Rust. After some initial experiments I set out to implement a tool to do bottom-up Python package discovery and vulnerability analysis, which became the `fetter` tool I will be demonstrating shortly.
+For over eight years I have been developing StaticFrame, an alternative Python DataFrame library built on an immutable data model. As performance is critical for such a tool, my work on this project led me to implement numerous optimized routines as Python C extensions in a library called ArrayKit.
 
-More recently I have been exploring broader cybersecurity and developer tools. In Rust I created a tool called `disclude` which is specialized for discovering code obfuscation with AST heuristics and LLM review. Using typescript, I built a tool called VulnSig that encodes CVSS scores as distinct visual glyphs. And in Python I built an AI agent called Spinwright that, via a GitHub action, performs iterative performance analysis and optimization.
+For over two years I have been working on the Rust-based `fetter` tool I will be demonstrating shortly. More recently I have been working on a TypeScript web app called Fetter IO that permits aggregating and displaying fetter scan data.
+
+This year I created VulnSig.io, a web app and toolkit for representing CVSS vectors as expressive visual glyphs. The VulnSig.io site provides a regularly updated feed of recent CVEs and KEVs using VulnSig glyphs
+
+And most recently I hav been working on `disclude`, Rust-based tool specialized for discovering code obfuscation with AST heuristics and LLM review.
+
+<< slide >>
+
+Our focus for today is `fetter`, a command-line application written in Rust.
+
+Even though the core is in Rust, I provide a Python package for easy installation.
+
+Fetter is designed for bottom-up Python package discovery. Rather than relying on the Python packages as defined in requirements or lock files, fetter discovers every Python executable and, from that, every site-packages directory and importable Python package.
+
+Once we have discovered all packages, we can search for specific packages, perform vulnerability discovery, and enforce allow-lists.
+
+Now there are numerous other tools that attempt to solve related problems by putting barriers between users and package repositories. My view, however, is that every one of those barriers can be circumvented, sometimes trivially, and as such, there is still a need for a tool that discovers packages from the ground up, regardless of assumed controls or lock-file enforcement.
+
+
+
 
 ## Tool demonstration
 
-Our focus for today is `fetter`, a command-line application written in Rust. Fetter is designed for bottom-up Python package discovery. Rather than relying just on the packages named in requirements or lock files, fetter discovers every Python executable and, from that, every site-packages directory and importable Python package. Once we have discovered all packages, we can do vulnerability discovery, allow-list enforcement, and a number of other things.
-
-Now there are numerous other tools that attempt to solve related problems by putting barriers between users and package repositories. My view, however, is that every one of those barriers can be circumvented, sometimes trivially, and as such, there is still a need for a tool that discovers packages from the ground up.
+Lets start with a basic system-wide search. The `fetter count` command, by default, will search your entire system to find all unique Pythons and `site-packages` directories. Using multi-threaded Rust, this is quite fast, but will take a number of seconds depending on your environment.
 
 ### System Searching
 
@@ -55,10 +84,6 @@ Lets start with a basic system-wide search. The `fetter count` command, by defau
 ```bash
 $ pip3 install fetter
 $ fetter count
-             Count
-Executables  46
-Sites        46
-Packages     595
 ```
 
 What is great about this approach is that you probably do not really know what is on your system! You might have old Python versions, abandoned virtual environments, or system-installed packages that you you did not even know were there.
@@ -126,9 +151,6 @@ With a full inventory of all packages across many environments, we can derive wh
 
 ```bash
 $ fetter -e python3 derive --anchor lower
-# via fetter
-fetter>=3.4.0
-pip>=25.2
 ```
 
 We will see later how we can use these files as a system-wide allow list.
@@ -149,19 +171,6 @@ Now if we just want to see the vulnerabilities with the highest CVSS scores, we 
 
 ```bash
 $ fetter audit --cvss
-Package              Vulnerabilities  Attribute  Value
-cryptography-45.0.4  PYSEC-2026-36    URL        https://osv.dev/vulnerability/PYSEC-2026-36
-                                      Reference  http://www.openwall.com/lists/oss-security/2026/04/08/12
-                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
-cryptography-46.0.4  PYSEC-2026-36    URL        https://osv.dev/vulnerability/PYSEC-2026-36
-                                      Reference  http://www.openwall.com/lists/oss-security/2026/04/08/12
-                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
-torch-2.3.1          PYSEC-2024-259   URL        https://osv.dev/vulnerability/PYSEC-2024-259
-                                      Reference  https://rumbling-slice-eb0.notion.site/Distributed-RPC-Framework-RemoteMo…
-                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
-                     PYSEC-2025-41    URL        https://osv.dev/vulnerability/PYSEC-2025-41
-                                      Reference  https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6
-                                      Severity   CVSS 9.8 (Critical): CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
 ```
 
 
@@ -171,8 +180,7 @@ Having identified packages with vulnerabilities, we can examine the package and 
 
 ```bash
 $ fetter unpack-count --pattern torch-2.3.1
-Package      Site                                         Files  Dirs
-torch-2.3.1  ~/.env311-sage/lib/python3.11/site-packages  12652  2
+
 ```
 
 And, with a similar interface, we can entirely remove these packages from all environments with the `purge-pattern` command:
