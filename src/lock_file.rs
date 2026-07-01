@@ -50,7 +50,7 @@ impl LockFile {
                 return LockFileType::Poetry;
             }
             // UV TOML format
-            if t.starts_with("[[distribution]]") {
+            if t.starts_with("[[distribution]]") || t.starts_with("[manifest]") {
                 return LockFileType::UvLock;
             }
             // PEP 751 TOML format
@@ -86,7 +86,11 @@ impl LockFile {
         let parsed: TomlValue = self.content.parse()?; // Parse as TOML
         let mut dependencies = Vec::new();
 
-        if let Some(dists) = parsed.get("distribution").and_then(|p| p.as_array()) {
+        if let Some(dists) = parsed
+            .get("distribution")
+            .or_else(|| parsed.get("package"))
+            .and_then(|p| p.as_array())
+        {
             for d in dists {
                 // assume that there is always a version number
                 if let (Some(name), Some(version)) = (
@@ -485,6 +489,43 @@ wheels = [
                 "zipp==3.18.1"
             ]
         );
+    }
+
+    #[test]
+    fn test_get_dependencies_uv_d() {
+        let content = r#"
+version = 1
+revision = 3
+requires-python = ">=3.10, <3.14"
+resolution-markers = [
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
+    "python_full_version < '3.11'",
+]
+
+[options]
+exclude-newer = "2026-06-27T20:21:25.609736Z"
+exclude-newer-span = "P3D"
+
+[manifest]
+members = ["litellm"]
+
+[[package]]
+name = "a2a-sdk"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "aiodynamo"
+version = "24.7"
+source = { registry = "https://pypi.org/simple" }
+        "#;
+
+        let lockfile = LockFile::new(content.to_string());
+        let dependencies = lockfile.get_dependencies(None).unwrap();
+
+        assert_eq!(dependencies, vec!["a2a-sdk==1.1.0", "aiodynamo==24.7"]);
     }
 
     #[test]
