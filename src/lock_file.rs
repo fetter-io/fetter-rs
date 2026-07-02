@@ -49,8 +49,17 @@ impl LockFile {
             if t.starts_with("[metadata]") || t.starts_with("[[package]]") {
                 return LockFileType::Poetry;
             }
-            // UV TOML format
-            if t.starts_with("[[distribution]]") || t.starts_with("[manifest]") {
+            // UV TOML format. Both uv.lock and poetry.lock use `[[package]]`,
+            // so uv is identified by its unique top-level preamble, which is
+            // always emitted before the first package. This also avoids relying
+            // on a package section appearing within the scanned line window: a
+            // large `resolution-markers` array can push `[[package]]` well past
+            // it.
+            if t.starts_with("[[distribution]]")
+                || t.starts_with("[manifest]")
+                || t.starts_with("[options]")
+                || t.starts_with("resolution-markers")
+            {
                 return LockFileType::UvLock;
             }
             // PEP 751 TOML format
@@ -526,6 +535,49 @@ source = { registry = "https://pypi.org/simple" }
         let dependencies = lockfile.get_dependencies(None).unwrap();
 
         assert_eq!(dependencies, vec!["a2a-sdk==1.1.0", "aiodynamo==24.7"]);
+    }
+
+    #[test]
+    fn test_get_dependencies_uv_e() {
+        // uv.lock with no `[manifest]` and a large `resolution-markers`
+        // preamble that pushes `[[package]]` past the detection scan window.
+        let content = r#"
+version = 1
+revision = 2
+requires-python = ">=3.10, <3.14"
+resolution-markers = [
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
+    "python_full_version == '3.10.*'",
+    "python_full_version == '3.9.*'",
+    "python_full_version == '3.8.*'",
+    "python_full_version == '3.7.*'",
+    "python_full_version == '3.6.*'",
+    "python_full_version == '3.5.*'",
+    "python_full_version == '3.4.*'",
+    "python_full_version == '3.3.*'",
+    "python_full_version == '3.2.*'",
+    "python_full_version == '3.1.*'",
+    "python_full_version == '3.0.*'",
+    "python_full_version < '3.0'",
+]
+
+[[package]]
+name = "attrs"
+version = "23.2.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "requests"
+version = "2.32.3"
+source = { registry = "https://pypi.org/simple" }
+        "#;
+
+        let lockfile = LockFile::new(content.to_string());
+        assert_eq!(lockfile.file_type, LockFileType::UvLock);
+        let dependencies = lockfile.get_dependencies(None).unwrap();
+        assert_eq!(dependencies, vec!["attrs==23.2.0", "requests==2.32.3"]);
     }
 
     #[test]
