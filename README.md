@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/pypi/v/fetter?label=PyPI&logo=pypi"></img>
 </a>
 
-## System-wide Python Package Discovery, Validation, and Allow-Listing.
+## System-wide Python Package Discovery, Validation, and Allow-Listing
 
 
 The `fetter` command-line tool scans and validates Python packages across virtual environments or entire systems, ensuring packages conform to specified requirements or lock files. It identifies unapproved or vulnerable packages, supports continuous integration with 'pre-commit', and offers excellent performance thanks to a multi-threaded Rust implementation.
@@ -468,6 +468,11 @@ repos:
 
 
 ## What is New in Fetter
+
+### 3.5.0
+
+Additional robustness in identifying and parsing `uv` lock files.
+
 
 ### 3.4.0
 
