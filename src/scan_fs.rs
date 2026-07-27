@@ -1696,7 +1696,13 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
             FlagLog(false),
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
-        assert_eq!(json, r#"[]"#);
+        // Both dependencies are gated on `sys_platform == "win32"`, so they are
+        // required (and Missing) on Windows but excluded on other platforms.
+        #[cfg(windows)]
+        let expected = r#"[{"package":null,"dependency":"pathlib2==2.3.7.post1; sys_platform == \"win32\"","explain":"Missing","sites":null},{"package":null,"dependency":"six==1.17.0; python_version != '3.0.*' and python_version != '3.1.*' and python_version != '3.2.*' and python_version >= '2.7' and sys_platform == \"win32\"","explain":"Missing","sites":null}]"#;
+        #[cfg(not(windows))]
+        let expected = r#"[]"#;
+        assert_eq!(json, expected);
     }
 
     //--------------------------------------------------------------------------
@@ -2025,8 +2031,12 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
 
     #[test]
     fn test_from_exes_equality_comparison() {
-        let exe1 = PathBuf::from("/usr/bin/python3");
-        let exe2 = PathBuf::from("/usr/bin/python3");
+        // Use a bare interpreter name so exe_path_normalize resolves it to a real,
+        // existing path on every platform (a hardcoded /usr/bin/python3 does not
+        // exist on Windows).
+        let name = crate::util::default_python_exe_names()[0];
+        let exe1 = PathBuf::from(name);
+        let exe2 = PathBuf::from(name);
 
         let exes = vec![exe1.clone(), exe2.clone()];
 

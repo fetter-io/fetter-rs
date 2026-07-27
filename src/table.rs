@@ -4,7 +4,6 @@ use crossterm::tty::IsTty;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Write};
-use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 // use crate::util::get_writer;
@@ -124,7 +123,7 @@ fn to_table_delimited<W: Write, T: Rowable>(
 }
 
 /// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
-fn to_table_display<W: Write + AsRawFd, T: Rowable>(
+fn to_table_display<W: Write + IsTty, T: Rowable>(
     writer: &mut W,
     column_formats: Vec<ColumnFormat>,
     records: &Vec<T>,

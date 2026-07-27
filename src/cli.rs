@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::process;
 
 use crate::inspect_report::InspectReport;
+use crate::util::default_python_exe_names;
 use crate::util::get_absolute_path_from_exe;
 use crate::validation_report::ValidationFlags;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -631,9 +632,6 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    if env::consts::OS != "macos" && env::consts::OS != "linux" {
-        return Err("No support for this platform. To request support, visit https://github.com/fetter-io/fetter-rs/issues/112".into());
-    }
     let cli = Cli::parse_from(args);
     if cli.command.is_none() {
         return Err("No command provided. For more information, try '--help'.".into());
@@ -952,8 +950,12 @@ where
                     log,
                 )?,
             };
-            // NOTE: loading EnvMarkerState from the currently active Python if available
-            let ems = match get_absolute_path_from_exe("python3") {
+            // NOTE: loading EnvMarkerState from the currently active Python if available;
+            // interpreter name varies by platform ("python" first on Windows).
+            let exe = default_python_exe_names()
+                .iter()
+                .find_map(|name| get_absolute_path_from_exe(name));
+            let ems = match exe {
                 Some(exe) => Some(EnvMarkerState::from_exe(exe.as_path())?),
                 None => None,
             };

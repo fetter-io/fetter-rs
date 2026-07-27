@@ -1,4 +1,5 @@
 use crate::write_color::write_color;
+use crossterm::tty::IsTty;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::env;
@@ -7,7 +8,7 @@ use std::fs;
 use std::io;
 use std::io::Stderr;
 use std::ops::DerefMut;
-use std::os::fd::{AsRawFd, RawFd};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -179,11 +180,11 @@ impl io::Write for StdWriter {
     }
 }
 
-impl AsRawFd for StdWriter {
-    fn as_raw_fd(&self) -> RawFd {
+impl IsTty for StdWriter {
+    fn is_tty(&self) -> bool {
         match self {
-            StdWriter::Stdout(stdout) => stdout.as_raw_fd(),
-            StdWriter::Stderr(stderr) => stderr.as_raw_fd(),
+            StdWriter::Stdout(stdout) => stdout.is_tty(),
+            StdWriter::Stderr(stderr) => stderr.is_tty(),
         }
     }
 }
@@ -259,24 +260,55 @@ pub(crate) fn get_absolute_path_from_exe(executable: &str) -> Option<PathBuf> {
 // Determine if the Path is an exe; must be an absolute path.
 fn is_python_exe_file_name(path: &Path) -> bool {
     match path.file_name().and_then(|f| f.to_str()) {
-        Some(name) if name.starts_with("python") => {
-            let suffix = &name[6..];
-            // NOTE: this will not work for windows .exe
-            suffix.is_empty() || suffix.chars().all(|c| c.is_ascii_digit() || c == '.')
+        Some(name) => {
+            // On Windows the interpreter is named "python.exe"; strip a trailing
+            // ".exe" (case-insensitively) so the same digit/dot rule applies.
+            // ".exe" is ASCII, so the prefix length is always a char boundary.
+            let stem = match name.to_ascii_lowercase().strip_suffix(".exe") {
+                Some(prefix) => &name[..prefix.len()],
+                None => name,
+            };
+            match stem.strip_prefix("python") {
+                Some(suffix) => {
+                    suffix.is_empty()
+                        || suffix.chars().all(|c| c.is_ascii_digit() || c == '.')
+                }
+                None => false,
+            }
         }
-        _ => false,
+        None => false,
     }
 }
 
 // Return True if the absolute path points to a python executable. We assume this has already been proven to exist.
 pub(crate) fn is_python_exe(path: &Path) -> bool {
-    if is_python_exe_file_name(path) {
+    if !is_python_exe_file_name(path) {
+        return false;
+    }
+    #[cfg(unix)]
+    {
         match fs::metadata(path) {
             Ok(md) => md.permissions().mode() & 0o111 != 0,
             Err(_) => false,
         }
+    }
+    // On Windows there is no execute bit; require an ".exe" regular file.
+    #[cfg(not(unix))]
+    {
+        path.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+            && path.is_file()
+    }
+}
+
+/// Interpreter names to try when resolving a default Python. On Windows the
+/// interpreter is typically "python" (python.org installs ship python.exe,
+/// usually not python3.exe), so we try that first.
+pub(crate) fn default_python_exe_names() -> &'static [&'static str] {
+    if env::consts::OS == "windows" {
+        &["python", "python3"]
     } else {
-        false
+        &["python3"]
     }
 }
 
@@ -635,9 +667,14 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_get_absolute_path_from_exe_a() {
-        let p = get_absolute_path_from_exe("python3");
+        // The interpreter name and the resolved file name differ by platform.
+        #[cfg(windows)]
+        let (name, tail) = ("python", "python.exe");
+        #[cfg(not(windows))]
+        let (name, tail) = ("python3", "python3");
+        let p = get_absolute_path_from_exe(name);
         assert!(p.clone().unwrap().is_absolute());
-        assert!(p.unwrap().ends_with("python3"));
+        assert!(p.unwrap().ends_with(tail));
     }
 
     #[test]

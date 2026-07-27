@@ -400,7 +400,7 @@ impl DepSpec {
     pub fn to_spec(&self) -> String {
         let marker = match self.env_marker.is_empty() {
             true => "".to_string(),
-            false => format!("; {}", &self.env_marker),
+            false => format!("; {}", self.env_marker),
         };
         // if we have versions, we do not need URL
         if !self.versions.is_empty() {
@@ -421,7 +421,7 @@ impl fmt::Display for DepSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let marker = match self.env_marker.is_empty() {
             true => "".to_string(),
-            false => format!("; {}", &self.env_marker),
+            false => format!("; {}", self.env_marker),
         };
         let mut parts = Vec::new();
         // if we have versions, we do not need URL

@@ -17,7 +17,10 @@ pub struct SystemTag {
 
 impl SystemTag {
     pub(crate) fn from_system() -> std::io::Result<Self> {
-        let username = env::var("USER").unwrap_or_else(|_| "unknown".into());
+        // Windows sets USERNAME rather than USER.
+        let username = env::var("USER")
+            .or_else(|_| env::var("USERNAME"))
+            .unwrap_or_else(|_| "unknown".into());
 
         let os_name = env::consts::OS.to_string();
 
@@ -36,6 +39,8 @@ impl SystemTag {
                         }
                     },
                 )
+        } else if os_name == "windows" {
+            env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
         } else {
             fs::read_to_string("/etc/hostname")
                 .or_else(|_| fs::read_to_string("/proc/sys/kernel/hostname"))
@@ -57,6 +62,21 @@ impl SystemTag {
                         }
                     },
                 )
+        } else if os_name == "windows" {
+            // `cmd /c ver` prints e.g. "Microsoft Windows [Version 10.0.19045.3803]".
+            Command::new("cmd")
+                .arg("/c")
+                .arg("ver")
+                .output()
+                .ok()
+                .and_then(|output| {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    text.split_once('[')
+                        .and_then(|(_, rest)| rest.split_once(']').map(|(v, _)| v))
+                        .map(|v| v.trim().replace("Version ", ""))
+                })
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "unknown".to_string())
         } else {
             fs::read_to_string("/etc/os-release")
                 .ok()
