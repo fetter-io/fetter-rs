@@ -469,6 +469,11 @@ repos:
 
 ## What is New in Fetter
 
+### 4.0.0
+
+Support for Windows added.
+
+
 ### 3.5.0
 
 Additional robustness in identifying and parsing `uv` lock files.
