@@ -122,7 +122,7 @@ fn to_table_delimited<W: Write, T: Rowable>(
     Ok(())
 }
 
-/// Wite Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
+/// Write Rowables to a writer. If `delimiter` is None, we assume writing to stdout; if `delimiter` is not None, we assume writing a delimited text file.
 fn to_table_display<W: Write + IsTty, T: Rowable>(
     writer: &mut W,
     column_formats: Vec<ColumnFormat>,

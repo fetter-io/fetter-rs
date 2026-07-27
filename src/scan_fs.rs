@@ -763,6 +763,16 @@ mod tests {
     // use rand::seq::SliceRandom;
     // use rand::rng;
 
+    /// Resolve a real interpreter path the way production code does, so tests
+    /// that evaluate environment markers spawn an interpreter that actually
+    /// exists on this platform (Windows often has "python", not "python3").
+    fn resolved_python_exe() -> PathBuf {
+        crate::util::default_python_exe_names()
+            .iter()
+            .find_map(|name| crate::util::get_absolute_path_from_exe(name))
+            .expect("no python interpreter found on PATH")
+    }
+
     #[test]
     fn test_get_site_package_dirs_a() {
         let p1 = Path::new("python3");
@@ -1637,7 +1647,9 @@ mod tests {
 
     #[test]
     fn test_validation_evn_marker_e() {
-        let exe = PathBuf::from("python3");
+        // Resolve a real interpreter so the win32 markers evaluate against this
+        // platform (a bare "python3" may not be spawnable on Windows).
+        let exe = resolved_python_exe();
         let site = PathBuf::from("/usr/lib/python3/site-packages");
         let packages = vec![];
         let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
