@@ -81,7 +81,11 @@ fn add_package(site: &Path, name: &str, version: &str, record: &[(&str, &str)]) 
         if let Some(parent) = fp.parent() {
             fs::create_dir_all(parent).unwrap();
         }
-        fs::write(&fp, "x").unwrap();
+        // Materialize the listed file, but never clobber a file already written
+        // for this package (e.g. the real METADATA when it appears in RECORD).
+        if !fp.exists() {
+            fs::write(&fp, "x").unwrap();
+        }
     }
     fs::write(di.join("RECORD"), rec).unwrap();
 }

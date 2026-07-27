@@ -261,13 +261,11 @@ pub(crate) fn get_absolute_path_from_exe(executable: &str) -> Option<PathBuf> {
 fn is_python_exe_file_name(path: &Path) -> bool {
     match path.file_name().and_then(|f| f.to_str()) {
         Some(name) => {
-            // On Windows the interpreter is named "python.exe"; strip a trailing
-            // ".exe" (case-insensitively) so the same digit/dot rule applies.
-            // ".exe" is ASCII, so the prefix length is always a char boundary.
-            let stem = match name.to_ascii_lowercase().strip_suffix(".exe") {
-                Some(prefix) => &name[..prefix.len()],
-                None => name,
-            };
+            // Compare case-insensitively: Windows paths are case-insensitive, and
+            // the interpreter is named "python.exe" there, so lowercase the whole
+            // name before stripping the optional ".exe" and the "python" prefix.
+            let lower = name.to_ascii_lowercase();
+            let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
             match stem.strip_prefix("python") {
                 Some(suffix) => {
                     suffix.is_empty()
@@ -614,6 +612,20 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let fp = temp_dir.path().join("python3.12.1000");
         assert!(is_python_exe_file_name(&fp));
+    }
+
+    #[test]
+    fn test_is_python_exe_file_name_d() {
+        // Mixed-case name with an uppercase ".EXE" (valid on case-insensitive
+        // Windows) must still be recognized.
+        let temp_dir = tempdir().unwrap();
+        assert!(is_python_exe_file_name(&temp_dir.path().join("Python.EXE")));
+        assert!(is_python_exe_file_name(
+            &temp_dir.path().join("PYTHON3.exe")
+        ));
+        assert!(!is_python_exe_file_name(
+            &temp_dir.path().join("notpython.exe")
+        ));
     }
 
     #[test]
