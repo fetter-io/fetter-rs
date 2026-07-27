@@ -667,9 +667,14 @@ mod tests {
     //--------------------------------------------------------------------------
     #[test]
     fn test_get_absolute_path_from_exe_a() {
-        let p = get_absolute_path_from_exe("python3");
+        // The interpreter name and the resolved file name differ by platform.
+        #[cfg(windows)]
+        let (name, tail) = ("python", "python.exe");
+        #[cfg(not(windows))]
+        let (name, tail) = ("python3", "python3");
+        let p = get_absolute_path_from_exe(name);
         assert!(p.clone().unwrap().is_absolute());
-        assert!(p.unwrap().ends_with("python3"));
+        assert!(p.unwrap().ends_with(tail));
     }
 
     #[test]
