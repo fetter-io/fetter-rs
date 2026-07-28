@@ -469,6 +469,11 @@ repos:
 
 ## What is New in Fetter
 
+### 4.0.1
+
+Updated `sha2` and `toml` dependencies.
+
+
 ### 4.0.0
 
 Support for Windows added.
