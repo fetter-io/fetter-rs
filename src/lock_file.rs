@@ -92,7 +92,7 @@ impl LockFile {
 
     /// Extracts dependencies from a `uv` native file and formats them as `package==version`.
     fn get_uv_native_dep(&self) -> ResultDynError<Vec<String>> {
-        let parsed: TomlValue = self.content.parse()?; // Parse as TOML
+        let parsed: TomlValue = toml::from_str(&self.content)?;
         let mut dependencies = Vec::new();
 
         if let Some(dists) = parsed
@@ -115,7 +115,7 @@ impl LockFile {
 
     /// Extracts dependencies from a `Poetry` lock file and formats them as `package==version`.
     fn get_poetry_dep(&self) -> ResultDynError<Vec<String>> {
-        let parsed: TomlValue = self.content.parse()?; // Parse as TOML
+        let parsed: TomlValue = toml::from_str(&self.content)?;
         let mut dependencies = Vec::new();
 
         if let Some(packages) = parsed.get("package").and_then(|p| p.as_array()) {
@@ -149,7 +149,7 @@ impl LockFile {
 
     /// Extracts dependencies from a PEP 751 lock file and formats them as `package==version`.
     fn get_pep751_dep(&self) -> ResultDynError<Vec<String>> {
-        let parsed: TomlValue = self.content.parse()?; // Parse as TOML
+        let parsed: TomlValue = toml::from_str(&self.content)?;
         let mut dependencies = Vec::new();
 
         if let Some(packages) = parsed.get("packages").and_then(|p| p.as_array()) {
