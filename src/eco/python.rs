@@ -17,7 +17,9 @@ use crate::util::default_python_exe_names;
 use crate::util::exe_path_normalize;
 use crate::util::get_absolute_path_from_exe;
 use crate::util::is_python_exe;
+use crate::util::is_python_exe_file_name;
 use crate::util::logger;
+use crate::util::path_normalize;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
@@ -184,7 +186,24 @@ impl EcosystemScanner for PythonScanner {
         }
     }
 
+    /// Accept paths named like an interpreter (`python3`, `/usr/bin/python3.12`, `python.exe`) or a virtual environment directory.
+    fn accepts(&self, path: &Path) -> bool {
+        is_python_exe_file_name(path)
+            || path_normalize(path, false).is_ok_and(|p| p.join("pyvenv.cfg").is_file())
+    }
+
     fn normalize_origin(&self, path: &Path) -> ResultDynError<Origin> {
+        let fp = path_normalize(path, false)?;
+        if fp.join("pyvenv.cfg").is_file() {
+            let exe = venv_exe(&fp);
+            if !is_python_exe(&exe) {
+                return Err(format!(
+                    "No interpreter found in virtual environment: {fp:?}"
+                )
+                .into());
+            }
+            return Ok(origin(exe));
+        }
         Ok(origin(exe_path_normalize(path)?))
     }
 
@@ -350,6 +369,28 @@ mod tests {
         assert!(d.prune);
         assert_eq!(d.origins.len(), 1);
         assert!(d.origins[0].as_path().ends_with("bin/python3"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_venv_origin_a() {
+        let temp_dir = tempdir().unwrap();
+        let fpd1 = temp_dir.path();
+        let _ = File::create(fpd1.join("pyvenv.cfg")).unwrap();
+        fs::create_dir(fpd1.join("bin")).unwrap();
+        make_exe(&fpd1.join("bin/python3"));
+
+        assert!(PythonScanner.accepts(fpd1));
+        assert!(!PythonScanner.accepts(&fpd1.join("bin")));
+        let o = PythonScanner.normalize_origin(fpd1).unwrap();
+        assert_eq!(o.as_path(), fpd1.join("bin/python3"));
+    }
+
+    #[test]
+    fn test_accepts_a() {
+        assert!(PythonScanner.accepts(Path::new("python3")));
+        assert!(PythonScanner.accepts(Path::new("/usr/bin/python3.12")));
+        assert!(!PythonScanner.accepts(Path::new("/usr/bin/node")));
     }
 
     #[cfg(unix)]

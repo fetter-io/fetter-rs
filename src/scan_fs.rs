@@ -16,10 +16,9 @@ use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
-use crate::eco::python::PythonScanner;
+use crate::eco::infer_origin;
 use crate::eco::scanner_for;
 use crate::eco::scanners;
-use crate::eco::EcosystemScanner;
 use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::origin_site::Origin;
@@ -110,8 +109,7 @@ type ScanFSData = (
     Vec<(Ecosystem, SiteKind, usize)>, // sites: (ecosystem, kind, path index)
     Vec<(usize, Vec<usize>)>,          // origin index to site indices
     Vec<(Package, Vec<usize>)>,        // package to site indices
-    bool,                              // force_usite
-    bool,                              // all_users
+    ScanConfig,                        // config
     String,                            // origins_hash
 );
 
@@ -177,8 +175,7 @@ impl Serialize for ScanFS {
             site_table,
             origin_to_sites_idx,
             package_to_sites_idx,
-            self.config.force_usite,
-            self.config.all_users,
+            &self.config,
             &self.origins_hash,
         );
         data.serialize(serializer)
@@ -196,8 +193,7 @@ impl<'de> Deserialize<'de> for ScanFS {
             site_table,
             origin_to_sites_idx,
             package_to_sites_idx,
-            force_usite,
-            all_users,
+            config,
             origins_hash,
         ): ScanFSData = Deserialize::deserialize(deserializer)?;
 
@@ -240,10 +236,15 @@ impl<'de> Deserialize<'de> for ScanFS {
         Ok(ScanFS::from_parts(
             origin_to_sites,
             package_to_sites,
-            ScanConfig::new(force_usite, all_users),
+            config,
             origins_hash,
         ))
     }
+}
+
+/// Return true if installed artifacts of this package can be read (for `unpack-*`) and removed (for `purge-*`). Only Python (via dist-info `RECORD`) is implemented; other ecosystems are excluded until implemented. Generalizing this belongs on `EcosystemScanner`.
+fn supports_artifacts(package: &Package) -> bool {
+    package.ecosystem == Ecosystem::Python
 }
 
 /// Collect packages from a Site, dispatching to its ecosystem's scanner.
@@ -315,7 +316,7 @@ impl ScanFS {
         Ok(Self::from_parts(
             origin_to_sites,
             package_to_sites,
-            *config,
+            config.clone(),
             origins_hash,
         ))
     }
@@ -358,20 +359,23 @@ impl ScanFS {
             .with_extension("json")
     }
 
-    /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide search for Origins of all implemented ecosystems is conducted with a single filesystem walk.
-    pub(crate) fn from_exes(
-        exes: &Vec<PathBuf>,
+    /// Given user-provided origin paths, collect all Sites and Packages. Provided paths are assigned an ecosystem (among those enabled in `config`) and normalized to absolute paths; if a path is "*", a search for Origins of all enabled ecosystems is conducted with a single filesystem walk.
+    pub(crate) fn from_origin_paths(
+        paths: &Vec<PathBuf>,
         config: &ScanConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
         let mut origins: HashSet<Origin> = HashSet::new();
-        for e in exes {
-            if path_is_component(e) && *e == path_wild {
-                origins.extend(discover(&scanners(), config.all_users));
+        for p in paths {
+            if path_is_component(p) && *p == path_wild {
+                origins.extend(discover(
+                    &scanners(&config.ecosystems),
+                    config.all_users,
+                    &config.roots,
+                ));
             } else {
-                // NOTE: explicit paths are Python executables until ecosystem inference is implemented
-                origins.insert(PythonScanner.normalize_origin(e)?);
+                origins.insert(infer_origin(p, &config.ecosystems)?);
             }
         }
 
@@ -385,7 +389,7 @@ impl ScanFS {
             })
             .collect();
 
-        let origins_hash = hash_paths(exes, config);
+        let origins_hash = hash_paths(paths, config);
         Self::from_origin_to_sites(origin_to_sites, config, origins_hash)
     }
 
@@ -458,6 +462,11 @@ impl ScanFS {
             })
             .collect();
         matched
+    }
+
+    /// The ecosystems enabled for this scan.
+    pub(crate) fn ecosystems(&self) -> &[Ecosystem] {
+        &self.config.ecosystems
     }
 
     /// Return sorted packages.
@@ -551,6 +560,7 @@ impl ScanFS {
         count: bool,
     ) -> UnpackReport {
         let mut packages = self.search_by_match(pattern, case_insensitive);
+        packages.retain(supports_artifacts);
         packages.sort();
         let package_to_sites = packages
             .iter()
@@ -592,10 +602,11 @@ impl ScanFS {
         case_insensitive: bool,
         log: FlagLog,
     ) -> io::Result<()> {
-        let packages = match pattern {
+        let mut packages: Vec<Package> = match pattern {
             Some(p) => self.search_by_match(p, case_insensitive),
             None => self.package_to_sites.keys().cloned().collect(),
         };
+        packages.retain(supports_artifacts);
         // packages.sort();
         let package_to_sites = packages
             .iter()
@@ -618,6 +629,7 @@ impl ScanFS {
             .records
             .iter()
             .filter_map(|r| r.package.as_ref().cloned())
+            .filter(supports_artifacts)
             .collect();
         // packages.sort();
         let package_to_sites = packages
@@ -639,7 +651,7 @@ impl ScanFS {
         log: FlagLog,
     ) -> ResultDynError<()> {
         if self.origin_to_sites.len() > 1 {
-            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.origin_to_sites.len()).into());
+            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `--origin` to specify a single Python environment.", self.origin_to_sites.len()).into());
         }
         let ba = path_normalize(bound, true)?;
         // only a single exe, so no need to parallelize
@@ -664,7 +676,7 @@ impl ScanFS {
 
     pub(crate) fn site_validate_uninstall(&self, log: FlagLog) -> ResultDynError<()> {
         if self.origin_to_sites.len() > 1 {
-            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.origin_to_sites.len()).into());
+            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `--origin` to specify a single Python environment.", self.origin_to_sites.len()).into());
         }
         for sites in self.origin_to_sites.values() {
             if let Some(site) = sites.first() {
@@ -1771,7 +1783,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[0]]],false,false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[0]]],{\"force_usite\":false,\"all_users\":false,\"ecosystems\":[\"python\",\"npm\",\"cargo\",\"gha\",\"vscode\"],\"roots\":[]},\"7b4397190628be171714cdfbc8d6186bc23a6bd846b2d5d7daf1378f27716ae0\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.origin_to_sites.len(), 1);
@@ -1817,7 +1829,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         );
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null},[0]]],false,false,"hash"]"#;
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null},[0]]],{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode"],"roots":[]},"hash"]"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1851,7 +1863,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7"
+            "7b4397190628be171714cdfbc8d6186bc23a6bd846b2d5d7daf1378f27716ae0"
         );
     }
 
@@ -1867,7 +1879,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "2a8da48d3b320314e74fa1b06b1b1d03330f4fa801b03ac81e57409726169a94"
+            "670052a72cea79d7a207d535ba7568b455b4834c4e17f4d9347cb3666ed81c81"
         );
     }
 
@@ -1930,7 +1942,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exe2 = PathBuf::from("b");
         let exes = vec![exe1, exe2];
         let config = ScanConfig::new(false, false);
-        let post = ScanFS::from_exes(&exes, &config, FlagLog(false));
+        let post = ScanFS::from_origin_paths(&exes, &config, FlagLog(false));
         // error for bad exe
         assert!(post.is_err());
     }
@@ -1947,9 +1959,9 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let exes = vec![exe1.clone(), exe2.clone()];
 
         let config = ScanConfig::new(false, false);
-        let scan1 = ScanFS::from_exes(&exes, &config, FlagLog(false))
+        let scan1 = ScanFS::from_origin_paths(&exes, &config, FlagLog(false))
             .expect("Failed to build ScanFS from the first ordering");
-        let scan2 = ScanFS::from_exes(&exes, &config, FlagLog(false))
+        let scan2 = ScanFS::from_origin_paths(&exes, &config, FlagLog(false))
             .expect("Failed to build ScanFS from the shuffled executables");
 
         let json1 = serde_json::to_string(&scan1).expect("Failed to serialize scan1");

@@ -32,13 +32,14 @@ impl Rowable for ScanRecord {
         let pkg_display = self.package.to_string();
         let is_tty = *context == RowableContext::Tty;
 
+        let eco_display = self.package.ecosystem.to_string();
         for (i, path) in self.sites.iter().enumerate() {
-            let p = if i > 0 && is_tty {
-                "".to_string()
+            let (e, p) = if i > 0 && is_tty {
+                ("".to_string(), "".to_string())
             } else {
-                pkg_display.clone()
+                (eco_display.clone(), pkg_display.clone())
             };
-            rows.push(vec![p, path.to_string()]);
+            rows.push(vec![e, p, path.to_string()]);
         }
         rows
     }
@@ -81,6 +82,7 @@ impl ScanReport {
 impl Tableable<ScanRecord> for ScanReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Package".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
         ]
@@ -122,22 +124,22 @@ mod tests {
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
 
-        assert_eq!(lines.next().unwrap().unwrap(), "Package|Site");
+        assert_eq!(lines.next().unwrap().unwrap(), "Ecosystem|Package|Site");
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "flask-1.2|/usr/lib/python3/site-packages"
+            "python|flask-1.2|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "numpy-1.19.3|/usr/lib/python3/site-packages"
+            "python|numpy-1.19.3|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "packaging-24.1|/usr/lib/python3/site-packages"
+            "python|packaging-24.1|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "static-frame-2.13.0|/usr/lib/python3/site-packages"
+            "python|static-frame-2.13.0|/usr/lib/python3/site-packages"
         );
         assert!(lines.next().is_none());
     }

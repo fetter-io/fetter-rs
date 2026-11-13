@@ -52,6 +52,9 @@ pub(crate) trait EcosystemScanner: Sync {
     /// Called once per visited directory with its entries; may claim origins and may prune descent.
     fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect;
 
+    /// Return true if a user-provided path (e.g. from `-o`) looks like an Origin of this ecosystem. This should be cheap and should not require the path to be valid; `normalize_origin` validates.
+    fn accepts(&self, path: &Path) -> bool;
+
     /// Convert a user-provided path into an Origin of this ecosystem, validating that it exists.
     fn normalize_origin(&self, path: &Path) -> ResultDynError<Origin>;
 
@@ -78,12 +81,35 @@ pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn Ecosystem
     }
 }
 
-/// Return all implemented scanners, in canonical ecosystem order.
-pub(crate) fn scanners() -> Vec<&'static dyn EcosystemScanner> {
-    Ecosystem::ALL
+/// Return the implemented scanners for the provided ecosystems, in the provided order.
+pub(crate) fn scanners(ecosystems: &[Ecosystem]) -> Vec<&'static dyn EcosystemScanner> {
+    ecosystems.iter().filter_map(|e| scanner_for(*e)).collect()
+}
+
+/// Determine which of the provided ecosystems a user-provided path belongs to, and normalize it to an Origin. Ecosystems are tried in the provided order.
+pub(crate) fn infer_origin(
+    path: &Path,
+    ecosystems: &[Ecosystem],
+) -> ResultDynError<Origin> {
+    for scanner in scanners(ecosystems) {
+        if scanner.accepts(path) {
+            return scanner.normalize_origin(path);
+        }
+    }
+    let names: Vec<&str> = ecosystems
         .iter()
-        .filter_map(|e| scanner_for(*e))
-        .collect()
+        .filter(|e| scanner_for(**e).is_some())
+        .map(|e| e.cli_name())
+        .collect();
+    let msg = if names.is_empty() {
+        format!("Cannot determine an ecosystem for origin {path:?}: no enabled ecosystem is supported")
+    } else {
+        format!(
+            "Cannot determine an ecosystem for origin {path:?} (supported enabled ecosystems: {})",
+            names.join(", ")
+        )
+    };
+    Err(msg.into())
 }
 
 //------------------------------------------------------------------------------
@@ -99,6 +125,22 @@ mod tests {
 
     #[test]
     fn test_scanners_a() {
-        assert_eq!(scanners().len(), 1);
+        assert_eq!(scanners(&Ecosystem::ALL).len(), 1);
+        assert_eq!(scanners(&[Ecosystem::Npm]).len(), 0);
+    }
+
+    #[test]
+    fn test_infer_origin_a() {
+        let o = infer_origin(Path::new("python3"), &Ecosystem::ALL).unwrap();
+        assert_eq!(o.ecosystem, Ecosystem::Python);
+        assert!(o.as_path().is_absolute());
+    }
+
+    #[test]
+    fn test_infer_origin_b() {
+        // python is not enabled
+        assert!(infer_origin(Path::new("python3"), &[Ecosystem::Npm]).is_err());
+        // not recognized by any scanner
+        assert!(infer_origin(Path::new("/foo/bar.txt"), &Ecosystem::ALL).is_err());
     }
 }

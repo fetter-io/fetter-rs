@@ -48,24 +48,28 @@ impl Rowable for AuditRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
         let is_tty = *context == RowableContext::Tty;
 
-        let mut rows = Vec::new();
+        let mut rows: Vec<Vec<String>> = Vec::new();
         let mut package_set = false;
+        // Returns the ecosystem and package display; in a TTY, only shown on the first row of a record.
         let mut package_display = || {
             if !is_tty || !package_set {
                 package_set = true;
-                self.package.to_string()
+                (self.package.ecosystem.to_string(), self.package.to_string())
             } else {
-                "".to_string()
+                ("".to_string(), "".to_string())
             }
+        };
+        let row = |(eco, pkg): (String, String), a: String, b: String, c: String| {
+            vec![eco, pkg, a, b, c]
         };
 
         if self.vuln_ids.is_empty() {
-            rows.push(vec![
+            rows.push(row(
                 package_display(),
                 "".to_string(),
                 "".to_string(),
                 "".to_string(),
-            ]);
+            ));
         };
         for vuln_id in self.vuln_ids.iter() {
             let vuln_display = || {
@@ -76,34 +80,34 @@ impl Rowable for AuditRecord {
                 }
             };
             if let Some(vuln_info) = self.vuln_infos.get(vuln_id) {
-                rows.push(vec![
+                rows.push(row(
                     package_display(),
                     vuln_id.clone(),
                     "URL".to_string(),
                     vuln_info.get_url(),
-                ]);
+                ));
                 if let Some(summary) = &vuln_info.summary {
-                    rows.push(vec![
+                    rows.push(row(
                         package_display(),
                         vuln_display(),
                         "Summary".to_string(),
                         summary.clone(),
-                    ]);
+                    ));
                 }
-                rows.push(vec![
+                rows.push(row(
                     package_display(),
                     vuln_display(),
                     "Reference".to_string(),
                     vuln_info.references.get_prime(),
-                ]);
+                ));
 
                 if let Some(cvss_details) = &vuln_info.cvss_details {
-                    rows.push(vec![
+                    rows.push(row(
                         package_display(),
                         vuln_display(),
                         "Severity".to_string(),
                         cvss_details.get_prime(), // gets a display
-                    ]);
+                    ));
                 }
             }
         }
@@ -234,6 +238,7 @@ impl AuditReport {
 impl Tableable<AuditRecord> for AuditReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Package".to_string(), false, "#666666".to_string()),
             ColumnFormat::new(
                 "Vulnerabilities".to_string(),
@@ -304,12 +309,12 @@ mod tests {
         let mut lines = io::BufReader::new(file).lines();
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "Package,Vulnerabilities,Attribute,Value"
+            "Ecosystem,Package,Vulnerabilities,Attribute,Value"
         );
-        assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,URL,https://osv.dev/vulnerability/GHSA-48cq-79qq-6f7x");
-        assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Summary,Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files");
-        assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Reference,https://nvd.nist.gov/vuln/detail/CVE-2024-1727");
-        assert_eq!(lines.next().unwrap().unwrap(), "gradio-4.0.0,GHSA-48cq-79qq-6f7x,Severity,CVSS 4.3 (Medium): CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L");
+        assert_eq!(lines.next().unwrap().unwrap(), "python,gradio-4.0.0,GHSA-48cq-79qq-6f7x,URL,https://osv.dev/vulnerability/GHSA-48cq-79qq-6f7x");
+        assert_eq!(lines.next().unwrap().unwrap(), "python,gradio-4.0.0,GHSA-48cq-79qq-6f7x,Summary,Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files");
+        assert_eq!(lines.next().unwrap().unwrap(), "python,gradio-4.0.0,GHSA-48cq-79qq-6f7x,Reference,https://nvd.nist.gov/vuln/detail/CVE-2024-1727");
+        assert_eq!(lines.next().unwrap().unwrap(), "python,gradio-4.0.0,GHSA-48cq-79qq-6f7x,Severity,CVSS 4.3 (Medium): CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L");
     }
 
     #[test]

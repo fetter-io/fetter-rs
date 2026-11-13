@@ -81,16 +81,15 @@ fn get_origins_home(all_users: bool) -> HashSet<(PathBuf, bool)> {
 }
 
 //------------------------------------------------------------------------------
-/// Read `dir` once, give its entries to every scanner, and (if `recurse` and no scanner prunes) descend into child directories. Symlinked directories are never followed.
+/// Read `dir` once, give its entries to every scanner, and (if `recurse` and no scanner prunes) descend into child directories in parallel. Symlinked directories are never followed.
 fn walk_inner(
     dir: &Path,
     exclude_paths: &HashSet<PathBuf>,
     recurse: bool,
     scanners: &[&dyn EcosystemScanner],
-    origins: &mut Vec<Origin>,
-) {
+) -> Vec<Origin> {
     if exclude_paths.contains(dir) {
-        return;
+        return Vec::new();
     }
     let items: Vec<DirItem> = match fs::read_dir(dir) {
         Ok(entries) => entries
@@ -104,9 +103,10 @@ fn walk_inner(
             .collect(),
         Err(e) => {
             eprintln!("Error reading {dir:?}: {e}");
-            return;
+            return Vec::new();
         }
     };
+    let mut origins = Vec::new();
     let mut prune = false;
     for scanner in scanners {
         let detect = scanner.detect(dir, &items);
@@ -114,17 +114,22 @@ fn walk_inner(
         prune |= detect.prune;
     }
     if recurse && !prune {
-        for item in &items {
-            // `file_type` does not follow symlinks, so symlinked dirs are skipped
-            if item.file_type.is_dir()
-                && !item
-                    .file_name()
-                    .is_some_and(|n| SKIP_DIR_NAMES.contains(&n))
-            {
-                walk_inner(&item.path, exclude_paths, recurse, scanners, origins);
-            }
-        }
+        // `file_type` does not follow symlinks, so symlinked dirs are skipped
+        let children: Vec<&DirItem> = items
+            .iter()
+            .filter(|item| {
+                item.file_type.is_dir()
+                    && !item
+                        .file_name()
+                        .is_some_and(|n| SKIP_DIR_NAMES.contains(&n))
+            })
+            .collect();
+        // rayon's work stealing balances nested parallelism across deep and shallow subtrees
+        origins.par_extend(children.into_par_iter().flat_map_iter(|item| {
+            walk_inner(&item.path, exclude_paths, recurse, scanners)
+        }));
     }
+    origins
 }
 
 /// Walk the provided `(directory, recursive)` roots in parallel, collecting Origins from all scanners.
@@ -136,22 +141,26 @@ fn walk_roots(
     roots
         .par_iter()
         .filter(|(path, _)| path.is_dir())
-        .flat_map(|(path, recurse)| {
-            let mut origins = Vec::new();
-            walk_inner(path, exclude_paths, *recurse, scanners, &mut origins);
-            origins
+        .flat_map_iter(|(path, recurse)| {
+            walk_inner(path, exclude_paths, *recurse, scanners)
         })
         .collect()
 }
 
-/// Discover all Origins for the provided scanners with a single walk of the home directories (or all users' directories) plus each scanner's own roots, followed by each scanner's default Origins.
+/// Discover all Origins for the provided scanners with a single walk. If `roots` is empty, the home directories (or all users' directories) are walked plus each scanner's own roots, followed by each scanner's default Origins. If `roots` is provided, only those directories are walked (recursively).
 pub(crate) fn discover(
     scanners: &[&dyn EcosystemScanner],
     all_users: bool,
+    roots: &[PathBuf],
 ) -> HashSet<Origin> {
     let homes = get_origins_home(all_users);
     let exclude = get_search_exclude_paths(&homes);
 
+    if !roots.is_empty() {
+        let roots: HashSet<(PathBuf, bool)> =
+            roots.iter().map(|r| (r.clone(), true)).collect();
+        return walk_roots(&roots, &exclude, scanners);
+    }
     let mut roots = homes;
     for scanner in scanners {
         roots.extend(scanner.roots());
@@ -195,6 +204,9 @@ mod tests {
                 origins,
                 prune: has("stop.txt"),
             }
+        }
+        fn accepts(&self, _path: &Path) -> bool {
+            false
         }
         fn normalize_origin(&self, _path: &Path) -> ResultDynError<Origin> {
             unimplemented!()
@@ -311,6 +323,19 @@ mod tests {
         std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
         // the symlinked dir is not followed
         assert_eq!(walk(root, true), vec![PathBuf::from("real")]);
+    }
+
+    #[test]
+    fn test_discover_roots_a() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        touch(root.join("a/marker.txt"));
+        touch(root.join("b/c/marker.txt"));
+        let scanners: [&dyn EcosystemScanner; 1] = [&MarkerScanner];
+        // only the provided root is walked: nothing from home dirs
+        let found = discover(&scanners, false, &[root.join("b")]);
+        assert_eq!(found.len(), 1);
+        assert!(found.iter().next().unwrap().as_path().ends_with("b/c"));
     }
 
     #[test]
