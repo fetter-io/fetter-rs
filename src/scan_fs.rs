@@ -16,7 +16,7 @@ use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
-use crate::eco::infer_origin;
+use crate::eco::infer_origins;
 use crate::eco::scanner_for;
 use crate::eco::scanners;
 use crate::ecosystem::Ecosystem;
@@ -375,7 +375,7 @@ impl ScanFS {
                     &config.roots,
                 ));
             } else {
-                origins.insert(infer_origin(p, &config.ecosystems)?);
+                origins.extend(infer_origins(p, &config.ecosystems)?);
             }
         }
 
@@ -514,7 +514,9 @@ impl ScanFS {
         if dm.env_marker_active {
             self.load_env_marker_state(log);
         }
-        let packages = self.get_packages();
+        // NOTE: bound requirements are Python-only until the cross-ecosystem allow list (milestone 11)
+        let mut packages = self.get_packages();
+        packages.retain(|p| p.ecosystem == Ecosystem::Python);
 
         ValidationReport::from_components(
             &packages,
@@ -575,7 +577,13 @@ impl ScanFS {
         &self,
         anchor: Anchor,
     ) -> Result<DepManifest, Box<dyn std::error::Error>> {
-        DepManifest::from_packages(self.package_to_sites.keys(), anchor)
+        // NOTE: derived requirements are Python-only until the cross-ecosystem allow list (milestone 11)
+        DepManifest::from_packages(
+            self.package_to_sites
+                .keys()
+                .filter(|p| p.ecosystem == Ecosystem::Python),
+            anchor,
+        )
     }
 
     pub(crate) fn to_scan_report(&self) -> ScanReport {
@@ -1881,6 +1889,84 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
             sfs.origins_hash,
             "670052a72cea79d7a207d535ba7568b455b4834c4e17f4d9347cb3666ed81c81"
         );
+    }
+
+    /// A scan with one Python site (numpy, flask) and one Cargo lockfile (serde).
+    fn mixed_scan() -> ScanFS {
+        let py_site =
+            Site::python(PathShared::from("/venv/lib/python3.12/site-packages"));
+        let cargo_site = Site::new(
+            Ecosystem::Cargo,
+            SiteKind::Lockfile,
+            PathShared::from("/src/proj/Cargo.lock"),
+        );
+        let mut origin_to_sites = HashMap::new();
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Python, PathShared::from("/venv/bin/python3")),
+            vec![py_site.clone()],
+        );
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Cargo, PathShared::from("/src/proj")),
+            vec![cargo_site.clone()],
+        );
+        let mut package_to_sites = HashMap::new();
+        for (name, version) in [("numpy", "2.1.0"), ("flask", "3.0.0")] {
+            package_to_sites.insert(
+                Package::from_name_version_durl(name, version, None).unwrap(),
+                vec![py_site.clone()],
+            );
+        }
+        package_to_sites.insert(
+            Package::new(
+                Ecosystem::Cargo,
+                "serde",
+                crate::version_spec::VersionSpec::new("1.0.200"),
+                None,
+            ),
+            vec![cargo_site],
+        );
+        ScanFS::from_parts(
+            origin_to_sites,
+            package_to_sites,
+            ScanConfig::new(false, false),
+            "hash".to_string(),
+        )
+    }
+
+    #[test]
+    fn test_mixed_derive_python_only_a() {
+        let sfs = mixed_scan();
+        let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
+        // the cargo crate is not written into Python requirements
+        assert_eq!(dm.len(), 2);
+    }
+
+    #[test]
+    fn test_mixed_validate_python_only_a() {
+        let mut sfs = mixed_scan();
+        let dm = DepManifest::try_from_iter(vec!["numpy>=2", "flask>=3"]).unwrap();
+        let vr = sfs.to_validation_report(
+            dm,
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: false,
+            },
+            None,
+            FlagLog(false),
+        );
+        // serde is not reported as Unrequired against a Python bound
+        assert!(vr.is_empty(), "{:?}", vr.records);
+    }
+
+    #[test]
+    fn test_mixed_search_and_count_a() {
+        let sfs = mixed_scan();
+        // search and scan include all ecosystems
+        assert_eq!(sfs.search_by_match("*", true).len(), 3);
+        let packages = sfs.get_packages();
+        // sorted by ecosystem first: python before cargo
+        assert_eq!(packages[0].ecosystem, Ecosystem::Python);
+        assert_eq!(packages[2].ecosystem, Ecosystem::Cargo);
     }
 
     #[test]

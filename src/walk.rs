@@ -108,10 +108,12 @@ fn walk_inner(
     };
     let mut origins = Vec::new();
     let mut prune = false;
+    let mut skip: Vec<&'static str> = SKIP_DIR_NAMES.to_vec();
     for scanner in scanners {
         let detect = scanner.detect(dir, &items);
         origins.extend(detect.origins);
         prune |= detect.prune;
+        skip.extend(detect.skip_children);
     }
     if recurse && !prune {
         // `file_type` does not follow symlinks, so symlinked dirs are skipped
@@ -119,9 +121,7 @@ fn walk_inner(
             .iter()
             .filter(|item| {
                 item.file_type.is_dir()
-                    && !item
-                        .file_name()
-                        .is_some_and(|n| SKIP_DIR_NAMES.contains(&n))
+                    && !item.file_name().is_some_and(|n| skip.contains(&n))
             })
             .collect();
         // rayon's work stealing balances nested parallelism across deep and shallow subtrees
@@ -203,6 +203,11 @@ mod tests {
             Detect {
                 origins,
                 prune: has("stop.txt"),
+                skip_children: if has("skip.txt") {
+                    vec!["skipped"]
+                } else {
+                    Vec::new()
+                },
             }
         }
         fn accepts(&self, _path: &Path) -> bool {
@@ -285,6 +290,20 @@ mod tests {
         assert_eq!(
             walk(root, true),
             vec![PathBuf::from("a"), PathBuf::from("c/d")]
+        );
+    }
+
+    #[test]
+    fn test_walk_skip_children_a() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        touch(root.join("a/skip.txt"));
+        touch(root.join("a/skipped/marker.txt")); // skipped by name
+        touch(root.join("a/kept/marker.txt")); // sibling still visited
+        touch(root.join("b/skipped/marker.txt")); // no skip.txt in b: visited
+        assert_eq!(
+            walk(root, true),
+            vec![PathBuf::from("a/kept"), PathBuf::from("b/skipped")]
         );
     }
 

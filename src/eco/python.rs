@@ -172,6 +172,7 @@ impl EcosystemScanner for PythonScanner {
             return Detect {
                 origins,
                 prune: true,
+                ..Default::default()
             };
         }
         // Test all non-directory entries (including symlinks) as interpreters.
@@ -182,7 +183,7 @@ impl EcosystemScanner for PythonScanner {
             .collect();
         Detect {
             origins,
-            prune: false,
+            ..Default::default()
         }
     }
 

@@ -1,5 +1,6 @@
 //! Per-ecosystem scanners. Each ecosystem implements `EcosystemScanner`; the walker (`crate::walk`) dispatches to all enabled scanners during a single filesystem walk.
 
+pub(crate) mod cargo;
 pub(crate) mod python;
 
 use std::fs::FileType;
@@ -34,6 +35,8 @@ pub(crate) struct Detect {
     pub(crate) origins: Vec<Origin>,
     /// If true, the walker will not descend into this directory's children, for any scanner.
     pub(crate) prune: bool,
+    /// Names of child directories the walker will not descend into, for any scanner (e.g. `target` in a Cargo project). Unlike `prune`, other children are still visited.
+    pub(crate) skip_children: Vec<&'static str>,
 }
 
 //------------------------------------------------------------------------------
@@ -72,12 +75,14 @@ pub(crate) trait EcosystemScanner: Sync {
 
 //------------------------------------------------------------------------------
 static PYTHON: python::PythonScanner = python::PythonScanner;
+static CARGO: cargo::CargoScanner = cargo::CargoScanner;
 
 /// Return the scanner for an ecosystem, if one is implemented.
 pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn EcosystemScanner> {
     match ecosystem {
         Ecosystem::Python => Some(&PYTHON),
-        Ecosystem::Npm | Ecosystem::Cargo | Ecosystem::Gha | Ecosystem::VsCode => None,
+        Ecosystem::Cargo => Some(&CARGO),
+        Ecosystem::Npm | Ecosystem::Gha | Ecosystem::VsCode => None,
     }
 }
 
@@ -86,15 +91,18 @@ pub(crate) fn scanners(ecosystems: &[Ecosystem]) -> Vec<&'static dyn EcosystemSc
     ecosystems.iter().filter_map(|e| scanner_for(*e)).collect()
 }
 
-/// Determine which of the provided ecosystems a user-provided path belongs to, and normalize it to an Origin. Ecosystems are tried in the provided order.
-pub(crate) fn infer_origin(
+/// Determine which of the provided ecosystems a user-provided path belongs to, and normalize it to Origins. A path can be an Origin for more than one ecosystem (e.g. a directory with both `package.json` and `Cargo.lock`); all accepting scanners contribute. It is an error if no scanner accepts the path, or if an accepting scanner cannot normalize it.
+pub(crate) fn infer_origins(
     path: &Path,
     ecosystems: &[Ecosystem],
-) -> ResultDynError<Origin> {
-    for scanner in scanners(ecosystems) {
-        if scanner.accepts(path) {
-            return scanner.normalize_origin(path);
-        }
+) -> ResultDynError<Vec<Origin>> {
+    let origins = scanners(ecosystems)
+        .into_iter()
+        .filter(|s| s.accepts(path))
+        .map(|s| s.normalize_origin(path))
+        .collect::<ResultDynError<Vec<Origin>>>()?;
+    if !origins.is_empty() {
+        return Ok(origins);
     }
     let names: Vec<&str> = ecosystems
         .iter()
@@ -125,22 +133,23 @@ mod tests {
 
     #[test]
     fn test_scanners_a() {
-        assert_eq!(scanners(&Ecosystem::ALL).len(), 1);
+        assert_eq!(scanners(&Ecosystem::ALL).len(), 2);
         assert_eq!(scanners(&[Ecosystem::Npm]).len(), 0);
     }
 
     #[test]
-    fn test_infer_origin_a() {
-        let o = infer_origin(Path::new("python3"), &Ecosystem::ALL).unwrap();
-        assert_eq!(o.ecosystem, Ecosystem::Python);
-        assert!(o.as_path().is_absolute());
+    fn test_infer_origins_a() {
+        let o = infer_origins(Path::new("python3"), &Ecosystem::ALL).unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].ecosystem, Ecosystem::Python);
+        assert!(o[0].as_path().is_absolute());
     }
 
     #[test]
-    fn test_infer_origin_b() {
+    fn test_infer_origins_b() {
         // python is not enabled
-        assert!(infer_origin(Path::new("python3"), &[Ecosystem::Npm]).is_err());
+        assert!(infer_origins(Path::new("python3"), &[Ecosystem::Npm]).is_err());
         // not recognized by any scanner
-        assert!(infer_origin(Path::new("/foo/bar.txt"), &Ecosystem::ALL).is_err());
+        assert!(infer_origins(Path::new("/foo/bar.txt"), &Ecosystem::ALL).is_err());
     }
 }

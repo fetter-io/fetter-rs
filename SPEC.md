@@ -7,6 +7,73 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 - Section 7 (Milestones) is the source of truth for progress. Each milestone must leave `cargo test` green.
 - When a decision is made, move it out of section 9 (Open questions) into section 10 (Decision log) with the date.
 - Breaking changes are allowed (v6 is a major release), but every one must be listed in section 11 (Breaking changes) for the changelog.
+- Update "Picking this up" (next section) at the end of every session.
+
+## Picking this up
+
+*Last updated 2026-11-13, at the end of milestone 6.*
+
+### Where we are
+
+- **Branch** `207/polye`. Milestones **1–6 are done** (§7): spec, core types, scanner trait + walker, CLI rework, OSV multi-ecosystem (including pagination and error handling), and the Cargo scanner.
+- **Milestone 6 (Cargo) was not yet committed** when this was written. Check `git status`; if `src/eco/cargo.rs` is untracked, review and commit it before starting milestone 7.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 352 passed and 4 ignored. The ignored tests hit live services:
+  - `test_osv_ecosystem_names_live`
+  - `test_osv_pagination_live` (≈80s)
+  - `test_query_pypi_project_live`
+  - `test_from_dep_manifest_live`
+
+  Run them with `cargo test <name> -- --ignored`. `tests/windows_session.rs` runs only on Windows and has not been run since milestone 4 changed `count` output and `--origin`. It was updated by hand; verify it in CI.
+- **Implemented scanners**: Python (`src/eco/python.rs`) and Cargo (`src/eco/cargo.rs`). `-E npm|gha|vscode` prints a "not yet supported" warning and is skipped.
+- **Python-only isolation in shared commands** (remove as each generalizes):
+  - `validate`, `derive`, `purge-invalid` → Python packages only (`scan_fs.rs`, until milestone 11)
+  - `unpack-*`, `purge-*` → `supports_artifacts` (Python only, until milestone 13)
+  - `inspect` → Python sites only (until milestone 10)
+  - `lookup-*` → forced `-E python` (until milestone 12)
+
+### Code map
+
+| Concern | Where |
+|---|---|
+| Ecosystem enum, OSV names, key normalization | `src/ecosystem.rs` |
+| `Origin`, `Site`, `SiteKind` | `src/origin_site.rs` |
+| Scanner trait, `Detect`, `DirItem`, registry, `infer_origins` | `src/eco/mod.rs` |
+| Per-ecosystem scanners | `src/eco/{python,cargo}.rs` |
+| Single filesystem walk (parallel; prune / skip_children / excludes) | `src/walk.rs` |
+| `ScanFS`: assembly (`from_parts`, the only constructor path), serialization, cache, report entry points | `src/scan_fs.rs` |
+| `ScanConfig` (ecosystems, roots; hashed for the cache) | `src/util.rs` |
+| CLI, `resolve_ecosystems`, `python` namespace | `src/cli.rs` |
+| OSV batch query, pagination, `is_osv_queryable` | `src/osv_query.rs` |
+| Audit report (`unaudited`, errors) | `src/audit_report.rs` |
+
+### Next: milestone 7, the npm scanner
+
+The plan, building on what milestone 6 established:
+1. **Survey real data first**, as for Cargo: `find ~ -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name .package-lock.json` (excluding `Library`). Note where lockfiles occur that are *not* projects, as `~/.cargo/registry` was for Cargo. Expect `~/.npm` (already excluded by the walker), global installs (`$(npm root -g)`, e.g. `/opt/homebrew/lib/node_modules`), `~/.nvm/versions/node/*/lib/node_modules`, and nested `node_modules/*/package.json`.
+2. **Origins**: a directory with `package.json` plus a lockfile or `node_modules`. Workspaces (npm/yarn/pnpm) have one lockfile at the root; members resolve upward, like Cargo's `find_lock_dir`. Decide whether global install dirs are origins (probably yes, as `Installed`, like `~/.cargo`).
+3. **Sites and precedence** (decision log: report both, record the `SiteKind`): `node_modules/.package-lock.json` (npm ≥7's hidden lockfile, the cheapest accurate Installed source) → else walk `node_modules/**/package.json` → plus the project lockfile (`package-lock.json` v1–v3, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock` classic and berry) as Lockfile.
+4. **Walk**: return `skip_children: ["node_modules"]` for any dir with `package.json`; the scanner reads `node_modules` itself from the origin. Do *not* prune the project dir, since it may contain venvs or Cargo crates.
+5. **Packages**: npm names are case-sensitive but lowercase-normalized as keys; scoped names (`@scope/name`) are kept whole. Exclude the root project and workspace members, as Cargo excludes source-less entries. Sources: `resolved` URLs from non-npm registries, `git+`, `file:`/`link:` → `DirectURL`, same rules as Cargo.
+6. **YAML is needed** for `pnpm-lock.yaml` (and yarn berry's `yarn.lock`, which is YAML). Resolve the "replace deprecated `serde_yaml`" open question now; it is shared with milestone 8.
+7. **Verify** as in previous milestones: Python and Cargo counts unchanged (baseline below); compare a full `scan` against the previous commit (build it in a `git worktree`); time the full scan; run `audit` on a real npm project (`lodash@4.17.15` is a known-vulnerable control).
+8. Open question to settle in this milestone: transitive dependencies and table size (§9).
+
+### Baselines for regression checks (dev machine, release build, warm cache)
+
+- Full home scan, `count`: python 54 origins / 57 sites / 764 packages; cargo 27 / 25 / 1,737; ≈6.1s.
+- Full home `scan`: 1,585 Python rows, byte-identical across runs.
+
+### Habits that have paid off
+
+- **Survey the real filesystem before writing a scanner**: the 680 non-project `Cargo.lock` files were found this way.
+- **Probe the live API before trusting docs or assumptions.** This is how we learned that GHA has no server-side version matching, that empty versions match everything, that one bad query fails a whole batch, and that pagination can return empty pages carrying tokens.
+- **Diff against the previous commit**, built in a scratch `git worktree`, after any change to discovery.
+- **Make anything that reaches output deterministic**: sort at construction, tie-break equal `Package`s.
+
+### Known issues outside the milestones
+
+- fetter's own dependencies have OSV advisories (`ring` 0.17.8, `rustls` 0.23.27, `bytes` 1.10.1, `rustix`, `crossbeam-epoch`, …), mostly via `ureq`; run `fetter --origin . audit`. A `cargo update` likely clears most of them. Not done, because dependency changes are the maintainer's call.
+- README examples are stale (`-e`, top-level `site-install`); deferred to milestone 14.
 
 ---
 
@@ -22,7 +89,7 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 
 **Non-goals for v6.0**
 
-- `purge-*` and `site-install` for non-Python ecosystems.
+- `site-install` / `site-uninstall` for non-Python ecosystems. (Unpack and purge *are* generalized; see milestone 13.)
 - Resolving GitHub Action SHA pins or moving tags (`@v4`) to concrete releases.
 - Fetching remote action/extension sources to inspect them.
 
@@ -40,11 +107,11 @@ v5 is built around *exe → site-packages → packages*. That model doesn't carr
 |---|---|---|---|
 | python | interpreter exe | site-packages dirs (Installed) | `*.dist-info` (existing logic) |
 | npm | project dir containing `package.json` | `node_modules` (Installed), else `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` (Lockfile) | `node_modules/.package-lock.json`, or a walk of `node_modules/**/package.json`; lockfile parsers |
-| cargo | dir containing `Cargo.lock` (workspace root); also `$CARGO_HOME` | `Cargo.lock` (Lockfile); `$CARGO_HOME/.crates2.json` (Installed bins) | TOML / JSON parse |
+| cargo | dir containing `Cargo.lock` (workspace root); also `$CARGO_HOME` | `Cargo.lock` (Lockfile); `$CARGO_HOME/.crates2.json`, else `.crates.toml` (Installed bins) | TOML / JSON parse (implemented) |
 | gha | repo root containing `.github/workflows` | each workflow file and local `action.yml` (Manifest) | `uses: owner/repo[/path]@ref`; skip `./local` and `docker://` |
 | vscode | editor profile dir (`~/.vscode`, `~/.vscode-insiders`, `~/.cursor`, `~/.vscode-oss`, …) | its `extensions/` dir (Installed) | `extensions.json`, or each extension's `package.json` (`publisher.name@version`) |
 
-For npm and cargo, fetter reports **both installed and lockfile** sources. It prefers Installed when it exists for an origin, falls back to Lockfile, and always records the `SiteKind` so reports show where each package came from.
+fetter reports **both installed and lockfile** sources and records the `SiteKind`, so reports show where each package came from. For Cargo they come from different origins: projects have only lockfiles, and `$CARGO_HOME` has only installs. For npm, a project can have both (`node_modules` and a lockfile); milestone 7 decides the precedence.
 
 ## 3. Core data model
 
@@ -58,7 +125,7 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
     - cargo: fold `-`/`_`
     - gha: lowercase `owner/repo`
     - vscode: lowercase `publisher.name`
-- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`. *Deferred until a scanner needs it (milestone 6+).* `VersionSpec` splits on `.` with numeric/text parts, so it already orders and displays semver strings and refs well enough for scanning; it is not sufficient for range matching.
+- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`. *Still deferred*: the Cargo scanner did not need it. `VersionSpec` splits on `.` with numeric/text parts, so it orders and displays semver strings and refs well enough for scanning, but it is not sufficient for range matching. It will be needed for GHA client-side range checks (milestone 8) and for allow-list validation (milestone 11).
   - Ordering and display work for every variant.
   - `validate` needs range matching per ecosystem. Each ecosystem gets its own requirement type behind `trait Requirement { fn matches(&self, &Package) -> bool }`:
     - PEP 440: existing `VersionSpec`/`DepSpec`
@@ -74,14 +141,14 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
       pub package_to_sites: HashMap<Package, Vec<Site>>,
       pub site_to_origins: HashMap<Site, Vec<Origin>>,     // derived from origin_to_sites
       pub origin_to_ems: Option<HashMap<Origin, EnvMarkerState>>,  // Python origins only
-      config: ScanConfig,                  // will gain `ecosystems: EcosystemSet`, `roots` (milestone 3/4)
+      config: ScanConfig,                  // force_usite, all_users, ecosystems, roots
       origins_hash: String,
   }
   ```
   - As implemented (milestone 2): Python-only state is the single `origin_to_ems` field rather than a `PythonExtras` struct. Wrap it in a struct if more Python-only state appears.
   - All constructors end in `ScanFS::from_parts`, which derives `site_to_origins` and sorts every inner Vec. That makes `ScanFS: PartialEq` a plain derive.
   - **Determinism rule**: every inner `Vec` is sorted at construction. HashMap iteration order must never leak into output. A v5 bug of exactly this kind was fixed in `from_exe_to_sites`.
-  - Serialization uses a new v6 tuple: `(paths, origins: [(eco, path_i)], sites: [(eco, kind, path_i)], origin_to_sites: [(origin_i, [site_i])], package_to_sites: [(Package, [site_i])], force_usite, all_users, origins_hash)`. Tables are assigned indices in sorted order. `site_to_origins` is not stored; it is rebuilt on load. The cache file prefix is `scan_fs_v6_`. The ecosystem set will be added to the hash when it lands in `ScanConfig`.
+  - Serialization uses a new v6 tuple: `(paths, origins: [(eco, path_i)], sites: [(eco, kind, path_i)], origin_to_sites: [(origin_i, [site_i])], package_to_sites: [(Package, [site_i])], config, origins_hash)`. Tables are assigned indices in sorted order. `site_to_origins` is not stored; it is rebuilt on load. The cache file prefix is `scan_fs_v6_`. The full `ScanConfig` (including ecosystems and roots) is serialized and included in the cache hash. See §5 for the `monitor-scan` form.
 
 ## 4. Scanner architecture (single walk)
 
@@ -89,13 +156,15 @@ As implemented in `src/eco/mod.rs` (milestone 3):
 
 ```rust
 trait EcosystemScanner: Sync {
-    /// Extra (dir, recursive) roots beyond home dirs: PATH bins for Python; later ~/.vscode, $CARGO_HOME.
+    /// Extra (dir, recursive) roots beyond home dirs: PATH bins for Python.
     fn roots(&self) -> Vec<(PathBuf, bool)> { vec![] }
-    /// Origins found without walking: the default python on PATH.
+    /// Origins found without walking: the default python on PATH; $CARGO_HOME.
     fn default_origins(&self) -> Vec<Origin> { vec![] }
-    /// Called once per visited directory with its entries; may claim origins and prune descent.
-    fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect;   // DirItem { path, file_type }; Detect { origins, prune }
-    /// Convert a user-provided path (`--origin`) into an Origin of this ecosystem.
+    /// Called once per visited directory with its entries; may claim origins, prune descent, or skip named children.
+    fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect;   // DirItem { path, file_type }; Detect { origins, prune, skip_children }
+    /// Cheap check: does a user-provided path (`--origin`) look like an Origin of this ecosystem?
+    fn accepts(&self, path: &Path) -> bool;
+    /// Convert a user-provided path into an Origin of this ecosystem, validating it.
     fn normalize_origin(&self, path: &Path) -> ResultDynError<Origin>;
     fn origin_to_sites(&self, origin: &Origin, config: &ScanConfig, log: FlagLog) -> Vec<Site>;
     fn site_to_packages(&self, site: &Site) -> Vec<Package>;
@@ -103,21 +172,22 @@ trait EcosystemScanner: Sync {
     fn site_to_hooks(&self, site: &Site) -> Vec<Hook> { vec![] }
 }
 ```
-- Scanners are registered in `eco::scanner_for(Ecosystem) -> Option<&'static dyn EcosystemScanner>`; `eco::scanners()` returns all implemented ones. A scanner has no `ecosystem()` method; the registry is the mapping.
+- Scanners are registered in `eco::scanner_for(Ecosystem) -> Option<&'static dyn EcosystemScanner>`. `eco::scanners(&[Ecosystem])` returns the implemented ones among those given. A scanner has no `ecosystem()` method; the registry is the mapping. Adding an ecosystem means a new `eco/<name>.rs`, a `static` in `eco/mod.rs`, and an arm in `scanner_for`.
 - `DirItem.file_type` comes from the directory read and does not follow symlinks. That removes the extra `is_dir`/`symlink_metadata` stats per entry that `exe_search` did.
 
 - **Walker** (`src/walk.rs`, replacing `exe_search.rs`): `walk::discover(scanners, all_users, roots)`. Roots are walked in parallel, and recursion within a root is also parallel (rayon `par_extend` over child dirs) since milestone 4. Before that, a single large root such as `--root ~/src` was walked by one thread.
   - It keeps `get_origins_home`, `get_search_exclude_paths`, and the no-symlink-recursion rule.
   - At each directory it reads the entries once and dispatches to every enabled scanner.
   - The `pyvenv.cfg` shortcut becomes `PythonScanner::detect` returning `prune: true`.
-- **Global skip list**: only `.git` and `__pycache__` (`walk::SKIP_DIR_NAMES`), plus the existing platform excludes. `node_modules`, `target` and `site-packages` are generic names that could hide other ecosystems' origins (for example a venv under a dir named `target`). They are left to scanner `detect` pruning, or to a future per-scanner `skip_children` in `Detect` when npm/cargo land.
-- **Prune semantics**: if any scanner returns `prune: true` for a directory, none of its children are visited by any scanner. All scanners still see the pruning directory itself.
+- **Global skip list**: only `.git` and `__pycache__` (`walk::SKIP_DIR_NAMES`), plus the existing platform excludes. `node_modules`, `target` and `site-packages` are generic names that could hide other ecosystems' origins (for example a venv under a dir named `target`), so they are skipped contextually by scanners instead.
+- **Prune semantics**: if any scanner returns `prune: true` for a directory, none of its children are visited by any scanner. All scanners still see the pruning directory itself. Used for venvs (Python) and `$CARGO_HOME` / `$RUSTUP_HOME` (Cargo).
+- **`skip_children`** (milestone 6): named children of this directory are not visited, for any scanner, while siblings still are. Cargo uses it to skip `target` next to a `Cargo.toml`; npm should do the same for `node_modules`.
 - **Pipeline**: the same shape as today's `ScanFS::from_exe_to_sites`, generalized:
   1. walk + `default_origins` → origins
   2. `origin_to_sites` (rayon)
   3. `site_to_packages` (rayon)
   4. build the three index maps (sorted)
-- **Layout**: `src/eco/mod.rs` plus one file per ecosystem: `src/eco/{python,npm,cargo,gha,vscode}.rs`.
+- **Layout**: `src/eco/mod.rs` plus one file per ecosystem: `src/eco/{python,npm,cargo,gha,vscode}.rs` (python and cargo exist).
   - Python's `get_site_package_dirs`, `get_packages`, `get_origins_bin`, and venv detection are in `eco/python.rs`. Env-marker loading stays in `ScanFS::load_env_marker_state` (filtered to Python origins), because it mutates `ScanFS` state. `is_python_exe` and related helpers stay in `util.rs`, where `exe_path_normalize` also uses them.
 
 ### Hooks (generalized `inspect`)
@@ -137,7 +207,7 @@ trait EcosystemScanner: Sync {
 **Global flags**
 
 - `-E, --ecosystem <LIST>`: comma-separated or repeated; default **all**. An explicitly requested ecosystem with no scanner yet prints `fetter: ecosystem `npm` is not yet supported and will be skipped` to stderr and continues.
-- `--origin <PATH>…`: replaces `-e/--exe`. It deliberately has **no short flag**, because `-o` reads as "output" (and `write -o <FILE>` already means that). `-e`/`--exe` remain as **hidden aliases**, so v5 command lines and v5-installed `site-install` hooks keep working. `*` means discover. A given path's ecosystem is inferred by trying the enabled scanners' `accepts()` in canonical order, then `normalize_origin()`; if no scanner claims the path, that is an error. Python accepts interpreter-named paths and virtual-environment directories (`--origin .venv`).
+- `--origin <PATH>…`: replaces `-e/--exe`. It deliberately has **no short flag**, because `-o` reads as "output" (and `write -o <FILE>` already means that). `-e`/`--exe` remain as **hidden aliases**, so v5 command lines and v5-installed `site-install` hooks keep working. `*` means discover. A given path's ecosystem is inferred via `eco::infer_origins`: every enabled scanner whose `accepts()` is true contributes an Origin through `normalize_origin()`, so one path can yield several (e.g. a dir with `package.json` and `Cargo.lock`). If no scanner accepts the path, or an accepting scanner cannot normalize it, that is an error. Python accepts interpreter-named paths and virtual-environment directories (`--origin .venv`).
 - `--root <DIR>…`: if given, **only** these directories are walked (recursively). Home directories, scanner roots (PATH bins) and default origins (the PATH `python3`) are not added. If not given, discovery is unchanged from v5. Roots are part of the cache hash.
 - `--all-users`, `--user-site` (Python only), `--cache-duration`, `--cache-directory`, `--quiet`, `--log`, `--stderr`, `--banner`: unchanged.
 
@@ -253,8 +323,24 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
    - Tests cover mixed-ecosystem query JSON and result alignment, request/parse/length errors, failures not being cached, cache hits, `unaudited` partitioning, and the error path.
    - Fixed a latent test bug: `lookup_report::test_from_dep_spec_mock` mocked 1 OSV result for 3 queried versions, and the old code's silent `zip` hid the mismatch.
    - Added OSV pagination support (§6). Before, everything past the first page was silently dropped.
-6. [ ] **Cargo scanner**: `Cargo.lock`, `.crates2.json`.
+6. [x] **Cargo scanner**: `Cargo.lock`, `.crates2.json`.
    Files: `eco/cargo.rs`.
+   Done 2026-11-13.
+   - **Origins**: directories containing `Cargo.lock`, plus `$CARGO_HOME` (default `~/.cargo`) when it has an install record. `$CARGO_HOME` is found via `default_origins`, so a non-default location is covered, and is also claimed if walked.
+   - **Sites**: `Cargo.lock` (Lockfile); `.crates2.json`, falling back to `.crates.toml` (Installed). All lockfile versions (v1, which has no header, through v4) share `[[package]]`.
+   - **Packages**:
+     - Lockfile entries **without a `source`** are workspace members or path deps (the project's own crates) and are excluded; so are `path+` installs.
+     - crates.io (`registry+…crates.io-index` or `sparse+https://index.crates.io/`) has no `direct_url`.
+     - git sources become `DirectURL { url, vcs_info: { vcs: git, commit_id, revision } }`, and other registries `DirectURL { url }`. They are still queried in OSV by name and version, consistent with Python packages that have a `direct_url`; see open questions.
+   - **Walk**: `$CARGO_HOME` and `$RUSTUP_HOME` are pruned. On the dev machine they held 599 + 81 `Cargo.lock` files from downloaded crate sources and toolchains, none of them projects. Pruning applies to all scanners, and neither directory holds Python interpreters. `target` is skipped (via the new `Detect.skip_children`) in any directory with a `Cargo.toml`, so venvs inside Rust projects (e.g. pyo3/maturin) are still found.
+   - **`--origin`**: accepts `Cargo.lock`, `Cargo.toml`, a crate or workspace dir, or a Cargo home. Members resolve upward to the workspace's `Cargo.lock`. A crate without a lockfile is an error that suggests `cargo generate-lockfile`. `eco::infer_origin` became `infer_origins`, so a path accepted by several scanners (e.g. a Tauri app dir with `package.json` and `Cargo.lock`) yields an origin for each.
+   - **Isolation**: `validate`, `derive` and `purge-invalid` act only on Python packages until milestone 11. Without this, `derive` would write crates into requirements.txt and `validate` would flag every crate as Unrequired.
+   - **`count`** now always shows a `cargo` row (zeros if none) plus `all`.
+   - **Verified on the dev machine**:
+     - Python results are unchanged (54/57/764).
+     - Cargo: 27 origins (26 projects + `~/.cargo`), 1,737 crates. The 2 dependency-free projects correctly yield no packages.
+     - The full scan got faster, ≈10.7s → ≈6.1s, from the pruning.
+     - `audit` of this repo's lockfile returned real RustSec/GHSA advisories with details (e.g. `ring` 0.17.8 RUSTSEC-2025-0009 via `ureq` → `rustls`).
 7. [ ] **npm scanner**: `.package-lock.json`, `node_modules` walk, package-lock v1–v3, pnpm, yarn classic/berry.
    Files: `eco/npm.rs`.
 8. [ ] **GHA scanner**; replace the deprecated `serde_yaml` first. Requires **client-side version matching** (§6): OSV returns nothing for versioned GHA queries. Approach: an ecosystem capability (e.g. `Ecosystem::osv_server_side_versions() -> bool`). For ecosystems without it, query `/v1/query` by name only, then evaluate each advisory's `affected[].ranges` (`ECOSYSTEM`, semver-like with an optional `v` prefix) against the ref. Floating refs (`@v4`) and SHAs cannot be placed in a range without resolving them to a release (GitHub API); report them as `unaudited` until that is implemented.
@@ -273,11 +359,12 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 8. Testing strategy
 
-- Fixtures go under `tests/fixtures/<eco>/`: sample lockfiles of each format, a `node_modules` stub, workflow yml, `.crates2.json`, and an extensions dir.
-- Scanner unit tests: `site_to_packages` and `site_to_hooks` run against the fixtures.
+- Fixtures, as practiced: inline string constants in each scanner's test module (e.g. `LOCK_V4`, `CRATES2` in `eco/cargo.rs`), written to `tempfile` dirs when a test needs files on disk. This keeps a fixture next to the parser it exercises. Use `tests/fixtures/<eco>/` only for large real-world samples.
+- Scanner unit tests: parsers, `detect`, `accepts`/`normalize_origin`, `origin_to_sites`, and `site_to_packages` against those fixtures; `site_to_hooks` from milestone 10.
 - Walker tests: a `tempfile` tree with mixed project types. They assert the detected origins and the pruning.
 - Determinism: serialize-twice comparisons (like `test_from_exes_equality_comparison`), now covering multi-site packages in every ecosystem.
-- OSV: `UreqClientMock` with a mixed-ecosystem batch.
+- OSV: `UreqClientMock` (fixed response per URL prefix) for single-response cases; the test-only `SeqClient` in `osv_query.rs` (queued responses, recorded request bodies) for pagination. Live checks are `#[ignore]` tests.
+- Discovery changes are also verified manually against the previous commit and the baselines in "Picking this up".
 - Existing Python tests stay green across milestones 2–4; only mechanical constructor changes are allowed.
 
 ## 9. Open questions
@@ -286,10 +373,12 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - npm: report transitive dependencies from nested `node_modules` by default? How should table output stay usable with thousands of packages (group by origin? collapse lockfile-only?)
 - YAML parser to replace the deprecated `serde_yaml` (e.g. `serde_yaml_ng`, `saphyr`).
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
+- Packages with a `direct_url` (Python VCS/local installs; Cargo git and alternative-registry crates) are queried in OSV by name, as if from the public registry. For forks or private crates that share a public name, this can produce false positives. Should they go in `unaudited` instead? Today's behavior favors not missing advisories.
+- Cargo: `vendor/` directories (from `cargo vendor`) can contain crates that ship their own `Cargo.lock`. These would be detected as projects; consider skipping `vendor` when `.cargo/config.toml` sets `[source.vendored-sources]`.
 - Allow-list file name and format. Should purl `vers:` ranges be supported alongside native range syntax?
 - npm range semantics: use the `node-semver` crate, or implement the subset fetter needs?
 - `Package`'s `Ord` (ecosystem, lowercase name, version) is inconsistent with its derived `Eq`/`Hash` (which include `key` and `direct_url`): distinct packages can compare `Equal`. Reports work around this with tie-breaks. Should `Ord` include `direct_url`, or should identity drop it?
-- Should the Python-only namespace also accept `-E python` on shared commands as an alias, to ease migration?
+- Should the old top-level `site-install` / `site-uninstall` remain as hidden aliases for migration? Today they fail with clap's generic "unrecognized subcommand" error.
 
 ## 10. Decision log
 
