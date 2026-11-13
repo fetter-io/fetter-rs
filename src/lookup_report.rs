@@ -93,7 +93,7 @@ impl LookupReport {
             log,
             filter_cvss,
             retain_passing,
-        );
+        )?;
         Ok(LookupReport(audit_report))
     }
 
@@ -145,7 +145,7 @@ impl LookupReport {
             log,
             filter_cvss,
             retain_passing,
-        );
+        )?;
         Ok(LookupReport(audit_report))
     }
 }
@@ -221,8 +221,8 @@ mod tests {
         // Sample PyPI JSON for gradio package
         let pypi_json = r#"{"info":{"author":"Abubakar Abid","name":"gradio","project_urls":{"Homepage":"https://github.com/gradio-app/gradio"}},"releases":{"4.0.0":[{"filename":"gradio-4.0.0-py3-none-any.whl"}],"4.18.0":[{"filename":"gradio-4.18.0-py3-none-any.whl"}],"4.19.2":[{"filename":"gradio-4.19.2-py3-none-any.whl"}]}}"#;
 
-        // Sample OSV batch query response
-        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-48cq-79qq-6f7x","modified":"2024-05-21T14:58:25.710902Z"}]}]}"#;
+        // Sample OSV batch query response: one result per queried version (4.0.0, 4.18.0, 4.19.2), only the first vulnerable
+        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-48cq-79qq-6f7x","modified":"2024-05-21T14:58:25.710902Z"}]},{},{}]}"#;
 
         // Sample OSV vuln detail response
         let osv_vuln_json = r#"{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}"#;
@@ -264,6 +264,7 @@ mod tests {
         // We should get 3 versions (4.0.0, 4.18.0, 4.19.2) but only one has vulns
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].package.name, "gradio");
+        assert_eq!(records[0].package.version.to_string(), "4.0.0");
         assert_eq!(records[0].vuln_ids, vec!["GHSA-48cq-79qq-6f7x"]);
     }
 

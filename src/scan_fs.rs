@@ -538,7 +538,7 @@ impl ScanFS {
         log: FlagLog,
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,
-    ) -> AuditReport {
+    ) -> ResultDynError<AuditReport> {
         let packages = self.search_by_match(pattern, case_insensitive);
         // NOTE: packages is sorted upstream
         AuditReport::from_packages(

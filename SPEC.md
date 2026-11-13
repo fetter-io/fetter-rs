@@ -210,9 +210,19 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508, parsed by exis
 ## 6. OSV
 
 - `OSVPackageQuery::from_package` (`src/osv_query.rs`) uses `package.ecosystem.osv_name()` in place of the hard-coded `"PyPI"`.
-- One `query_osv_batches` call takes mixed ecosystems. The cache key already hashes the query JSON, so no change is needed there.
-- Packages whose ecosystem has no OSV mapping are excluded from the query and reported as "not auditable".
-- GHA refs that are SHAs are sent as-is; see open questions.
+- One `query_osv_batches` call takes mixed ecosystems, in chunks of 64. The cache key hashes the query JSON, which includes the ecosystem.
+- **Failure is never "clean"** (milestone 5). A request error, an unparseable response (such as a 400 body), or a response whose `results` length differs from the query count is an error. It propagates to `audit` / `lookup-*` as `fetter Error: …` with exit 1, and nothing is cached. Before v6, failures became `None` (no vulnerabilities) for the whole chunk and were cached.
+- **Pagination** is followed. A result may carry `next_page_token`, and follow-up requests re-send only those queries, each with `page_token`. IDs accumulate across pages and duplicates are dropped. A failure on any page fails the query, and the number of requests per batch is capped at `OSV_MAX_PAGES` (100). `page_token` is omitted when unset, so cache keys are unchanged.
+  - Documented triggers: more than ~1,000 vulns for one query, or more than ~3,000 for a batch. Observed 2026-11-13: a 10-query batch returning 6,002 vulns did *not* paginate. A single Ubuntu `linux` query did (1,000 + token). A `Linux/Kernel` query returned **empty pages that still carry tokens** before finishing with no matches, so a token with zero vulns must be followed, not treated as done. Covered by mock tests and the ignored live test `test_osv_pagination_live` (about 80s).
+- **Unaudited packages**: a package is queried only if `osv_query::is_osv_queryable` (currently: a non-empty version). The rest go into `AuditReport.unaudited`, which is serialized as `"unaudited"` only when non-empty. `audit` prints `fetter: N package(s) could not be audited: …` to stderr. Unaudited packages do not change the exit code.
+
+**Observed OSV API behavior** (verified live 2026-11-13; guarded by the ignored test `osv_query::tests::test_osv_ecosystem_names_live`):
+- All five `osv_name()` values (`PyPI`, `npm`, `crates.io`, `GitHub Actions`, `VSCode`) are accepted.
+- **One invalid ecosystem name fails the entire batch** with HTTP 400 (`error in query at index N: invalid ecosystem`).
+- **An empty `version` matches every advisory for the package**: OSV treats it as "any version". That is why `is_osv_queryable` excludes it.
+- PyPI, npm and crates.io do server-side version matching (`jinja2@2.4.1`, `lodash@4.17.15`, `time@0.1.43` all return advisories).
+- **GitHub Actions has no server-side version matching.** GHA advisories carry only `ECOSYSTEM` ranges (e.g. `introduced 0, fixed 46.0.1`) with no `versions` list, and OSV does not evaluate them for this ecosystem. A versioned query always returns nothing, even for versions inside an affected range (e.g. `actions/download-artifact@4.0.0` against `introduced 4.0.0, fixed 4.1.3`), with or without a `v` prefix. GHA auditing therefore needs client-side matching: query by package name without a version (which returns all advisories), fetch each advisory's `affected` ranges, and compare the ref's version locally. See milestone 8.
+- VS Code: the name is accepted; whether advisories carry `versions` lists or need client-side matching is unverified (milestone 9).
 
 ## 7. Milestones
 
@@ -235,14 +245,20 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
    - Revised after review: `--origin` has no short flag (`-o` reads as output), and unpack/purge moved back to the top level as shared commands (Python-only behavior for now). Only `site-install` / `site-uninstall` are under `fetter python`.
    - The walker recurses in parallel: the full home scan went from ≈25s to ≈10.7s and `--root ~/_x/src` from ≈24.5s to ≈8s. A full home `scan` matches milestone 3 row for row once the new column is removed.
    - Not done: README examples still use `-e` and top-level `site-install` / `site-uninstall`; deferred to milestone 14. Old top-level `site-install` / `site-uninstall` get clap's generic "unrecognized subcommand" error with no hint.
-5. [ ] **OSV multi-ecosystem.** (`osv_name()` in queries is done; remaining: exclude un-auditable packages, mixed-ecosystem mock test, ecosystem in audit table.)
+5. [x] **OSV multi-ecosystem.**
    Files: `osv_query.rs`, `audit_report.rs`.
+   Done 2026-11-13. See §6.
+   - `AuditReport::from_packages` and `ScanFS::to_audit_report` now return `ResultDynError`.
+   - The audit and lookup commands stop the spinner before propagating an error.
+   - Tests cover mixed-ecosystem query JSON and result alignment, request/parse/length errors, failures not being cached, cache hits, `unaudited` partitioning, and the error path.
+   - Fixed a latent test bug: `lookup_report::test_from_dep_spec_mock` mocked 1 OSV result for 3 queried versions, and the old code's silent `zip` hid the mismatch.
+   - Added OSV pagination support (§6). Before, everything past the first page was silently dropped.
 6. [ ] **Cargo scanner**: `Cargo.lock`, `.crates2.json`.
    Files: `eco/cargo.rs`.
 7. [ ] **npm scanner**: `.package-lock.json`, `node_modules` walk, package-lock v1–v3, pnpm, yarn classic/berry.
    Files: `eco/npm.rs`.
-8. [ ] **GHA scanner**; replace the deprecated `serde_yaml` first.
-   Files: `eco/gha.rs`, `Cargo.toml`.
+8. [ ] **GHA scanner**; replace the deprecated `serde_yaml` first. Requires **client-side version matching** (§6): OSV returns nothing for versioned GHA queries. Approach: an ecosystem capability (e.g. `Ecosystem::osv_server_side_versions() -> bool`). For ecosystems without it, query `/v1/query` by name only, then evaluate each advisory's `affected[].ranges` (`ECOSYSTEM`, semver-like with an optional `v` prefix) against the ref. Floating refs (`@v4`) and SHAs cannot be placed in a range without resolving them to a release (GitHub API); report them as `unaudited` until that is implemented.
+   Files: `eco/gha.rs`, `osv_query.rs`, `osv_vulns.rs` (parse `affected`), `Cargo.toml`.
 9. [ ] **VS Code scanner.**
    Files: `eco/vscode.rs`.
 10. [ ] **Hooks**: generalize `inspect` via `site_to_hooks`. Port Python first, then npm, vscode, and cargo.
@@ -266,7 +282,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 9. Open questions
 
-- GHA: should SHA pins and `@v4` major-tag refs be resolved to concrete versions? That needs the GitHub API and a rate-limit/token story.
+- GHA: should SHA pins and `@v4` major-tag refs be resolved to concrete versions? That needs the GitHub API and a rate-limit/token story. Until then they go in `unaudited` (§6), so this decides how much of a typical workflow is auditable.
 - npm: report transitive dependencies from nested `node_modules` by default? How should table output stay usable with thousands of packages (group by origin? collapse lockfile-only?)
 - YAML parser to replace the deprecated `serde_yaml` (e.g. `serde_yaml_ng`, `saphyr`).
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
@@ -289,6 +305,8 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 ## 11. Breaking changes (for the v6 changelog)
 
 - `-e/--exe` → `--origin` (no short flag; old names kept as hidden aliases).
+- `audit` / `lookup-*` fail (exit 1) when OSV cannot be queried, instead of reporting no vulnerabilities. Audit JSON may include an `unaudited` list.
+- Library API: `AuditReport::from_packages` returns `Result`; `AuditReport` has a new `unaudited` field.
 - `count` output is a per-ecosystem table (`Ecosystem,Origins,Sites,Packages`), not `Executables/Sites/Packages` rows.
 - `scan`, `search`, `audit` and `lookup-*` tables have a new leading `Ecosystem` column.
 - `--root` replaces, rather than adds to, the default discovery locations.

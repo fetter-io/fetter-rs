@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::cli::CvssFilter;
+use crate::osv_query::is_osv_queryable;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
 use crate::util::logger;
@@ -19,6 +20,7 @@ use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
 use crate::util::FlagRetainPassing;
+use crate::util::ResultDynError;
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Serialize)]
@@ -120,10 +122,14 @@ impl Rowable for AuditRecord {
 #[derive(Debug, Serialize)]
 pub struct AuditReport {
     pub records: Vec<AuditRecord>,
+    /// Packages that could not be queried (e.g. without a version); these are not known to be free of vulnerabilities.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unaudited: Vec<Package>,
 }
 
 /// An AuditReport, for all provided packages, looks up package vulnerabilities and details in the OSV DB. There are two types of caching. (1) A cache on the vulnerabilities found for the provided set of packages. This is a time-cache that is invalidated after `duration`. (2) A cache of the details of each vulnerability. As these are unlikely to change often, these are fetched once and only removed if `cache_refresh` is set.
 impl AuditReport {
+    /// Packages may be from mixed ecosystems. A failure to query OSV is an error, never an empty (passing) report.
     pub fn from_packages(
         client: Arc<dyn UreqClient>,
         packages: &[Package],
@@ -132,11 +138,16 @@ impl AuditReport {
         log: FlagLog,
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,
-    ) -> Self {
-        if packages.is_empty() {
-            return AuditReport {
-                records: Vec::new(),
-            };
+    ) -> ResultDynError<Self> {
+        let (packages, unaudited): (Vec<Package>, Vec<Package>) =
+            packages.iter().cloned().partition(is_osv_queryable);
+        if !unaudited.is_empty() {
+            logger!(
+                log,
+                module_path!(),
+                "Not auditable (no version): {:?}",
+                unaudited
+            );
         }
         // if cache_refresh is true, derive a new cache_config with duration set to 0
         let cache_config = if bool::from(cache_refresh) {
@@ -145,15 +156,7 @@ impl AuditReport {
             cache_config.clone()
         };
         let vulns: Vec<Option<Vec<String>>> =
-            match query_osv_batches(client.clone(), packages, &cache_config, log) {
-                Ok(vulns) => vulns,
-                Err(e) => {
-                    logger!(log, module_path!(), "Failed to query OSV batches: {}", e);
-                    return AuditReport {
-                        records: Vec::new(),
-                    };
-                }
-            };
+            query_osv_batches(client.clone(), &packages, &cache_config, log)?;
         logger!(log, module_path!(), "Completed query_osv_batch");
 
         let mut records = Vec::new();
@@ -182,7 +185,10 @@ impl AuditReport {
                 records.push(record);
             }
         }
-        Self::apply_cvss_filter(AuditReport { records }, filter_cvss)
+        Ok(Self::apply_cvss_filter(
+            AuditReport { records, unaudited },
+            filter_cvss,
+        ))
     }
 
     pub fn len(&self) -> usize {
@@ -299,7 +305,8 @@ mod tests {
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
-        );
+        )
+        .unwrap();
 
         let dir = tempdir().unwrap();
         let fp = dir.path().join("report.txt");
@@ -336,7 +343,8 @@ mod tests {
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
-        );
+        )
+        .unwrap();
         assert!(ar.get_records().is_empty());
     }
 
@@ -369,7 +377,8 @@ mod tests {
             FlagLog(false),
             CvssFilter::All,
             FlagRetainPassing(false),
-        );
+        )
+        .unwrap();
         let ar_json = serde_json::to_string_pretty(&ar).unwrap();
         let expected_json = r#"{"records":[{"package":{"ecosystem":"python","name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"cvss_details":[{"version":"V3_1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L","score":4.3,"severity":"medium"}]}}}]}"#;
 
@@ -381,5 +390,69 @@ mod tests {
             actual_json, expected_json,
             "AuditDigest JSON output mismatch!"
         );
+    }
+
+    #[test]
+    fn test_audit_report_unaudited_a() {
+        use crate::ecosystem::Ecosystem;
+        use crate::version_spec::VersionSpec;
+        // only the versioned package is queried; one result in the response
+        let mut mock_post = HashMap::new();
+        mock_post.insert(
+            "https://api.osv.dev".to_string(),
+            r#"{"results":[{}]}"#.to_string(),
+        );
+        let client = Arc::new(UreqClientMock {
+            mock_post: Some(mock_post),
+            mock_get: None,
+        });
+        let packages = vec![
+            Package::new(Ecosystem::Npm, "lodash", VersionSpec::new("4.17.21"), None),
+            Package::new(
+                Ecosystem::Gha,
+                "actions/checkout",
+                VersionSpec::new(""),
+                None,
+            ),
+        ];
+        let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let ar = AuditReport::from_packages(
+            client,
+            &packages,
+            FlagCacheRefresh(false),
+            &cache_config,
+            FlagLog(false),
+            CvssFilter::All,
+            FlagRetainPassing(true),
+        )
+        .unwrap();
+        assert_eq!(ar.records.len(), 1);
+        assert_eq!(ar.records[0].package.name, "lodash");
+        assert_eq!(ar.unaudited.len(), 1);
+        assert_eq!(ar.unaudited[0].name, "actions/checkout");
+        let json = serde_json::to_string(&ar).unwrap();
+        assert!(json.contains(r#""unaudited":[{"ecosystem":"gha""#));
+    }
+
+    #[test]
+    fn test_audit_report_error_a() {
+        // a failed OSV query is an error, not an empty (passing) report
+        let client = Arc::new(UreqClientMock {
+            mock_post: None,
+            mock_get: None,
+        });
+        let packages =
+            vec![Package::from_name_version_durl("gradio", "4.0.0", None).unwrap()];
+        let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let ar = AuditReport::from_packages(
+            client,
+            &packages,
+            FlagCacheRefresh(false),
+            &cache_config,
+            FlagLog(false),
+            CvssFilter::All,
+            FlagRetainPassing(false),
+        );
+        assert!(ar.is_err());
     }
 }

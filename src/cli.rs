@@ -884,6 +884,19 @@ where
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
+            // stop the spinner before propagating any error
+            let ar = ar?;
+            if !ar.unaudited.is_empty() {
+                eprintln!(
+                    "fetter: {} package(s) could not be audited: {}",
+                    ar.unaudited.len(),
+                    ar.unaudited
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
             match subcommands {
                 Some(AuditSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&ar)?);
@@ -932,11 +945,13 @@ where
                 log,
                 cvss_filter,
                 FlagRetainPassing(*retain_passing),
-            )?;
+            );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
+            // stop the spinner before propagating any error
+            let lr = lr?;
             match subcommands {
                 Some(LookupNameSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
@@ -1008,11 +1023,13 @@ where
                 log,
                 cvss_filter,
                 FlagRetainPassing(*retain_passing),
-            )?;
+            );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
+            // stop the spinner before propagating any error
+            let lr = lr?;
             match subcommands {
                 Some(LookupBoundSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
