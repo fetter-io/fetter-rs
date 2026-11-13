@@ -1,12 +1,12 @@
 use crate::audit_report::AuditReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::package::Package;
 use crate::pypi_project::query_pypi_project;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
-use crate::util::name_to_key;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
@@ -32,12 +32,12 @@ impl LookupReport {
     ) -> Option<Vec<Package>> {
         // if a package is pinned (exact) do not query pypi
         match ds.get_exact() {
-            Some(version) => Some(vec![Package {
-                name: ds.name.clone(),
-                key: name_to_key(&ds.name),
+            Some(version) => Some(vec![Package::new(
+                Ecosystem::Python,
+                &ds.name,
                 version,
-                direct_url: None,
-            }]),
+                None,
+            )]),
             None => {
                 query_pypi_project(client, &ds.key, cache_config, log)
                     .ok()
@@ -45,11 +45,8 @@ impl LookupReport {
                         project
                             .get_version_specs(Some(ds), limit) // filter by ds, limit
                             .into_iter()
-                            .map(|version| Package {
-                                name: ds.name.clone(),
-                                key: name_to_key(&ds.name),
-                                version,
-                                direct_url: None,
+                            .map(|version| {
+                                Package::new(Ecosystem::Python, &ds.name, version, None)
                             })
                             .collect()
                     })
@@ -71,21 +68,13 @@ impl LookupReport {
     ) -> ResultDynError<Self> {
         // Versions are sorted when returned here
         let packages: Vec<Package> = match ds.get_exact() {
-            Some(version) => vec![Package {
-                name: ds.name.clone(),
-                key: name_to_key(&ds.name),
-                version,
-                direct_url: None,
-            }],
+            Some(version) => {
+                vec![Package::new(Ecosystem::Python, &ds.name, version, None)]
+            }
             None => query_pypi_project(client.clone(), &ds.key, cache_config, log)?
                 .get_version_specs(Some(ds), limit) // filter by DepSpec
                 .into_iter()
-                .map(|version| Package {
-                    name: ds.name.clone(),
-                    key: name_to_key(&ds.name),
-                    version,
-                    direct_url: None,
-                })
+                .map(|version| Package::new(Ecosystem::Python, &ds.name, version, None))
                 .collect(),
         };
 

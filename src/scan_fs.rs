@@ -18,8 +18,12 @@ use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
+use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::exe_search::find_exe;
+use crate::origin_site::Origin;
+use crate::origin_site::Site;
+use crate::origin_site::SiteKind;
 use crate::package::Package;
 use crate::package_match::match_str;
 use crate::path_shared::PathShared;
@@ -34,7 +38,6 @@ use crate::util::logger;
 use crate::util::path_is_component;
 use crate::util::path_normalize;
 use crate::util::path_within_duration;
-use crate::util::vecs_equal_as_sets;
 use crate::util::Anchor;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
@@ -114,84 +117,35 @@ fn get_packages(site_packages: &Path) -> Vec<Package> {
 //------------------------------------------------------------------------------
 
 // The result of a file-system scan.
-#[derive(Clone, Debug)]
+//
+// Invariant: every inner `Vec` is sorted (and so deterministic) after construction; all constructors must end by calling `ScanFS::from_parts`.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ScanFS {
     // NOTE: these attributes are used by reporters
-    /// A mapping of exe path to site packages paths
-    pub exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
-    /// A mapping of Package tp a site package paths
-    pub package_to_sites: HashMap<Package, Vec<PathShared>>,
-
-    // A mapping of site package to exe paths
-    pub site_to_exes: HashMap<PathShared, Vec<PathShared>>,
-    /// Optionally populate EnvMarkerState for all exe, only if env markers are found
-    pub exe_to_ems: Option<HashMap<PathShared, EnvMarkerState>>,
+    /// A mapping of Origin (e.g. a Python executable) to Sites (e.g. site-packages dirs).
+    pub origin_to_sites: HashMap<Origin, Vec<Site>>,
+    /// A mapping of Package to the Sites in which it was found.
+    pub package_to_sites: HashMap<Package, Vec<Site>>,
+    /// A mapping of Site to the Origins that use it; derived from `origin_to_sites`.
+    pub site_to_origins: HashMap<Site, Vec<Origin>>,
+    /// Optionally populate EnvMarkerState for all Python Origins, only if env markers are found.
+    pub origin_to_ems: Option<HashMap<Origin, EnvMarkerState>>,
     /// Scan configuration
     config: ScanConfig,
-    /// Store the hash of the un-normalized exe inputs for cache lookup.
-    exes_hash: String,
-}
-
-impl PartialEq for ScanFS {
-    fn eq(&self, other: &Self) -> bool {
-        if self.config != other.config || self.exes_hash != other.exes_hash {
-            return false;
-        }
-        if self.exe_to_ems != other.exe_to_ems {
-            return false;
-        }
-
-        if self.site_to_exes.len() != other.site_to_exes.len() {
-            return false;
-        }
-        for (key, vec1) in &self.site_to_exes {
-            if let Some(vec2) = other.site_to_exes.get(key) {
-                if !vecs_equal_as_sets(vec1, vec2) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-
-        if self.exe_to_sites.len() != other.exe_to_sites.len() {
-            return false;
-        }
-        for (key, vec1) in &self.exe_to_sites {
-            if let Some(vec2) = other.exe_to_sites.get(key) {
-                if !vecs_equal_as_sets(vec1, vec2) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        if self.package_to_sites.len() != other.package_to_sites.len() {
-            return false;
-        }
-        for (key, vec1) in &self.package_to_sites {
-            if let Some(vec2) = other.package_to_sites.get(key) {
-                if !vecs_equal_as_sets(vec1, vec2) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        true
-    }
+    /// Store the hash of the un-normalized origin inputs for cache lookup.
+    origins_hash: String,
 }
 
 struct PathIndexer {
-    path_to_index: HashMap<PathShared, usize>,
     paths: Vec<String>,
+    path_to_index: HashMap<PathShared, usize>,
 }
 
 impl PathIndexer {
     fn new() -> Self {
         Self {
-            path_to_index: HashMap::new(),
             paths: Vec::new(),
+            path_to_index: HashMap::new(),
         }
     }
 
@@ -211,79 +165,87 @@ impl PathIndexer {
     }
 }
 
+/// Flattened data representation used for serialization: a path dictionary, an Origin table and a Site table (both referring to paths by index), and mappings that refer to Origins and Sites by index. `site_to_origins` is not stored, as it is derived from `origin_to_sites`.
+type ScanFSData = (
+    Vec<String>,                       // paths
+    Vec<(Ecosystem, usize)>,           // origins: (ecosystem, path index)
+    Vec<(Ecosystem, SiteKind, usize)>, // sites: (ecosystem, kind, path index)
+    Vec<(usize, Vec<usize>)>,          // origin index to site indices
+    Vec<(Package, Vec<usize>)>,        // package to site indices
+    bool,                              // force_usite
+    bool,                              // all_users
+    String,                            // origins_hash
+);
+
 impl Serialize for ScanFS {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // Collect and sort by keys for stable ordering
-        let mut exe_to_sites: Vec<_> = self.exe_to_sites.iter().collect();
-        exe_to_sites.sort_by_key(|(k, _)| *k);
-
-        let mut package_to_sites: Vec<_> = self.package_to_sites.iter().collect();
-        package_to_sites.sort_by_key(|(k, _)| *k);
-
-        let mut site_to_exes: Vec<_> = self.site_to_exes.iter().collect();
-        site_to_exes.sort_by_key(|(k, _)| k.to_string());
+        // Assign indices in sorted order for stable output.
+        let mut origins: Vec<&Origin> = self.origin_to_sites.keys().collect();
+        origins.sort();
+        let mut sites: Vec<&Site> = self
+            .origin_to_sites
+            .values()
+            .chain(self.package_to_sites.values())
+            .flatten()
+            .collect();
+        sites.sort();
+        sites.dedup();
 
         let mut pi = PathIndexer::new();
+        let mut origin_to_index: HashMap<&Origin, usize> = HashMap::new();
+        let mut origin_table = Vec::with_capacity(origins.len());
+        for (i, o) in origins.iter().enumerate() {
+            origin_table.push((o.ecosystem, pi.get_index(&o.path)?));
+            origin_to_index.insert(o, i);
+        }
+        let mut site_to_index: HashMap<&Site, usize> = HashMap::new();
+        let mut site_table = Vec::with_capacity(sites.len());
+        for (i, s) in sites.iter().enumerate() {
+            site_table.push((s.ecosystem, s.kind, pi.get_index(&s.path)?));
+            site_to_index.insert(s, i);
+        }
 
-        let exe_to_sites_idx: Result<Vec<_>, S::Error> = exe_to_sites
-            .into_iter()
-            .map(|(exe, sites)| {
-                let exe_i = pi.get_index(exe)?;
-                let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s)).collect();
-                Ok((exe_i, site_idx?))
+        // inner Vecs are already sorted by construction
+        let origin_to_sites_idx: Vec<(usize, Vec<usize>)> = origins
+            .iter()
+            .map(|o| {
+                let site_idx = self.origin_to_sites[*o]
+                    .iter()
+                    .map(|s| site_to_index[s])
+                    .collect();
+                (origin_to_index[o], site_idx)
             })
             .collect();
 
-        let package_to_sites_idx: Result<Vec<_>, S::Error> = package_to_sites
+        let mut packages: Vec<&Package> = self.package_to_sites.keys().collect();
+        packages.sort();
+        let package_to_sites_idx: Vec<(&Package, Vec<usize>)> = packages
             .into_iter()
-            .map(|(pkg, sites)| {
-                let site_idx: Result<Vec<_>, S::Error> =
-                    sites.iter().map(|s| pi.get_index(s)).collect();
-                Ok((pkg, site_idx?))
+            .map(|p| {
+                let site_idx = self.package_to_sites[p]
+                    .iter()
+                    .map(|s| site_to_index[s])
+                    .collect();
+                (p, site_idx)
             })
             .collect();
 
-        let site_to_exe_idx: Result<Vec<_>, S::Error> = site_to_exes
-            .into_iter()
-            .map(|(site, exes)| {
-                let site_i = pi.get_index(site)?;
-                // sort exe paths by string for deterministic output
-                let mut exes_sorted: Vec<_> = exes.iter().collect();
-                exes_sorted.sort_by_key(|p| p.to_string());
-                let exe_idx: Result<Vec<_>, S::Error> =
-                    exes_sorted.into_iter().map(|e| pi.get_index(e)).collect();
-                Ok((site_i, exe_idx?))
-            })
-            .collect();
-
-        // Serialize as tuple of sorted vectors with dictionary
         let data = (
             pi.paths,
-            exe_to_sites_idx?,
-            package_to_sites_idx?,
-            site_to_exe_idx?,
+            origin_table,
+            site_table,
+            origin_to_sites_idx,
+            package_to_sites_idx,
             self.config.force_usite,
             self.config.all_users,
-            &self.exes_hash,
+            &self.origins_hash,
         );
         data.serialize(serializer)
     }
 }
-
-/// Flattened data representation used for serialization with path dictionary.
-type ScanFSData = (
-    Vec<String>,
-    Vec<(usize, Vec<usize>)>,
-    Vec<(Package, Vec<usize>)>,
-    Vec<(usize, Vec<usize>)>,
-    bool,
-    bool,
-    String,
-);
 
 impl<'de> Deserialize<'de> for ScanFS {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -292,108 +254,134 @@ impl<'de> Deserialize<'de> for ScanFS {
     {
         let (
             paths,
-            exe_to_sites_idx,
+            origin_table,
+            site_table,
+            origin_to_sites_idx,
             package_to_sites_idx,
-            site_to_exe_idx,
             force_usite,
             all_users,
-            exes_hash,
+            origins_hash,
         ): ScanFSData = Deserialize::deserialize(deserializer)?;
 
-        // let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-        let ps: Vec<PathShared> = paths.into_iter().map(PathShared::from).collect();
-
-        let exe_to_sites: HashMap<PathShared, Vec<PathShared>> = exe_to_sites_idx
+        let get = |i: usize| -> Result<PathShared, D::Error> {
+            paths
+                .get(i)
+                .map(|p| PathShared::from(p.as_str()))
+                .ok_or_else(|| serde::de::Error::custom("path index out of range"))
+        };
+        let origins: Vec<Origin> = origin_table
             .into_iter()
-            .map(|(exe_i, site_is)| {
-                let exe = ps[exe_i].clone();
-                let sites = site_is.into_iter().map(|i| ps[i].clone()).collect();
-                (exe, sites)
-            })
-            .collect();
-
-        let package_to_sites: HashMap<Package, Vec<PathShared>> = package_to_sites_idx
+            .map(|(e, i)| Ok(Origin::new(e, get(i)?)))
+            .collect::<Result<_, D::Error>>()?;
+        let sites: Vec<Site> = site_table
             .into_iter()
-            .map(|(pkg, site_is)| {
-                let sites = site_is.into_iter().map(|i| ps[i].clone()).collect();
-                (pkg, sites)
-            })
-            .collect();
+            .map(|(e, k, i)| Ok(Site::new(e, k, get(i)?)))
+            .collect::<Result<_, D::Error>>()?;
 
-        let site_to_exes: HashMap<PathShared, Vec<PathShared>> = site_to_exe_idx
-            .into_iter()
-            .map(|(site_i, exe_is)| {
-                let site = ps[site_i].clone();
-                let exes: Vec<PathShared> =
-                    exe_is.into_iter().map(|i| ps[i].clone()).collect();
-                (site, exes)
-            })
-            .collect();
+        let site_at = |i: usize| -> Result<Site, D::Error> {
+            sites
+                .get(i)
+                .cloned()
+                .ok_or_else(|| serde::de::Error::custom("site index out of range"))
+        };
+        let mut origin_to_sites = HashMap::new();
+        for (oi, sis) in origin_to_sites_idx {
+            let origin = origins
+                .get(oi)
+                .cloned()
+                .ok_or_else(|| serde::de::Error::custom("origin index out of range"))?;
+            let s: Vec<Site> = sis.into_iter().map(site_at).collect::<Result<_, _>>()?;
+            origin_to_sites.insert(origin, s);
+        }
+        let mut package_to_sites = HashMap::new();
+        for (pkg, sis) in package_to_sites_idx {
+            let s: Vec<Site> = sis.into_iter().map(site_at).collect::<Result<_, _>>()?;
+            package_to_sites.insert(pkg, s);
+        }
 
-        Ok(ScanFS {
-            exe_to_sites,
+        Ok(ScanFS::from_parts(
+            origin_to_sites,
             package_to_sites,
-            site_to_exes,
-            exe_to_ems: None,
-            config: ScanConfig::new(force_usite, all_users),
-            exes_hash,
-        })
+            ScanConfig::new(force_usite, all_users),
+            origins_hash,
+        ))
+    }
+}
+
+/// Collect packages from a Site, dispatching on its ecosystem.
+fn site_to_packages(site: &Site) -> Vec<Package> {
+    match site.ecosystem {
+        Ecosystem::Python => get_packages(site.as_path()),
+        // other ecosystems are not yet implemented
+        _ => Vec::new(),
     }
 }
 
 impl ScanFS {
-    /// Main entry point for creating a ScanFS. All public creation should go through this interface.
-    fn from_exe_to_sites(
-        exe_to_sites: HashMap<PathShared, Vec<PathShared>>,
-        config: &ScanConfig,
-        exes_hash: String,
-    ) -> ResultDynError<Self> {
-        // Some site packages will be repeated; let them be processed more than once here, as it seems easier than filtering them out
-        let site_to_packages = exe_to_sites
-            .par_iter()
-            .flat_map(|(_, site_packages)| {
-                site_packages.par_iter().map(|site_package_path| {
-                    let packages = get_packages(site_package_path.as_path());
-                    (site_package_path.clone(), packages)
-                })
-            })
-            .collect::<HashMap<PathShared, Vec<Package>>>();
-
-        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
-        for (exe, sites) in &exe_to_sites {
+    /// Final assembly of a ScanFS: derives `site_to_origins` and sorts all inner Vecs so that all downstream output is deterministic. All constructors must end here.
+    fn from_parts(
+        mut origin_to_sites: HashMap<Origin, Vec<Site>>,
+        mut package_to_sites: HashMap<Package, Vec<Site>>,
+        config: ScanConfig,
+        origins_hash: String,
+    ) -> Self {
+        let mut site_to_origins: HashMap<Site, Vec<Origin>> = HashMap::new();
+        for (origin, sites) in &origin_to_sites {
             for site in sites {
-                site_to_exes
+                site_to_origins
                     .entry(site.clone())
                     .or_default()
-                    .push(exe.clone());
+                    .push(origin.clone());
             }
         }
+        // NOTE: slice sort returns early for len < 2, so no need to guard here
+        for sites in origin_to_sites.values_mut() {
+            sites.sort();
+        }
+        for sites in package_to_sites.values_mut() {
+            sites.sort();
+        }
+        for origins in site_to_origins.values_mut() {
+            origins.sort();
+        }
+        ScanFS {
+            origin_to_sites,
+            package_to_sites,
+            site_to_origins,
+            origin_to_ems: None,
+            config,
+            origins_hash,
+        }
+    }
 
-        let mut package_to_sites: HashMap<Package, Vec<PathShared>> = HashMap::new();
-        for (site_package_path, packages) in site_to_packages.iter() {
+    /// Given a mapping of Origins to Sites, read all packages from all Sites.
+    fn from_origin_to_sites(
+        origin_to_sites: HashMap<Origin, Vec<Site>>,
+        config: &ScanConfig,
+        origins_hash: String,
+    ) -> ResultDynError<Self> {
+        // Collect unique sites so that each site (which might be shared by multiple origins) is only read once
+        let sites: HashSet<&Site> = origin_to_sites.values().flatten().collect();
+        let site_to_packages: Vec<(Site, Vec<Package>)> = sites
+            .into_par_iter()
+            .map(|site| (site.clone(), site_to_packages(site)))
+            .collect();
+
+        let mut package_to_sites: HashMap<Package, Vec<Site>> = HashMap::new();
+        for (site, packages) in site_to_packages {
             for package in packages {
                 package_to_sites
-                    .entry(package.clone())
+                    .entry(package)
                     .or_default()
-                    .push(site_package_path.clone());
+                    .push(site.clone());
             }
         }
-        // HashMap iteration order is random; sort inner Vecs for determinism
-        for sites in package_to_sites.values_mut() {
-            sites.sort_by(|a, b| a.as_path().cmp(b.as_path()));
-        }
-        for exes in site_to_exes.values_mut() {
-            exes.sort_by(|a, b| a.as_path().cmp(b.as_path()));
-        }
-
-        Ok(ScanFS {
-            exe_to_sites,
+        Ok(Self::from_parts(
+            origin_to_sites,
             package_to_sites,
-            site_to_exes,
-            exe_to_ems: None,
-            config: *config,
-            exes_hash,
-        })
+            *config,
+            origins_hash,
+        ))
     }
 
     /// Create a ScanFS from a cache: exes provided here should be pre-normalization.
@@ -406,12 +394,8 @@ impl ScanFS {
         if cache_config.duration == DURATION_0 {
             Err("Cache disabled by duration".into())
         } else {
-            let exes_hash = hash_paths(exes, config);
-
-            let cache_fp = cache_config
-                .directory
-                .join(format!("scan_fs_{exes_hash}"))
-                .with_extension("json");
+            let origins_hash = hash_paths(exes, config);
+            let cache_fp = Self::cache_path(cache_config, &origins_hash);
 
             if path_within_duration(&cache_fp, cache_config.duration) {
                 logger!(log, module_path!(), "Loading ScanFS cache: {:?}", cache_fp);
@@ -430,6 +414,14 @@ impl ScanFS {
         }
     }
 
+    /// Path of the cache file for a given hash; the `v6` marker ensures caches from prior formats are never read.
+    fn cache_path(cache_config: &CacheConfig, origins_hash: &str) -> PathBuf {
+        cache_config
+            .directory
+            .join(format!("scan_fs_v6_{origins_hash}"))
+            .with_extension("json")
+    }
+
     /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide path search will be conducted.
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
@@ -446,16 +438,19 @@ impl ScanFS {
             }
         }
 
-        let exe_to_sites: HashMap<PathShared, Vec<PathShared>> = exes_norm
+        let origin_to_sites: HashMap<Origin, Vec<Site>> = exes_norm
             .into_par_iter()
             .map(|exe| {
-                let dirs = get_site_package_dirs(&exe, config, log);
-                (PathShared::from(exe), dirs)
+                let sites = get_site_package_dirs(&exe, config, log)
+                    .into_iter()
+                    .map(Site::python)
+                    .collect();
+                (Origin::new(Ecosystem::Python, PathShared::from(exe)), sites)
             })
             .collect();
 
-        let exes_hash = hash_paths(exes, config);
-        Self::from_exe_to_sites(exe_to_sites, config, exes_hash)
+        let origins_hash = hash_paths(exes, config);
+        Self::from_origin_to_sites(origin_to_sites, config, origins_hash)
     }
 
     /// Alternative constructor from in-memory objects, only for testing. Here we provide notional exe and site paths, and focus just on collecting Packages.
@@ -465,64 +460,50 @@ impl ScanFS {
         site: PathBuf,
         packages: Vec<Package>,
     ) -> ResultDynError<Self> {
-        let mut exe_to_sites = HashMap::new();
-        let site_shared = PathShared::from_path_buf(site);
-
-        exe_to_sites.insert(PathShared::from(exe.clone()), vec![site_shared.clone()]);
-        let exes = vec![exe];
-
-        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
-        for (exe, sites) in &exe_to_sites {
-            for site in sites {
-                site_to_exes
-                    .entry(site.clone())
-                    .or_default()
-                    .push(exe.clone());
-            }
-        }
-
+        let site = Site::python(PathShared::from_path_buf(site));
+        let mut origin_to_sites = HashMap::new();
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Python, PathShared::from(exe.clone())),
+            vec![site.clone()],
+        );
         let mut package_to_sites = HashMap::new();
         for package in packages {
             package_to_sites
                 .entry(package)
                 .or_insert_with(Vec::new)
-                .push(site_shared.clone());
+                .push(site.clone());
         }
         let config = ScanConfig::new(false, false);
-        let exes_hash = hash_paths(&exes, &config);
-
-        Ok(ScanFS {
-            exe_to_sites,
+        let origins_hash = hash_paths(&[exe], &config);
+        Ok(Self::from_parts(
+            origin_to_sites,
             package_to_sites,
-            site_to_exes,
-            exe_to_ems: None,
             config,
-            exes_hash,
-        })
+            origins_hash,
+        ))
     }
 
     //--------------------------------------------------------------------------
 
-    // If not set, optionally load EnvMarkerState for each exe
+    // If not set, optionally load EnvMarkerState for each Python Origin
     pub(crate) fn load_env_marker_state(&mut self, log: FlagLog) {
         logger!(log, module_path!(), "Fetching EnvMarkerState");
 
-        if self.exe_to_ems.is_none() {
-            let ems_map: HashMap<PathShared, EnvMarkerState> = self
-                .exe_to_sites
+        if self.origin_to_ems.is_none() {
+            let ems_map: HashMap<Origin, EnvMarkerState> = self
+                .origin_to_sites
                 .keys()
+                .filter(|o| o.ecosystem == Ecosystem::Python)
                 .cloned()
                 .collect::<Vec<_>>()
                 .into_par_iter()
-                .map(|exe| {
-                    (
-                        exe.clone(),
-                        EnvMarkerState::from_exe(exe.as_path()).unwrap(),
-                    )
+                .map(|origin| {
+                    let ems = EnvMarkerState::from_exe(origin.as_path()).unwrap();
+                    (origin, ems)
                 })
                 .collect();
 
-            self.exe_to_ems = Some(ems_map);
+            self.origin_to_ems = Some(ems_map);
         }
     }
 
@@ -558,10 +539,7 @@ impl ScanFS {
         log: FlagLog,
     ) -> ResultDynError<()> {
         // use hash of exes observed at initialization
-        let cache_fp = cache_config
-            .directory
-            .join(format!("scan_fs_{}", self.exes_hash))
-            .with_extension("json");
+        let cache_fp = Self::cache_path(cache_config, &self.origins_hash);
 
         // only write if cache does not exist or it is out of duration
         if !cache_fp.exists() || !path_within_duration(&cache_fp, cache_config.duration) {
@@ -596,8 +574,8 @@ impl ScanFS {
         ValidationReport::from_components(
             &packages,
             &self.package_to_sites,
-            &self.site_to_exes,
-            &self.exe_to_ems,
+            &self.site_to_origins,
+            &self.origin_to_ems,
             &dm,
             &vf,
             ignore,
@@ -724,12 +702,12 @@ impl ScanFS {
         exit_else_warn: Option<i32>,
         log: FlagLog,
     ) -> ResultDynError<()> {
-        if self.exe_to_sites.len() > 1 {
-            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.exe_to_sites.len()).into());
+        if self.origin_to_sites.len() > 1 {
+            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.origin_to_sites.len()).into());
         }
         let ba = path_normalize(bound, true)?;
         // only a single exe, so no need to parallelize
-        for (exe, sites) in &self.exe_to_sites {
+        for (exe, sites) in &self.origin_to_sites {
             // NOTE: taking the first site, but might prioritize by some other criteria
             if let Some(site) = sites.first() {
                 install_validation(
@@ -739,7 +717,7 @@ impl ScanFS {
                     ignore,
                     vf,
                     exit_else_warn,
-                    site,
+                    &site.path,
                     env::current_dir().ok(), // as option type
                     log,
                 )?;
@@ -749,12 +727,12 @@ impl ScanFS {
     }
 
     pub(crate) fn site_validate_uninstall(&self, log: FlagLog) -> ResultDynError<()> {
-        if self.exe_to_sites.len() > 1 {
-            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.exe_to_sites.len()).into());
+        if self.origin_to_sites.len() > 1 {
+            return Err(format!("site-install will not operate on multiple ({}) Python environments; use `-e` to specify a single Python environment.", self.origin_to_sites.len()).into());
         }
-        for sites in self.exe_to_sites.values() {
+        for sites in self.origin_to_sites.values() {
             if let Some(site) = sites.first() {
-                uninstall_validation(site, log)?;
+                uninstall_validation(&site.path, log)?;
             }
         }
         Ok(())
@@ -805,14 +783,15 @@ mod tests {
         let fp_p2 = fp_sp.join("foo-3.0.dist-info");
         fs::create_dir(&fp_p2).unwrap();
 
-        let mut exe_to_sites = HashMap::<PathShared, Vec<PathShared>>::new();
-        exe_to_sites.insert(
-            PathShared::from(fp_exe.clone()),
-            vec![PathShared::from_path_buf(fp_sp.to_path_buf())],
+        let mut origin_to_sites = HashMap::<Origin, Vec<Site>>::new();
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Python, PathShared::from(fp_exe.clone())),
+            vec![Site::python(PathShared::from_path_buf(fp_sp.to_path_buf()))],
         );
         let config = ScanConfig::new(false, false);
         let mut sfs =
-            ScanFS::from_exe_to_sites(exe_to_sites, &config, "".to_string()).unwrap();
+            ScanFS::from_origin_to_sites(origin_to_sites, &config, "".to_string())
+                .unwrap();
         assert_eq!(sfs.package_to_sites.len(), 2);
 
         let dm1 = DepManifest::try_from_iter(vec!["numpy >= 1.19", "foo==3"]).unwrap();
@@ -945,7 +924,11 @@ mod tests {
             FlagLog(false),
         );
         assert_eq!(
-            sfs.exe_to_sites.get(&PathShared::from(exe)).unwrap()[0].strong_count(),
+            sfs.origin_to_sites
+                .get(&Origin::new(Ecosystem::Python, PathShared::from(exe)))
+                .unwrap()[0]
+                .path
+                .strong_count(),
             8
         );
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
@@ -1861,11 +1844,12 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[0,[1]]],[[{\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[1]],[{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[1]],[{\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[1]]],[[1,[0]]],false,false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[0]]],false,false,\"c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
-        assert_eq!(sfsd.exe_to_sites.len(), 1);
+        assert_eq!(sfsd.origin_to_sites.len(), 1);
         assert_eq!(sfsd.package_to_sites.len(), 3);
+        assert_eq!(sfsd, sfs);
     }
 
     #[test]
@@ -1882,68 +1866,50 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let pkg_requests =
             Package::from_name_version_durl("requests", "2.25.1", None).unwrap();
 
-        let mut sfs = ScanFS {
-            exe_to_sites: HashMap::new(),
-            package_to_sites: HashMap::new(),
-            site_to_exes: HashMap::new(),
-            exe_to_ems: None,
-            config: ScanConfig::new(false, false),
-            exes_hash: "hash".to_string(),
-        };
+        let o1 = Origin::new(Ecosystem::Python, PathShared::from(&exe1));
+        let o2 = Origin::new(Ecosystem::Python, PathShared::from(&exe2));
+        let s1 = Site::python(PathShared::from(&site1));
+        let s2 = Site::python(PathShared::from(&site2));
 
-        // Populate exe_to_sites
-        sfs.exe_to_sites
-            .insert(exe1.clone().into(), vec![site1.clone().into()]);
-        sfs.exe_to_sites.insert(
-            exe2.clone().into(),
-            vec![site1.clone().into(), site2.clone().into()],
+        let mut origin_to_sites = HashMap::new();
+        origin_to_sites.insert(o1.clone(), vec![s1.clone()]);
+        // provide sites out of order to test sorting
+        origin_to_sites.insert(o2.clone(), vec![s2.clone(), s1.clone()]);
+
+        let mut package_to_sites = HashMap::new();
+        package_to_sites.insert(pkg_numpy.clone(), vec![s2.clone(), s1.clone()]);
+        package_to_sites.insert(pkg_pandas.clone(), vec![s2.clone()]);
+        package_to_sites.insert(pkg_flask.clone(), vec![s1.clone()]);
+        package_to_sites.insert(pkg_requests.clone(), vec![s2.clone()]);
+
+        let sfs = ScanFS::from_parts(
+            origin_to_sites,
+            package_to_sites,
+            ScanConfig::new(false, false),
+            "hash".to_string(),
         );
-
-        // Populate package_to_sites
-        sfs.package_to_sites.insert(
-            pkg_numpy.clone(),
-            vec![site1.clone().into(), site2.clone().into()],
-        );
-        sfs.package_to_sites
-            .insert(pkg_pandas.clone(), vec![site2.clone().into()]);
-        sfs.package_to_sites
-            .insert(pkg_flask.clone(), vec![site1.clone().into()]);
-        sfs.package_to_sites
-            .insert(pkg_requests.clone(), vec![site2.clone().into()]);
-
-        // Populate site_to_exes
-        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
-        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
-        sfs.site_to_exes.insert(site1.clone().into(), exes1);
-        sfs.site_to_exes.insert(site2.clone().into(), exes2);
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/lib/python3/site-packages","/opt/venv/lib/python3.9/site-packages","/usr/bin/python3"],[[0,[1,2]],[3,[1]]],[[{"name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[1,2]],[{"name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[2]],[{"name":"requests","key":"requests","version":"2.25.1","direct_url":null},[2]]],[[2,[0]],[1,[3]]],false,false,"hash"]"#;
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null},[0]]],false,false,"hash"]"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
+        assert_eq!(sfsd, sfs);
         // Check deserialized sizes
-        assert_eq!(sfsd.exe_to_sites.len(), 2);
+        assert_eq!(sfsd.origin_to_sites.len(), 2);
         assert_eq!(sfsd.package_to_sites.len(), 4);
-        assert_eq!(sfsd.site_to_exes.len(), 2);
+        assert_eq!(sfsd.site_to_origins.len(), 2);
 
-        // Check exe_to_sites keys
-        assert!(sfsd.exe_to_sites.contains_key(&exe1.clone().into()));
-        assert!(sfsd.exe_to_sites.contains_key(&exe2.clone().into()));
-
-        // Check that numpy maps to both sites
+        // Check that numpy maps to both sites, sorted by path
         let numpy_sites = sfsd.package_to_sites.get(&pkg_numpy).unwrap();
-        assert_eq!(numpy_sites.len(), 2);
+        assert_eq!(numpy_sites, &vec![s2.clone(), s1.clone()]);
 
-        // Check site_to_exes mapping
+        // Check site_to_origins mapping, sorted by path
         assert_eq!(
-            sfsd.site_to_exes.get(&site1.into()).and_then(|v| v.first()),
-            Some(PathShared::from(&exe1)).as_ref()
+            sfsd.site_to_origins.get(&s1),
+            Some(&vec![o2.clone(), o1.clone()])
         );
-        assert_eq!(
-            sfsd.site_to_exes.get(&site2.into()).and_then(|v| v.first()),
-            Some(PathShared::from(&exe2)).as_ref()
-        );
+        assert_eq!(sfsd.site_to_origins.get(&s2), Some(&vec![o2.clone()]));
     }
 
     #[test]
@@ -1957,7 +1923,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
-            sfs.exes_hash,
+            sfs.origins_hash,
             "c0b5205c57aa54df7dcbddb79399a81accfe1198a5a7842cb99ac806fb1524a7"
         );
     }
@@ -1973,15 +1939,15 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
-            sfs.exes_hash,
+            sfs.origins_hash,
             "2a8da48d3b320314e74fa1b06b1b1d03330f4fa801b03ac81e57409726169a94"
         );
     }
 
     #[test]
     fn test_site_install_a() {
-        let site_shared1 = PathShared::from("foo");
-        let site_shared2 = PathShared::from("bar");
+        let site_shared1 = Site::python(PathShared::from("foo"));
+        let site_shared2 = Site::python(PathShared::from("bar"));
         let exe1 = PathBuf::from("a");
         let exe2 = PathBuf::from("b");
 
@@ -1989,9 +1955,15 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let p2 = Package::from_name_version_durl("static-frame", "2.13.0", None).unwrap();
         let p3 = Package::from_name_version_durl("flask", "1.1.3", None).unwrap();
 
-        let mut exe_to_sites = HashMap::new();
-        exe_to_sites.insert(exe1.clone().into(), vec![site_shared1.clone()]);
-        exe_to_sites.insert(exe2.clone().into(), vec![site_shared2.clone()]);
+        let mut origin_to_sites = HashMap::new();
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Python, exe1.clone().into()),
+            vec![site_shared1.clone()],
+        );
+        origin_to_sites.insert(
+            Origin::new(Ecosystem::Python, exe2.clone().into()),
+            vec![site_shared2.clone()],
+        );
 
         let exes = vec![exe1.clone(), exe2.clone()];
 
@@ -2000,22 +1972,10 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         package_to_sites.insert(p2, vec![site_shared1.clone()]);
         package_to_sites.insert(p3, vec![site_shared1.clone(), site_shared2.clone()]);
 
-        let mut site_to_exes: HashMap<PathShared, Vec<PathShared>> = HashMap::new();
-        let exes1 = vec![PathShared::from(exe1.to_path_buf())];
-        let exes2 = vec![PathShared::from(exe2.to_path_buf())];
-        site_to_exes.insert(site_shared1.clone(), exes1);
-        site_to_exes.insert(site_shared2.clone(), exes2);
-
         let config = ScanConfig::new(false, false);
-        let exes_hash = hash_paths(&exes, &config);
-        let sfs = ScanFS {
-            exe_to_sites,
-            package_to_sites,
-            site_to_exes,
-            exe_to_ems: None,
-            config,
-            exes_hash,
-        };
+        let origins_hash = hash_paths(&exes, &config);
+        let sfs =
+            ScanFS::from_parts(origin_to_sites, package_to_sites, config, origins_hash);
 
         let bound = PathBuf::from("foo");
         let bound_options = None;

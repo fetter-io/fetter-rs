@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::path_shared::PathShared;
+use crate::origin_site::Site;
 use crate::scan_fs::ScanFS;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
@@ -35,7 +35,7 @@ pub(crate) struct CountReport {
 impl CountReport {
     pub(crate) fn from_scan_fs(scan_fs: &ScanFS) -> CountReport {
         // discover unique packages
-        let mut site_packages: HashSet<&PathShared> = HashSet::new();
+        let mut site_packages: HashSet<&Site> = HashSet::new();
         for package in scan_fs.package_to_sites.keys() {
             if let Some(site_paths) = scan_fs.package_to_sites.get(package) {
                 for path in site_paths {
@@ -44,7 +44,7 @@ impl CountReport {
             }
         }
         let records = vec![
-            CountRecord::new("Executables".to_string(), scan_fs.exe_to_sites.len()),
+            CountRecord::new("Executables".to_string(), scan_fs.origin_to_sites.len()),
             CountRecord::new("Sites".to_string(), site_packages.len()),
             CountRecord::new("Packages".to_string(), scan_fs.package_to_sites.len()),
         ];

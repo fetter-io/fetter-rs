@@ -672,12 +672,12 @@ where
         Some(Commands::Inspect { subcommands }) => match subcommands {
             Some(InspectSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
-                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let it = InspectReport::from_site_to_origins(&sfs.site_to_origins)?;
                 let _ = it.to_file(output, *delimiter);
             }
             Some(InspectSubcommand::Display) | None => {
                 let sfs = get_sfs()?;
-                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let it = InspectReport::from_site_to_origins(&sfs.site_to_origins)?;
                 let _ = it.to_writer(stderr);
             }
         },

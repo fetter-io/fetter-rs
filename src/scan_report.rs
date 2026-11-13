@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::origin_site::Site;
 use crate::package::Package;
-use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
@@ -10,11 +10,11 @@ use crate::table::Tableable;
 #[derive(Debug, Clone)]
 pub(crate) struct ScanRecord {
     package: Package,
-    sites: Vec<PathShared>,
+    sites: Vec<Site>,
 }
 
 impl ScanRecord {
-    pub(crate) fn new(package: Package, sites: Vec<PathShared>) -> Self {
+    pub(crate) fn new(package: Package, sites: Vec<Site>) -> Self {
         ScanRecord { package, sites }
     }
 }
@@ -44,7 +44,7 @@ pub struct ScanReport {
 
 impl ScanReport {
     pub(crate) fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
     ) -> Self {
         let mut records = Vec::new();
         for (package, sites) in package_to_sites {
@@ -58,7 +58,7 @@ impl ScanReport {
     // Alternative constructor when we want to report on a subset of all packages.
     pub(crate) fn from_packages(
         packages: &Vec<Package>,
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
     ) -> Self {
         let mut records = Vec::new();
         for package in packages {

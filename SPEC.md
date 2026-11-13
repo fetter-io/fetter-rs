@@ -49,7 +49,7 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
 ## 3. Core data model
 
 - `enum Ecosystem { Python, Npm, Cargo, Gha, VsCode }`
-  - `osv_name()`: `PyPI`, `npm`, `crates.io`, `GitHub Actions`, VS Code: *open question*
+  - `osv_name()`: `PyPI`, `npm`, `crates.io`, `GitHub Actions`, `VSCode`
   - `cli_name()`: `python`, `npm`, `cargo`, `gha`, `vscode`; implements clap `ValueEnum`
 - `Package` (`src/package.rs`) gains `ecosystem: Ecosystem`.
   - Key normalization moves from `util::name_to_key` (PEP 503 only) to per-ecosystem rules:
@@ -58,7 +58,7 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
     - cargo: fold `-`/`_`
     - gha: lowercase `owner/repo`
     - vscode: lowercase `publisher.name`
-- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`.
+- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`. *Deferred until a scanner needs it (milestone 6+).* `VersionSpec` splits on `.` with numeric/text parts, so it already orders and displays semver strings and refs well enough for scanning; it is not sufficient for range matching.
   - Ordering and display work for every variant.
   - `validate` needs range matching per ecosystem. Each ecosystem gets its own requirement type behind `trait Requirement { fn matches(&self, &Package) -> bool }`:
     - PEP 440: existing `VersionSpec`/`DepSpec`
@@ -72,14 +72,16 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
   pub struct ScanFS {
       pub origin_to_sites: HashMap<Origin, Vec<Site>>,
       pub package_to_sites: HashMap<Package, Vec<Site>>,
-      pub site_to_origins: HashMap<Site, Vec<Origin>>,
-      pub python: Option<PythonExtras>,   // exe_to_ems and other Python-only state
-      config: ScanConfig,                  // gains `ecosystems: EcosystemSet`, `roots`
+      pub site_to_origins: HashMap<Site, Vec<Origin>>,     // derived from origin_to_sites
+      pub origin_to_ems: Option<HashMap<Origin, EnvMarkerState>>,  // Python origins only
+      config: ScanConfig,                  // will gain `ecosystems: EcosystemSet`, `roots` (milestone 3/4)
       origins_hash: String,
   }
   ```
+  - As implemented (milestone 2): Python-only state is the single `origin_to_ems` field rather than a `PythonExtras` struct. Wrap it in a struct if more Python-only state appears.
+  - All constructors end in `ScanFS::from_parts`, which derives `site_to_origins` and sorts every inner Vec. That makes `ScanFS: PartialEq` a plain derive.
   - **Determinism rule**: every inner `Vec` is sorted at construction. HashMap iteration order must never leak into output. A v5 bug of exactly this kind was fixed in `from_exe_to_sites`.
-  - Serialization uses a new v6 tuple (path dictionary retained). The cache file prefix becomes `scan_fs_v6_`, and the ecosystem set is included in the hash.
+  - Serialization uses a new v6 tuple: `(paths, origins: [(eco, path_i)], sites: [(eco, kind, path_i)], origin_to_sites: [(origin_i, [site_i])], package_to_sites: [(Package, [site_i])], force_usite, all_users, origins_hash)`. Tables are assigned indices in sorted order. `site_to_origins` is not stored; it is rebuilt on load. The cache file prefix is `scan_fs_v6_`. The ecosystem set will be added to the hash when it lands in `ScanConfig`.
 
 ## 4. Scanner architecture (single walk)
 
@@ -193,13 +195,14 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508, parsed by exis
 Each milestone leaves `cargo test` green and lists the main files it touches.
 
 1. [x] **SPEC.md**: this document.
-2. [ ] **Core types**: `Ecosystem`, `Package.ecosystem`, `PackageVersion`, `Origin`/`Site`/`SiteKind`, `ScanFS` field renames, and v6 serialization. Python only; CLI behavior unchanged.
-   Files: `package.rs`, `scan_fs.rs`, `path_shared.rs`, new `ecosystem.rs`; mechanical updates in reports.
+2. [x] **Core types**: `Ecosystem`, `Package.ecosystem`, `PackageVersion`, `Origin`/`Site`/`SiteKind`, `ScanFS` field renames, and v6 serialization. Python only; CLI behavior unchanged.
+   Files: `package.rs`, `scan_fs.rs`, new `ecosystem.rs` and `origin_site.rs`; mechanical updates in reports.
+   Done 2026-11-13. `PackageVersion` deferred (see §3). The `osv_name()` part of milestone 5 was done early, since it was a one-line change. Inspect and unpack output is now sorted; previously it followed HashMap iteration order. `Package::new(ecosystem, …)` is the general constructor; `from_name_version_durl` / `from_dist_info` remain the Python constructors.
 3. [ ] **Scanner trait + generic walker**; port Python into `eco/python.rs`.
    Files: `exe_search.rs` → walker, `scan_fs.rs`, new `eco/`.
 4. [ ] **CLI rework**: `-E`, `-o`, `--root`, the `python` namespace, and the ecosystem column/field in all reports; document the monitor schema.
    Files: `cli.rs`, `*_report.rs`, `table.rs`, `monitor.rs`.
-5. [ ] **OSV multi-ecosystem.**
+5. [ ] **OSV multi-ecosystem.** (`osv_name()` in queries is done; remaining: exclude un-auditable packages, mixed-ecosystem mock test, ecosystem in audit table.)
    Files: `osv_query.rs`, `audit_report.rs`.
 6. [ ] **Cargo scanner**: `Cargo.lock`, `.crates2.json`.
    Files: `eco/cargo.rs`.
@@ -228,7 +231,6 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 9. Open questions
 
-- VS Code: verify the OSV ecosystem name and its coverage against https://ossf.github.io/osv-schema/. It may be absent; if so, scan/validate work and audit is skipped.
 - GHA: should SHA pins and `@v4` major-tag refs be resolved to concrete versions? That needs the GitHub API and a rate-limit/token story.
 - npm: report transitive dependencies from nested `node_modules` by default? How should table output stay usable with thousands of packages (group by origin? collapse lockfile-only?)
 - YAML parser to replace the deprecated `serde_yaml` (e.g. `serde_yaml_ng`, `saphyr`).
@@ -244,6 +246,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - 2026-11-13: The default scan covers all ecosystems in a single walk.
 - 2026-11-13: `inspect`, `validate`, and `derive` are generalized to all ecosystems (hooks; cross-ecosystem allow list).
 - 2026-11-13: "exe" generalizes to **Origin**; "site" keeps its name, with a `SiteKind`.
+- 2026-11-13: OSV supports VS Code extensions under the ecosystem name `VSCode` (https://osv.dev/list?q=&ecosystem=VSCode), so VS Code packages are fully auditable.
 
 ## 11. Breaking changes (for the v6 changelog)
 
@@ -251,5 +254,6 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - `site-install`, `site-uninstall`, `purge-pattern`, `purge-invalid`, `unpack-count`, and `unpack-files` move under `fetter python`.
 - The default scan includes all ecosystems, not just Python.
 - The JSON output of every report gains an `ecosystem` field; the `monitor-scan` payload changes shape.
-- `ScanFS` public fields are renamed (`exe_to_sites` → `origin_to_sites`, etc.); `Package` gains `ecosystem`.
+- `ScanFS` public fields are renamed (`exe_to_sites` → `origin_to_sites`, `site_to_exes` → `site_to_origins`, `exe_to_ems` → `origin_to_ems`); their value types are now `Origin`/`Site`, not `PathShared`.
+- `Package` gains `ecosystem`, so its JSON (e.g. in `audit` output) gains an `"ecosystem"` field. `Package` ordering is by ecosystem first.
 - The cache format changes (`scan_fs_v6_` prefix); v5 caches are ignored.

@@ -35,7 +35,7 @@ impl OSVPackageQuery {
         OSVPackageQuery {
             package: OSVPackage {
                 name: package.name.clone(),
-                ecosystem: "PyPI".to_string(),
+                ecosystem: package.ecosystem.osv_name().to_string(),
             },
             version: package.version.to_string(),
         }
