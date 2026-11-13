@@ -3,9 +3,9 @@ mod cli;
 mod count_report;
 mod dep_manifest;
 mod dep_spec;
+mod eco;
 mod ecosystem;
 mod env_marker;
-mod exe_search;
 mod inspect_report;
 mod lock_file;
 mod lookup_report;
@@ -30,6 +30,7 @@ mod ureq_client;
 mod util;
 mod validation_report;
 mod version_spec;
+mod walk;
 mod write_color;
 
 pub use audit_report::AuditRecord;

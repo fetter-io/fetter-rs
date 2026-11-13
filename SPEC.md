@@ -85,32 +85,40 @@ For npm and cargo, fetter reports **both installed and lockfile** sources. It pr
 
 ## 4. Scanner architecture (single walk)
 
+As implemented in `src/eco/mod.rs` (milestone 3):
+
 ```rust
 trait EcosystemScanner: Sync {
-    fn ecosystem(&self) -> Ecosystem;
+    /// Extra (dir, recursive) roots beyond home dirs: PATH bins for Python; later ~/.vscode, $CARGO_HOME.
+    fn roots(&self) -> Vec<(PathBuf, bool)> { vec![] }
+    /// Origins found without walking: the default python on PATH.
+    fn default_origins(&self) -> Vec<Origin> { vec![] }
     /// Called once per visited directory with its entries; may claim origins and prune descent.
-    fn detect(&self, dir: &Path, entries: &[DirEntry]) -> Detect;   // Detect { origins, prune: bool }
-    /// Origins found without walking: PATH bins, ~/.vscode, $CARGO_HOME, default python.
-    fn fixed_origins(&self, config: &ScanConfig) -> Vec<Origin>;
+    fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect;   // DirItem { path, file_type }; Detect { origins, prune }
+    /// Convert a user-provided path (`-e`, later `-o`) into an Origin of this ecosystem.
+    fn normalize_origin(&self, path: &Path) -> ResultDynError<Origin>;
     fn origin_to_sites(&self, origin: &Origin, config: &ScanConfig, log: FlagLog) -> Vec<Site>;
     fn site_to_packages(&self, site: &Site) -> Vec<Package>;
-    /// Code that runs implicitly at install/startup/activation (for `inspect`). Default: none.
+    /// Milestone 10: code that runs implicitly at install/startup/activation (for `inspect`). Default: none.
     fn site_to_hooks(&self, site: &Site) -> Vec<Hook> { vec![] }
 }
 ```
+- Scanners are registered in `eco::scanner_for(Ecosystem) -> Option<&'static dyn EcosystemScanner>`; `eco::scanners()` returns all implemented ones. A scanner has no `ecosystem()` method; the registry is the mapping.
+- `DirItem.file_type` comes from the directory read and does not follow symlinks. That removes the extra `is_dir`/`symlink_metadata` stats per entry that `exe_search` did.
 
-- **Walker**: `exe_search::find_exe_inner` turns into a generic parallel walker.
+- **Walker** (`src/walk.rs`, replacing `exe_search.rs`): `walk::discover(scanners, all_users)`. Roots are walked in parallel; each root is walked sequentially.
   - It keeps `get_origins_home`, `get_search_exclude_paths`, and the no-symlink-recursion rule.
   - At each directory it reads the entries once and dispatches to every enabled scanner.
   - The `pyvenv.cfg` shortcut becomes `PythonScanner::detect` returning `prune: true`.
-- **Global prune list**: `node_modules` (npm reads it from the project root), `target`, `.git`, `site-packages`, `__pycache__`, plus the existing platform excludes.
+- **Global skip list**: only `.git` and `__pycache__` (`walk::SKIP_DIR_NAMES`), plus the existing platform excludes. `node_modules`, `target` and `site-packages` are generic names that could hide other ecosystems' origins (for example a venv under a dir named `target`). They are left to scanner `detect` pruning, or to a future per-scanner `skip_children` in `Detect` when npm/cargo land.
+- **Prune semantics**: if any scanner returns `prune: true` for a directory, none of its children are visited by any scanner. All scanners still see the pruning directory itself.
 - **Pipeline**: the same shape as today's `ScanFS::from_exe_to_sites`, generalized:
-  1. walk + `fixed_origins` → origins
+  1. walk + `default_origins` → origins
   2. `origin_to_sites` (rayon)
   3. `site_to_packages` (rayon)
   4. build the three index maps (sorted)
 - **Layout**: `src/eco/mod.rs` plus one file per ecosystem: `src/eco/{python,npm,cargo,gha,vscode}.rs`.
-  - Python's `get_site_package_dirs`, `get_packages`, and env-marker loading move into `eco/python.rs`.
+  - Python's `get_site_package_dirs`, `get_packages`, `get_origins_bin`, and venv detection are in `eco/python.rs`. Env-marker loading stays in `ScanFS::load_env_marker_state` (filtered to Python origins), because it mutates `ScanFS` state. `is_python_exe` and related helpers stay in `util.rs`, where `exe_path_normalize` also uses them.
 
 ### Hooks (generalized `inspect`)
 
@@ -198,8 +206,10 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 2. [x] **Core types**: `Ecosystem`, `Package.ecosystem`, `PackageVersion`, `Origin`/`Site`/`SiteKind`, `ScanFS` field renames, and v6 serialization. Python only; CLI behavior unchanged.
    Files: `package.rs`, `scan_fs.rs`, new `ecosystem.rs` and `origin_site.rs`; mechanical updates in reports.
    Done 2026-11-13. `PackageVersion` deferred (see §3). The `osv_name()` part of milestone 5 was done early, since it was a one-line change. Inspect and unpack output is now sorted; previously it followed HashMap iteration order. `Package::new(ecosystem, …)` is the general constructor; `from_name_version_durl` / `from_dist_info` remain the Python constructors.
-3. [ ] **Scanner trait + generic walker**; port Python into `eco/python.rs`.
-   Files: `exe_search.rs` → walker, `scan_fs.rs`, new `eco/`.
+3. [x] **Scanner trait + generic walker**; port Python into `eco/python.rs`.
+   Files: `exe_search.rs` → `walk.rs`, `scan_fs.rs`, new `eco/`.
+   Done 2026-11-13. `ScanFS::from_exes` keeps its name until the CLI rework; with `*` it calls `walk::discover(&eco::scanners(), …)`, and explicit paths go through `PythonScanner.normalize_origin` until `-o` adds ecosystem inference (milestone 4). Walker tests use a mock `MarkerScanner` to exercise dispatch, pruning, skip names, excludes, and symlinks independently of Python.
+   Verified against the milestone 2 commit with a full `scan` of a home directory: identical results (1586 rows, same content). Discovery is about 4.5× faster (≈25s vs ≈111–125s, warm cache, release build). The skip list is not the cause (disabling it made no difference). The gain comes from using `DirEntry::file_type()` instead of `is_dir()` + `symlink_metadata()` stats on every entry. Also fixed: `scan`/`search` rows for packages that compare equal (same name+version, different `direct_url`) were ordered by HashMap iteration. They now tie-break by sites.
 4. [ ] **CLI rework**: `-E`, `-o`, `--root`, the `python` namespace, and the ecosystem column/field in all reports; document the monitor schema.
    Files: `cli.rs`, `*_report.rs`, `table.rs`, `monitor.rs`.
 5. [ ] **OSV multi-ecosystem.** (`osv_name()` in queries is done; remaining: exclude un-auditable packages, mixed-ecosystem mock test, ecosystem in audit table.)
@@ -237,6 +247,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
 - Allow-list file name and format. Should purl `vers:` ranges be supported alongside native range syntax?
 - npm range semantics: use the `node-semver` crate, or implement the subset fetter needs?
+- `Package`'s `Ord` (ecosystem, lowercase name, version) is inconsistent with its derived `Eq`/`Hash` (which include `key` and `direct_url`): distinct packages can compare `Equal`. Reports work around this with tie-breaks. Should `Ord` include `direct_url`, or should identity drop it?
 - Should the Python-only namespace also accept `-E python` on shared commands as an alias, to ease migration?
 
 ## 10. Decision log

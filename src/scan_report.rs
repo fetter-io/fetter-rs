@@ -17,6 +17,13 @@ impl ScanRecord {
     pub(crate) fn new(package: Package, sites: Vec<Site>) -> Self {
         ScanRecord { package, sites }
     }
+
+    /// Display order: by package, then by sites. Distinct packages can compare equal (e.g. the same name and version with different `direct_url`), so the sites tie-break keeps output deterministic.
+    fn cmp_display(a: &Self, b: &Self) -> std::cmp::Ordering {
+        a.package
+            .cmp(&b.package)
+            .then_with(|| a.sites.cmp(&b.sites))
+    }
 }
 
 impl Rowable for ScanRecord {
@@ -51,7 +58,7 @@ impl ScanReport {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
-        records.sort_by_key(|item| item.package.clone());
+        records.sort_by(ScanRecord::cmp_display);
         ScanReport { records }
     }
 
@@ -66,7 +73,7 @@ impl ScanReport {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
-        records.sort_by_key(|item| item.package.clone());
+        records.sort_by(ScanRecord::cmp_display);
         ScanReport { records }
     }
 }

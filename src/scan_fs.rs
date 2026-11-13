@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
-use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 
 use rayon::prelude::*;
@@ -18,9 +16,12 @@ use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
 use crate::dep_manifest::DepManifest;
+use crate::eco::python::PythonScanner;
+use crate::eco::scanner_for;
+use crate::eco::scanners;
+use crate::eco::EcosystemScanner;
 use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
-use crate::exe_search::find_exe;
 use crate::origin_site::Origin;
 use crate::origin_site::Site;
 use crate::origin_site::SiteKind;
@@ -32,7 +33,6 @@ use crate::site_customize::install_validation;
 use crate::site_customize::uninstall_validation;
 use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClient;
-use crate::util::exe_path_normalize;
 use crate::util::hash_paths;
 use crate::util::logger;
 use crate::util::path_is_component;
@@ -48,71 +48,9 @@ use crate::util::ScanConfig;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
+use crate::walk::discover;
 
 //------------------------------------------------------------------------------
-
-/// Given a path to a Python binary, call out to Python to get all known site packages; some site packages may not exist; we do not filter them here. This will include "dist-packages" on Linux. If `config.force_usite` is false, we use site.ENABLE_USER_SITE to determine if we should include the user site packages; if `config.force_usite` is true, we always include usite.
-/// Calling Python using `-S` disables loading site so that we can mock sitecustomize.py (which fetter might customize). We then call `site.main()` to force proper initialization.
-const PY_SITE_PACKAGES: &str = "import sys;import site;import types;sys.modules['fetter_validate'] = types.ModuleType('fetter_validate');site.main();print(site.ENABLE_USER_SITE);print(\"\\n\".join(site.getsitepackages()));print(site.getusersitepackages())";
-fn get_site_package_dirs(
-    executable: &Path,
-    config: &ScanConfig,
-    log: FlagLog,
-) -> Vec<PathShared> {
-    match Command::new(executable)
-        .arg("-S") // disable site on startup
-        .arg("-c")
-        .arg(PY_SITE_PACKAGES)
-        .output()
-    {
-        Ok(output) => {
-            let mut paths = Vec::new();
-            let mut usite_enabled = false;
-
-            let lines = std::str::from_utf8(&output.stdout)
-                .expect("Failed to convert to UTF-8")
-                .trim()
-                .lines();
-            for (i, line) in lines.enumerate() {
-                if i == 0 {
-                    usite_enabled = line.trim() == "True";
-                } else {
-                    paths.push(PathShared::from(line.trim()));
-                }
-            }
-            // if necessary, remove the usite
-            if !config.force_usite && !usite_enabled {
-                let _p = paths.pop();
-            }
-            paths
-        }
-        Err(e) => {
-            logger!(
-                log,
-                module_path!(),
-                "Failed to execute command with {:?}: {}",
-                executable,
-                e
-            );
-
-            Vec::with_capacity(0)
-        }
-    }
-}
-
-// Given a package directory, collect the name of all packages.
-fn get_packages(site_packages: &Path) -> Vec<Package> {
-    let mut packages = Vec::new();
-    if let Ok(entries) = fs::read_dir(site_packages) {
-        for entry in entries.flatten() {
-            let file_path = entry.path();
-            if let Some(package) = Package::from_file_path(&file_path) {
-                packages.push(package);
-            }
-        }
-    }
-    packages
-}
 
 //------------------------------------------------------------------------------
 
@@ -308,13 +246,11 @@ impl<'de> Deserialize<'de> for ScanFS {
     }
 }
 
-/// Collect packages from a Site, dispatching on its ecosystem.
+/// Collect packages from a Site, dispatching to its ecosystem's scanner.
 fn site_to_packages(site: &Site) -> Vec<Package> {
-    match site.ecosystem {
-        Ecosystem::Python => get_packages(site.as_path()),
-        // other ecosystems are not yet implemented
-        _ => Vec::new(),
-    }
+    scanner_for(site.ecosystem)
+        .map(|s| s.site_to_packages(site))
+        .unwrap_or_default()
 }
 
 impl ScanFS {
@@ -422,30 +358,30 @@ impl ScanFS {
             .with_extension("json")
     }
 
-    /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide path search will be conducted.
+    /// Given a Vec of PathBuf to executables, use them to collect site packages. In this function, provided PathBuf are normalized to absolute paths, and if a PathBuf is "*", a system-wide search for Origins of all implemented ecosystems is conducted with a single filesystem walk.
     pub(crate) fn from_exes(
         exes: &Vec<PathBuf>,
         config: &ScanConfig,
         log: FlagLog,
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
-        let mut exes_norm = Vec::new();
+        let mut origins: HashSet<Origin> = HashSet::new();
         for e in exes {
             if path_is_component(e) && *e == path_wild {
-                exes_norm.extend(find_exe(config.all_users));
+                origins.extend(discover(&scanners(), config.all_users));
             } else {
-                exes_norm.push(exe_path_normalize(e)?);
+                // NOTE: explicit paths are Python executables until ecosystem inference is implemented
+                origins.insert(PythonScanner.normalize_origin(e)?);
             }
         }
 
-        let origin_to_sites: HashMap<Origin, Vec<Site>> = exes_norm
+        let origin_to_sites: HashMap<Origin, Vec<Site>> = origins
             .into_par_iter()
-            .map(|exe| {
-                let sites = get_site_package_dirs(&exe, config, log)
-                    .into_iter()
-                    .map(Site::python)
-                    .collect();
-                (Origin::new(Ecosystem::Python, PathShared::from(exe)), sites)
+            .map(|origin| {
+                let sites = scanner_for(origin.ecosystem)
+                    .map(|s| s.origin_to_sites(&origin, config, log))
+                    .unwrap_or_default();
+                (origin, sites)
             })
             .collect();
 
@@ -743,6 +679,7 @@ impl ScanFS {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::fs::File;
     use tempfile::tempdir;
     // use rand::seq::SliceRandom;
@@ -758,16 +695,6 @@ mod tests {
             .expect("no python interpreter found on PATH")
     }
 
-    #[test]
-    fn test_get_site_package_dirs_a() {
-        let p1 = Path::new("python3");
-        let config_force = ScanConfig::new(true, false);
-        let paths1 = get_site_package_dirs(p1, &config_force, FlagLog(false));
-        assert!(!paths1.is_empty());
-        let config_no_force = ScanConfig::new(false, false);
-        let paths2 = get_site_package_dirs(p1, &config_no_force, FlagLog(false));
-        assert!(paths1.len() >= paths2.len());
-    }
     #[test]
     fn test_from_exe_to_sites_a() {
         let fp_dir = tempdir().unwrap();
