@@ -378,6 +378,13 @@ impl ScanFS {
                     .push(site_package_path.clone());
             }
         }
+        // HashMap iteration order is random; sort inner Vecs for determinism
+        for sites in package_to_sites.values_mut() {
+            sites.sort_by(|a, b| a.as_path().cmp(b.as_path()));
+        }
+        for exes in site_to_exes.values_mut() {
+            exes.sort_by(|a, b| a.as_path().cmp(b.as_path()));
+        }
 
         Ok(ScanFS {
             exe_to_sites,
