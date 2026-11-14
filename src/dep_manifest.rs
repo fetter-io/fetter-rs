@@ -70,6 +70,10 @@ impl Tableable<DepManifestRecord> for DepManifestReport {
     fn get_records(&self) -> &Vec<DepManifestRecord> {
         &self.records
     }
+    /// A requirements file, not a table: lines (with spaces in markers) are written as is.
+    fn delimited_quoting(&self) -> bool {
+        false
+    }
 }
 
 //------------------------------------------------------------------------------

@@ -11,13 +11,13 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-13, at the end of milestone 9.*
+*Last updated 2026-11-14, at the end of milestone 10.*
 
 ### Where we are
 
-- **Branch** `207/polye`. Milestones **1–9 are done** (§7). **All five ecosystem scanners exist**: Python, npm (incl. bun), Cargo, GitHub Actions, VS Code.
-- **Milestones 8–9 may not be committed yet.** Check `git status`: `src/eco/gha.rs`, `src/osv_match.rs` and `src/eco/vscode.rs` are new.
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 402 passed and 5 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. Milestones **1–10 are done** (§7). All five ecosystem scanners exist, and `inspect` reports hooks across ecosystems.
+- **Milestone 10 may not be committed yet** (it modifies existing files only; check `git status`).
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 408 passed and 5 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
@@ -29,7 +29,6 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 - **Python-only isolation in shared commands** (remove as each generalizes):
   - `validate`, `derive`, `purge-invalid` → Python packages only (`scan_fs.rs`, until milestone 11)
   - `unpack-*`, `purge-*` → `supports_artifacts` (Python only, until milestone 13)
-  - `inspect` → Python sites only (until milestone 10)
   - `lookup-*` → forced `-E python` (until milestone 12)
 
 ### Code map
@@ -43,6 +42,7 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | Client-side OSV matching (`SemverLike`, `RefKind`, range evaluation, by-name queries) | `src/osv_match.rs` |
 | YAML parsing (into `serde_json::Value`) | `serde_saphyr::from_str`; see `eco/npm.rs`, `lock_file.rs` |
 | Table rendering, column fitting | `src/table.rs` (`optimize_widths_for` is the testable core) |
+| Hooks (`inspect`): `Hook`, `EcosystemScanner::site_to_hooks` | `src/eco/mod.rs`; per-ecosystem in `eco/{python,npm,vscode}.rs`; report in `src/inspect_report.rs` |
 | Single filesystem walk (parallel; prune / skip_children / excludes) | `src/walk.rs` |
 | `ScanFS`: assembly (`from_parts`, the only constructor path), serialization, cache, report entry points | `src/scan_fs.rs` |
 | `ScanConfig` (ecosystems, roots; hashed for the cache) | `src/util.rs` |
@@ -51,22 +51,34 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | Which ecosystems match server-side vs. client-side | `Ecosystem::osv_server_side_versions` (`src/ecosystem.rs`) |
 | Audit report (`unaudited`, errors) | `src/audit_report.rs` |
 
-### Next: milestone 10, hooks (generalized `inspect`)
+### Next: milestone 11, the cross-ecosystem allow list (`validate` / `derive`)
 
-All scanners exist, so the remaining milestones generalize commands. Milestone 10 is first because it is self-contained and builds directly on the scanners. Plan:
-1. **Read `inspect_report.rs` and `site_customize.rs`** to see exactly what Python `inspect` reports today: `.pth` files with executable lines, `sitecustomize`/`usercustomize`. Keep its output byte-identical for Python (verify against the previous commit as in milestones 3–4).
-2. **Add `EcosystemScanner::site_to_hooks(&Site) -> Vec<Hook>`** (default empty) and a `Hook { ecosystem, package: Option<Package>, kind, path, detail }` type. Port Python first, then generalize `InspectReport` to take hooks from every site, not just Python sites. Remove the Python-only filter (`Picking this up`: isolation list).
-3. **Per ecosystem** (§4 Hooks table; survey real data first, as for every scanner):
-   - **npm** (do first: 0.4% prevalence, highest signal): `preinstall` / `install` / `postinstall` scripts in installed packages' `package.json`; not `prepare`. These are the classic supply-chain vector. For lockfile-only sites use `hasInstallScript` (package-lock v2/v3) where available. Report the script text as the detail, like `.pth` content.
-   - **vscode**: extensions whose `activationEvents` include `*` or `onStartupFinished` (they run on every editor start), plus the `main` entry.
-   - **cargo**: low priority. At 13% (`build.rs`) and 6% (proc-macro) prevalence, presence alone is weak signal, and detection needs per-crate lookups in `$CARGO_HOME/registry/src` (which the walker prunes). Skip, or make it opt-in, unless the user asks otherwise.
-   - **gha**: local composite actions only (remote `runs.using` would need fetching); possibly omit.
-4. **CLI/report**: `inspect` gains the `Ecosystem` column. Decide whether hook output needs `json` (today: display/write only).
-5. **Verify**: Python `inspect` unchanged; per-ecosystem fixtures; a real-data cross-check of npm install scripts.
+This is the largest remaining milestone, with several user decisions. Plan:
+1. **Read the existing Python path end to end before designing**:
+   - `dep_manifest.rs` (`DepManifest`: from requirements, pyproject, lock files via `lock_file.rs`, URLs, `from_dir`)
+   - `dep_spec.rs` (PEP 508 parsing, `validate_env_marker`)
+   - `validation_report.rs` (Missing / Unrequired / Misdefined; `--subset` / `--superset`)
+   - `ScanFS::to_validation_report` / `to_dep_manifest`, and `site_customize.rs` (the installed hook runs `validate`)
+
+   The Python behavior and output must stay identical when validating against a Python bound.
+2. **Decisions to put to the user** (§5a sketches a proposal):
+   - the file name and format (`fetter.toml` with per-ecosystem tables in native range syntax, or something else), and whether purl lists are accepted;
+   - what `derive` writes: requirements.txt for a Python-only scan (today's behavior) vs `fetter.toml` when several ecosystems are present;
+   - `--strict` for ecosystems absent from the file;
+   - range-matching dependencies: the `semver` crate (Cargo's own semantics) and an npm range implementation (`node-semver` crate vs a subset). Check MSRV 1.89 compatibility and probe real ranges from the lockfiles on this machine first.
+3. **Requirements per ecosystem** behind `trait Requirement { fn matches(&self, &Package) -> bool }`:
+   - PEP 440 via the existing `DepSpec`
+   - Cargo semver reqs
+   - npm ranges
+   - GHA: allowed refs, compared exactly as written; consider SHA pins with comments
+   - VS Code: exact version or `*`
+4. **Generalize `ValidationReport`** with an ecosystem per record (and the Ecosystem column), and **remove the Python-only isolation** for `validate`, `derive` and `purge-invalid` ("Where we are" list).
+5. **Verify**: Python validate/derive output unchanged against the previous commit; the site-install hook still works (`--origin` + `validate`); round-trip: `derive` from a real multi-ecosystem scan, then `validate` against it, gives no failures.
 
 ### Baselines for regression checks (dev machine, release build, warm cache)
 
 - Full home scan, `count`: python 54 origins / 57 sites / 764 packages; npm 40 / 45 / 5,915 (5 sites are VS Code extensions' bundled `node_modules`); cargo 27 / 25 / 1,747; gha 52 / 118 / 110; vscode 1 / 1 / 39; ≈4.0s.
+- `fetter inspect` (full home): 37 python, 60 npm, 4 vscode hook rows; ≈4.4s. Python rows identical to milestone 9 apart from sort order within a site (previously filesystem order).
 - `fetter -E vscode audit` (full home): no extension is flagged; 3 bundled npm deps are (`simple-git` 2.38.0 with 8 advisories and `moment` 2.29.1 with 2, both in `cschlosser.doxdocgen` 1.4.0; `@github/copilot` 1.0.39 in `github.copilot-chat`).
 - `fetter -E gha audit` (full home): 0 advisories (verified by hand against the full OSV GHA dataset: the 4 used repos with advisories are all on unaffected refs), 8 unaudited (SHA pins without version comments), ≈12s uncached. (Cargo was 1,737 before this repo's own `Cargo.lock` gained 12 crates from the `serde-saphyr` swap; `Cargo.lock` is gitignored here.)
 - Full home `scan`: byte-identical across runs.
@@ -86,6 +98,7 @@ All scanners exist, so the remaining milestones generalize commands. Milestone 1
 
 - fetter's own dependencies have OSV advisories (`ring` 0.17.8, `rustls` 0.23.27, `bytes` 1.10.1, `rustix`, `crossbeam-epoch`, …), mostly via `ureq`; run `fetter --origin . audit`. A `cargo update` likely clears most of them. Not done, because dependency changes are the maintainer's call.
 - README examples are stale (`-e`, top-level `site-install`); deferred to milestone 14.
+- *Resolved 2026-11-14*: delimited output (`write -d`) did not quote fields, so a value containing the delimiter corrupted its row (e.g. `sharp`'s `node install/check.js || npm run build` under `-d '|'`). See the delimited-output entry under milestone 10.
 - The `unsafe-libyaml` advisory (RUSTSEC-2024-0449) is resolved: `serde_yaml` was replaced with `serde-saphyr`.
 
 ---
@@ -220,7 +233,7 @@ Measured prevalence on the dev machine (2026-11-13):
 | python | `.pth` files with executable lines; `sitecustomize`/`usercustomize` (existing `inspect_report.rs` logic) |
 | npm | `preinstall`/`install`/`postinstall` scripts in installed packages' `package.json` (not `prepare`; see above); `hasInstallScript` in lockfiles |
 | cargo | low priority (13% / 6% prevalence): crates with `build.rs` or proc-macros, visible only in `$CARGO_HOME/registry/src`; from `Cargo.lock` alone this is unknowable |
-| gha | local composite actions only in v6.0 (remote `runs.using` would need fetching) |
+| gha | none in v6.0 (local composite actions are plain workflow steps, already scanned; remote `runs.using` would need fetching) |
 | vscode | `activationEvents` containing `*` or `onStartupFinished`; `main` entry |
 
 ## 5. CLI v6
@@ -240,7 +253,7 @@ Measured prevalence on the dev machine (2026-11-13):
 
 - Only `site-install` / `site-uninstall` are Python-specific in concept, because they install a Python startup hook. Unpack and purge apply to most ecosystems (npm package dirs, VS Code extension dirs, cargo-installed bins). They are shared commands, but until milestone 13 they act only on packages whose ecosystem can read artifacts (`scan_fs::supports_artifacts`, Python only). Packages from other ecosystems are silently left out.
 
-- Ecosystem column, as implemented in milestone 4: `scan`, `search`, `audit`, `lookup-*` tables gain a leading `Ecosystem` column (blank on continuation rows in a TTY, like `Package`). Their JSON already carries `package.ecosystem`. `validate`, `inspect`, `derive` and `unpack-*` are unchanged until their milestones (10, 11), since they are Python-only today.
+- Ecosystem column, as implemented in milestone 4: `scan`, `search`, `audit`, `lookup-*` tables gain a leading `Ecosystem` column (blank on continuation rows in a TTY, like `Package`). Their JSON already carries `package.ecosystem`. `inspect` gained it in milestone 10. `validate`, `derive` and `unpack-*` are unchanged until milestones 11 and 13.
 - `count` is now one row per enabled, implemented ecosystem: `Ecosystem,Origins,Sites,Packages`. A final `all` row is added only when there is more than one row. It used to be a vertical `Executables/Sites/Packages` list.
 - `lookup-name` / `lookup-bound` (and every `fetter python …` command) force `-E python`. Passing any other ecosystem is an error until registries exist.
 - Python-namespace commands keep their v5 behavior and force `-E python`.
@@ -441,8 +454,28 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
      - Other ecosystems unchanged; ≈4.0s; deterministic.
      - The live audit flagged no extension but 3 bundled deps (see baselines).
      - A control `.cursor` dir (fork, no `extensions.json`) flagged exactly the compromised versions and not their fixed versions, including the case-sensitive name.
-10. [ ] **Hooks**: generalize `inspect` via `site_to_hooks`. Port Python first, then npm, vscode, and cargo.
-    Files: `inspect_report.rs`, `site_customize.rs`, `eco/*`.
+10. [x] **Hooks**: generalize `inspect` via `site_to_hooks`.
+    Files: `inspect_report.rs` (rewritten), `table.rs`, `eco/{mod,python,npm,vscode}.rs`.
+    Done 2026-11-14.
+    - **Framework**: `Hook { name, detail }` and `EcosystemScanner::site_to_hooks` (default: none). `InspectReport::from_site_to_origins` asks every site's scanner, in parallel. Sites without hooks are omitted, records are sorted by site, and hooks within a site are sorted and deduplicated.
+    - **Report**: columns are now `Ecosystem | Site | Hook | Content` (was `Site | File | Content`). Content is truncated to 60 characters as before. The red highlight of `sitecustomize.py` / `usercustomize.py` now keys on the `Hook` header.
+    - **Python** (moved to `eco/python.rs`): every `.pth` plus `sitecustomize.py` / `usercustomize.py`, showing the first 10 lines joined by spaces, unchanged. Rows are identical to before except that they are now **sorted** within a site; they used to follow `read_dir` order.
+    - **npm**:
+      - Installed packages' `preinstall` / `install` / `postinstall` scripts; the detail is the command. `prepare` is excluded (see §4).
+      - Package-lock sites report `hasInstallScript` entries, with no script text available. Other lockfiles do not record install scripts.
+      - The `node_modules` walk was refactored into a visitor (`visit_node_modules`) shared by packages and hooks.
+    - **VS Code**: installed extensions whose `activationEvents` include `*` or `onStartupFinished`; the detail lists the events and `main`.
+    - **Not done**, per the §4 principle: cargo `build.rs` / proc-macros (common, and they need registry lookups) and GHA. No `inspect json` output was added.
+    - **Verified on the dev machine**:
+      - Python rows match the milestone 9 baseline as a set.
+      - npm: 60 hook rows across 45 sites, matching an independent re-implementation row for row. The first comparison "failed" only because the `||` in `sharp`'s script split under the `|` delimiter; see known issues.
+      - VS Code: the same 4 startup extensions as the prevalence survey.
+      - Output deterministic.
+    - **Follow-up: delimited output quoting and write errors** (`table.rs`, `cli.rs`, `dep_manifest.rs`):
+      - `write -d` now quotes fields per RFC 4180, but **only** fields containing the delimiter, `"`, `\n` or `\r`; embedded quotes are doubled. Everything else is byte-identical to before (a full `scan` file was unchanged, with 0 quoted lines), and output now parses with standard CSV readers.
+      - `Tableable::delimited_quoting()` (default true) is overridden to false by `DepManifestReport`: `derive write` produces a requirements file, whose header (`# via fetter`) and marker lines contain spaces (the delimiter it uses), so it is written as before.
+      - A delimiter of `"`, `\n` or `\r` is rejected (`InvalidInput`) before the file is created or truncated.
+      - **Write errors are no longer swallowed**: all 11 `let _ = x.to_file(…)` calls in `cli.rs` became `?`. A bad delimiter or an unwritable path now gives `fetter Error: Cannot write <path>: …` and exit 1 (previously silent, exit 0). Display output (`to_writer`) still ignores errors, so a closed pipe (`| head`) stays quiet.
 11. [ ] **Allow list**: `fetter.toml` + purl parsing, per-ecosystem `Requirement` (semver crates), generalized `validate` and `derive`.
     Files: `dep_manifest.rs`, `dep_spec.rs`, `validation_report.rs`, new `allow_list.rs`.
 12. [ ] **Registries** for `lookup-name` / `lookup-bound`: npm, crates.io, GitHub tags.
@@ -501,6 +534,9 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - `count` output is a per-ecosystem table (`Ecosystem,Origins,Sites,Packages`), not `Executables/Sites/Packages` rows.
 - `scan`, `search`, `audit` and `lookup-*` tables have a new leading `Ecosystem` column.
 - `--root` replaces, rather than adds to, the default discovery locations.
+- Delimited output (`write -d`) quotes fields containing the delimiter, a double quote, or a line break (RFC 4180); delimiters `"`, `\n` and `\r` are rejected. `derive write` is unchanged.
+- `write` subcommands exit 1 with an error when the file cannot be written (previously silently succeeded).
+- `inspect` columns are `Ecosystem, Site, Hook, Content` (was `Site, File, Content`); it reports npm install scripts and VS Code startup extensions as well as Python startup files; Python files within a site are sorted.
 - `site-install` and `site-uninstall` move under `fetter python`.
 - The default scan includes all ecosystems, not just Python.
 - The JSON output of every report gains an `ecosystem` field; the `monitor-scan` payload changes shape.

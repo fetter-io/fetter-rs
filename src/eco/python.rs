@@ -8,6 +8,7 @@ use std::process::Command;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
+use crate::eco::Hook;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
 use crate::origin_site::Site;
@@ -128,6 +129,55 @@ fn get_origins_bin() -> HashSet<(PathBuf, bool)> {
     paths
 }
 
+/// File extensions in a site-packages directory that can run on interpreter startup: `.pth` files (lines starting with `import` are executed) and the customize modules.
+const HOOK_EXTS: [&str; 2] = ["py", "pth"];
+/// Python modules imported automatically on startup, if present in a site directory.
+pub(crate) const PY_STARTUP_MODULES: [&str; 2] = ["sitecustomize.py", "usercustomize.py"];
+/// Lines of a hook file to show.
+const HOOK_HEAD_LINES: usize = 10;
+
+/// The first lines of a file, joined with spaces.
+fn head_lines(fp: &Path, n: usize) -> std::io::Result<String> {
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(fs::File::open(fp)?);
+    Ok(reader
+        .lines()
+        .take(n)
+        .map_while(Result::ok)
+        .collect::<Vec<_>>()
+        .join(" "))
+}
+
+/// All `.pth` files and startup modules directly in a site directory, sorted by name.
+fn site_hooks(site: &Path) -> Vec<Hook> {
+    let Ok(entries) = fs::read_dir(site) else {
+        return Vec::new();
+    };
+    let mut hooks: Vec<Hook> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|fp| !fp.is_dir())
+        .filter_map(|fp| {
+            let ext = fp.extension().and_then(|e| e.to_str())?;
+            let name = fp.file_name().and_then(|s| s.to_str())?.to_string();
+            if !HOOK_EXTS.contains(&ext)
+                || (ext == "py" && !PY_STARTUP_MODULES.contains(&name.as_str()))
+            {
+                return None;
+            }
+            match head_lines(&fp, HOOK_HEAD_LINES) {
+                Ok(detail) => Some(Hook { name, detail }),
+                Err(e) => {
+                    eprintln!("Cannot load file {fp:?}: {e}");
+                    None
+                }
+            }
+        })
+        .collect();
+    hooks.sort();
+    hooks
+}
+
 /// Within a virtual environment directory (one that contains `pyvenv.cfg`), the interpreter is at a known relative location.
 fn venv_exe(dir: &Path) -> PathBuf {
     if env::consts::OS == "windows" {
@@ -223,6 +273,10 @@ impl EcosystemScanner for PythonScanner {
     fn site_to_packages(&self, site: &Site) -> Vec<Package> {
         get_packages(site.as_path())
     }
+
+    fn site_to_hooks(&self, site: &Site) -> Vec<Hook> {
+        site_hooks(site.as_path())
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -262,6 +316,45 @@ mod tests {
         let config_no_force = ScanConfig::new(false, false);
         let paths2 = get_site_package_dirs(p1, &config_no_force, FlagLog(false));
         assert!(paths1.len() >= paths2.len());
+    }
+
+    #[test]
+    fn test_site_hooks_a() {
+        let dir = tempdir().unwrap();
+        let site = dir.path();
+        fs::write(site.join("zz.pth"), "import os; os.environ['X'] = '1'\n").unwrap();
+        fs::write(site.join("aa.pth"), "/extra/path\n").unwrap();
+        fs::write(
+            site.join("sitecustomize.py"),
+            "# customization\nimport sys\n",
+        )
+        .unwrap();
+        fs::write(site.join("other.py"), "print(1)\n").unwrap();
+        fs::write(site.join("README.txt"), "x").unwrap();
+        fs::create_dir(site.join("dir.pth")).unwrap();
+        let mut lines = String::new();
+        for i in 0..20 {
+            lines.push_str(&format!("line {i}\n"));
+        }
+        fs::write(site.join("long.pth"), lines).unwrap();
+
+        let hooks = PythonScanner
+            .site_to_hooks(&Site::python(PathShared::from(site.to_path_buf())));
+        let names: Vec<&str> = hooks.iter().map(|h| h.name.as_str()).collect();
+        // sorted; only .pth and startup modules; directories excluded
+        assert_eq!(
+            names,
+            vec!["aa.pth", "long.pth", "sitecustomize.py", "zz.pth"]
+        );
+        assert_eq!(hooks[2].detail, "# customization import sys");
+        // first 10 lines only
+        assert!(
+            hooks[1].detail.contains("line 9") && !hooks[1].detail.contains("line 10")
+        );
+        // a missing site yields none
+        assert!(PythonScanner
+            .site_to_hooks(&Site::python(PathShared::from(site.join("missing"))))
+            .is_empty());
     }
 
     #[test]

@@ -44,6 +44,15 @@ impl DirItem {
     }
 }
 
+/// Code that runs without being explicitly invoked: at interpreter startup, at install time, or at editor startup (reported by `inspect`). Only hooks that are cheap to detect and rare are reported, so that their presence is a signal (see SPEC §4).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct Hook {
+    /// What has the hook: a file name (Python), or a package and hook kind (npm, VS Code).
+    pub(crate) name: String,
+    /// The code or setting that runs, e.g. the first lines of a `.pth` file or an install script.
+    pub(crate) detail: String,
+}
+
 /// The result of a scanner inspecting one directory.
 #[derive(Debug, Default)]
 pub(crate) struct Detect {
@@ -87,6 +96,11 @@ pub(crate) trait EcosystemScanner: Sync {
 
     /// Read all Packages from a Site.
     fn site_to_packages(&self, site: &Site) -> Vec<Package>;
+
+    /// Read all Hooks from a Site (for `inspect`). Default: none.
+    fn site_to_hooks(&self, _site: &Site) -> Vec<Hook> {
+        Vec::new()
+    }
 }
 
 //------------------------------------------------------------------------------

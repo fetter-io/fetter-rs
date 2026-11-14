@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::io::BufRead;
-// use crate::package::Package;
+
+use rayon::prelude::*;
+
+use crate::eco::scanner_for;
+use crate::eco::Hook;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
 use crate::origin_site::Site;
@@ -13,66 +13,40 @@ use crate::table::Rowable;
 use crate::table::RowableContext;
 use crate::table::Tableable;
 use crate::util::ResultDynError;
-use std::path::Path;
-use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
-pub(crate) struct InspectTarget {
-    name: String,
-    contents: String,
-}
+/// Characters of a hook's detail shown per row.
+const DETAIL_CHARS: usize = 60;
 
-impl InspectTarget {
-    fn from_path(fp: &Path) -> ResultDynError<InspectTarget> {
-        let name = fp
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("<invalid utf8>")
-            .to_string();
-
-        let file = File::open(fp)?;
-        let reader = io::BufReader::new(file);
-        let contents: String = reader
-            .lines()
-            .take(10) // take first 10 lines; will truncate later
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>()
-            .join(" "); // could be /n
-        Ok(InspectTarget { name, contents })
-    }
-}
-
+//------------------------------------------------------------------------------
+/// The hooks found in one site.
 #[derive(Debug, Clone)]
 pub(crate) struct InspectRecord {
+    ecosystem: Ecosystem,
     site: PathShared,
-    files: Vec<InspectTarget>,
+    hooks: Vec<Hook>,
 }
 
 impl Rowable for InspectRecord {
     fn to_rows(&self, context: &RowableContext) -> Vec<Vec<String>> {
-        let mut rows: Vec<Vec<String>> = Vec::new();
-
-        // let exes_display = self
-        //     .exes
-        //     .iter()
-        //     .map(|p| p.to_string())
-        //     .collect::<Vec<_>>()
-        //     .join(",");
-
         let is_tty = *context == RowableContext::Tty;
-        for (i, InspectTarget { name, contents }) in self.files.iter().enumerate() {
-            let site = if i > 0 && is_tty {
-                "".to_string()
-            } else {
-                self.site.to_string()
-            };
-            rows.push(vec![
-                site,
-                name.clone(),
-                contents.chars().take(60).collect(), // trim content to no more than 20 chars
-            ]);
-        }
-        rows
+        self.hooks
+            .iter()
+            .enumerate()
+            .map(|(i, Hook { name, detail })| {
+                // in a TTY, show the ecosystem and site only on a site's first row
+                let (eco, site) = if i > 0 && is_tty {
+                    (String::new(), String::new())
+                } else {
+                    (self.ecosystem.to_string(), self.site.to_string())
+                };
+                vec![
+                    eco,
+                    site,
+                    name.clone(),
+                    detail.chars().take(DETAIL_CHARS).collect(),
+                ]
+            })
+            .collect()
     }
 }
 
@@ -81,72 +55,29 @@ pub struct InspectReport {
     records: Vec<InspectRecord>,
 }
 
-const EXT_KEEP: [&str; 2] = ["py", "pth"];
-pub(crate) const PY_NAME_KEEP: [&str; 2] = ["sitecustomize.py", "usercustomize.py"];
-
 impl InspectReport {
-    /// Given a `site_to_origins` mapping from a `ScanFS`, search all Python sites for non-directory content.
+    /// Collect hooks from every site, via each site's ecosystem scanner (sites of ecosystems without hooks yield none). Records are sorted by site, and hooks within a site by name.
     pub(crate) fn from_site_to_origins(
         site_to_origins: &HashMap<Site, Vec<Origin>>,
     ) -> ResultDynError<Self> {
-        let mut records = Vec::new();
-        let mut sites: Vec<&PathShared> = site_to_origins
-            .keys()
-            .filter(|s| s.ecosystem == Ecosystem::Python)
-            .map(|s| &s.path)
-            .collect();
+        let mut sites: Vec<&Site> = site_to_origins.keys().collect();
         sites.sort();
-
-        for site in sites {
-            let mut files: Vec<InspectTarget> = Vec::new();
-            // Skip sites that don't exist or are not dirs
-            if !site.as_path().is_dir() {
-                // eprintln!("Missing dir: {:?}", site);
-                continue;
-            }
-            // read_dir errors
-            let rd = match fs::read_dir(site) {
-                Ok(it) => it,
-                Err(e) => {
-                    eprintln!("Cannot read_dir {site:?}: {e}");
-                    continue;
+        let records = sites
+            .into_par_iter()
+            .filter_map(|site| {
+                let mut hooks = scanner_for(site.ecosystem)?.site_to_hooks(site);
+                if hooks.is_empty() {
+                    return None;
                 }
-            };
-
-            for dir_item in rd {
-                let entry = match dir_item {
-                    Ok(e) => e,
-                    Err(e) => {
-                        eprintln!("Failed reading a DirEntry in {site:?}: {e}");
-                        continue;
-                    }
-                };
-                let fp: PathBuf = entry.path();
-                // if a dir is here it should be standard package; could validate that both .distinfo and package exist
-                if fp.is_dir() {
-                    continue;
-                }
-                // skip extensions we do not care about
-                let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-                if EXT_KEEP.contains(&ext) {
-                    let name = fp.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    if ext == "py" && !PY_NAME_KEEP.contains(&name) {
-                        continue;
-                    }
-                    match InspectTarget::from_path(&fp) {
-                        Ok(it) => files.push(it),
-                        Err(e) => eprintln!("Cannot load file {fp:?}: {e}"),
-                    }
-                }
-            }
-            records.push(InspectRecord {
-                site: (*site).clone(),
-                files,
-            });
-        }
-
+                hooks.sort();
+                hooks.dedup();
+                Some(InspectRecord {
+                    ecosystem: site.ecosystem,
+                    site: site.path.clone(),
+                    hooks,
+                })
+            })
+            .collect();
         Ok(InspectReport { records })
     }
 }
@@ -154,8 +85,9 @@ impl InspectReport {
 impl Tableable<InspectRecord> for InspectReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
-            ColumnFormat::new("File".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Hook".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Content".to_string(), true, "#666666".to_string()),
         ]
     }
@@ -168,187 +100,108 @@ impl Tableable<InspectRecord> for InspectReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use crate::origin_site::SiteKind;
+    use std::fs;
+    use std::path::Path;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
-    #[test]
-    fn test_inspect_target_from_path_basic() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.py");
-        let mut file = File::create(&file_path).unwrap();
-        writeln!(file, "import sys").unwrap();
-        writeln!(file, "print('hello')").unwrap();
-
-        let target = InspectTarget::from_path(&file_path).unwrap();
-        assert_eq!(target.name, "test.py");
-        assert!(target.contents.contains("import sys"));
-        assert!(target.contents.contains("print('hello')"));
-    }
-
-    #[test]
-    fn test_inspect_target_from_path_long_file() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("long.py");
-        let mut file = File::create(&file_path).unwrap();
-
-        // Write 20 lines, but only first 10 should be captured
-        for i in 0..20 {
-            writeln!(file, "line {}", i).unwrap();
-        }
-
-        let target = InspectTarget::from_path(&file_path).unwrap();
-        assert_eq!(target.name, "long.py");
-        assert!(target.contents.contains("line 0"));
-        assert!(target.contents.contains("line 9"));
-        assert!(!target.contents.contains("line 10"));
-        assert!(!target.contents.contains("line 19"));
-    }
-
-    #[test]
-    fn test_inspect_target_from_path_empty_file() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("empty.pth");
-        File::create(&file_path).unwrap();
-
-        let target = InspectTarget::from_path(&file_path).unwrap();
-        assert_eq!(target.name, "empty.pth");
-        assert_eq!(target.contents, "");
-    }
-
-    #[test]
-    fn test_inspect_target_from_path_nonexistent() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("nonexistent.py");
-
-        let result = InspectTarget::from_path(&file_path);
-        assert!(result.is_err());
-    }
-
-    //--------------------------------------------------------------------------
-    #[test]
-    fn test_inspect_report_from_site_to_exes() {
-        let dir = tempdir().unwrap();
-
-        // Create a site directory with various files
-        let site1 = dir.path().join("site-packages");
-        fs::create_dir(&site1).unwrap();
-
-        // Create a .py file that should be included (sitecustomize.py)
-        let sitecustomize = site1.join("sitecustomize.py");
-        let mut file = File::create(&sitecustomize).unwrap();
-        writeln!(file, "# Site customization").unwrap();
-        writeln!(file, "import sys").unwrap();
-
-        // Create a .pth file that should be included
-        let pth_file = site1.join("custom.pth");
-        let mut file = File::create(&pth_file).unwrap();
-        writeln!(file, "/some/custom/path").unwrap();
-
-        // Create a regular .py file that should be excluded
-        let regular_py = site1.join("regular.py");
-        let mut file = File::create(&regular_py).unwrap();
-        writeln!(file, "print('regular')").unwrap();
-
-        // Create a directory (should be skipped)
-        let package_dir = site1.join("somepackage");
-        fs::create_dir(&package_dir).unwrap();
-
-        // Create a .txt file (should be excluded)
-        let txt_file = site1.join("readme.txt");
-        let mut file = File::create(&txt_file).unwrap();
-        writeln!(file, "Some readme").unwrap();
-
-        // Create site_to_exes mapping with dummy exe paths
-        let mut site_to_origins = HashMap::new();
-        site_to_origins.insert(
-            Site::python(PathShared::from(site1.clone())),
+    fn python_site(path: &Path) -> (Site, Vec<Origin>) {
+        (
+            Site::python(PathShared::from(path.to_path_buf())),
             vec![Origin::new(
                 Ecosystem::Python,
                 PathShared::from(PathBuf::from("/fake/python3")),
             )],
-        );
-
-        let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
-        let records = report.get_records();
-
-        assert_eq!(records.len(), 1);
-        let record = &records[0];
-        assert_eq!(record.site.as_path(), site1);
-
-        // Should have found 2 files: sitecustomize.py and custom.pth
-        assert_eq!(record.files.len(), 2);
-
-        let file_names: Vec<String> =
-            record.files.iter().map(|f| f.name.clone()).collect();
-        assert!(file_names.contains(&"sitecustomize.py".to_string()));
-        assert!(file_names.contains(&"custom.pth".to_string()));
-
-        // Verify contents
-        let sitecustomize_target = record
-            .files
-            .iter()
-            .find(|f| f.name == "sitecustomize.py")
-            .unwrap();
-        assert!(sitecustomize_target.contents.contains("Site customization"));
-
-        let pth_target = record
-            .files
-            .iter()
-            .find(|f| f.name == "custom.pth")
-            .unwrap();
-        assert!(pth_target.contents.contains("/some/custom/path"));
+        )
     }
 
     #[test]
-    fn test_inspect_report_multiple_sites() {
+    fn test_inspect_report_python_a() {
         let dir = tempdir().unwrap();
-
-        // Create two site directories
-        let site1 = dir.path().join("site-packages1");
-        let site2 = dir.path().join("site-packages2");
+        let site1 = dir.path().join("site-packages");
         fs::create_dir(&site1).unwrap();
-        fs::create_dir(&site2).unwrap();
+        fs::write(
+            site1.join("sitecustomize.py"),
+            "# Site customization\nimport sys\n",
+        )
+        .unwrap();
+        fs::write(site1.join("custom.pth"), "/some/custom/path\n").unwrap();
+        fs::write(site1.join("regular.py"), "print('regular')\n").unwrap();
+        fs::write(site1.join("readme.txt"), "Some readme\n").unwrap();
+        fs::create_dir(site1.join("package")).unwrap();
 
-        // Add usercustomize.py to site1
-        let usercustomize = site1.join("usercustomize.py");
-        let mut file = File::create(&usercustomize).unwrap();
-        writeln!(file, "# User customization").unwrap();
-
-        // Add .pth file to site2
-        let pth_file = site2.join("extra.pth");
-        let mut file = File::create(&pth_file).unwrap();
-        writeln!(file, "/extra/path").unwrap();
-
-        // Create site_to_exes mapping
-        let mut site_to_origins = HashMap::new();
-        site_to_origins.insert(
-            Site::python(PathShared::from(site1.clone())),
-            vec![Origin::new(
-                Ecosystem::Python,
-                PathShared::from(PathBuf::from("/fake/python3.11")),
-            )],
-        );
-        site_to_origins.insert(
-            Site::python(PathShared::from(site2.clone())),
-            vec![Origin::new(
-                Ecosystem::Python,
-                PathShared::from(PathBuf::from("/fake/python3.12")),
-            )],
-        );
-
+        let site_to_origins: HashMap<Site, Vec<Origin>> =
+            [python_site(&site1)].into_iter().collect();
         let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
         let records = report.get_records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].site.as_path(), site1);
+        let names: Vec<&str> = records[0].hooks.iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, vec!["custom.pth", "sitecustomize.py"]);
 
+        let rows = records[0].to_rows(&RowableContext::Delimited);
+        assert_eq!(rows[0][0], "python");
+        assert_eq!(rows[0][2], "custom.pth");
+        assert_eq!(rows[1][3], "# Site customization import sys");
+        // in a TTY, ecosystem and site appear on the first row only
+        let rows = records[0].to_rows(&RowableContext::Tty);
+        assert_eq!(rows[1][0], "");
+        assert_eq!(rows[1][1], "");
+    }
+
+    #[test]
+    fn test_inspect_report_multiple_sites_a() {
+        let dir = tempdir().unwrap();
+        let site1 = dir.path().join("b/site-packages");
+        let site2 = dir.path().join("a/site-packages");
+        let empty = dir.path().join("c/site-packages");
+        for s in [&site1, &site2, &empty] {
+            fs::create_dir_all(s).unwrap();
+        }
+        fs::write(site1.join("usercustomize.py"), "import os\n").unwrap();
+        fs::write(site2.join("extra.pth"), "/extra/path\n").unwrap();
+
+        let site_to_origins: HashMap<Site, Vec<Origin>> = [
+            python_site(&site1),
+            python_site(&site2),
+            python_site(&empty),
+        ]
+        .into_iter()
+        .collect();
+        let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
+        let records = report.get_records();
+        // sorted by site; sites without hooks are omitted
         assert_eq!(records.len(), 2);
+        assert_eq!(records[0].site.as_path(), site2);
+        assert_eq!(records[1].site.as_path(), site1);
+    }
 
-        // Find each site's record
-        let record1 = records.iter().find(|r| r.site.as_path() == site1).unwrap();
-        let record2 = records.iter().find(|r| r.site.as_path() == site2).unwrap();
+    #[test]
+    fn test_inspect_report_truncates_detail_a() {
+        let record = InspectRecord {
+            ecosystem: Ecosystem::Npm,
+            site: PathShared::from("/p/node_modules"),
+            hooks: vec![Hook {
+                name: "esbuild-0.21.5 postinstall".to_string(),
+                detail: "x".repeat(200),
+            }],
+        };
+        let rows = record.to_rows(&RowableContext::Delimited);
+        assert_eq!(rows[0][3].chars().count(), DETAIL_CHARS);
+    }
 
-        assert_eq!(record1.files.len(), 1);
-        assert_eq!(record1.files[0].name, "usercustomize.py");
-
-        assert_eq!(record2.files.len(), 1);
-        assert_eq!(record2.files[0].name, "extra.pth");
+    #[test]
+    fn test_inspect_report_ecosystems_without_hooks_a() {
+        // a cargo lockfile site has no hooks and yields no record
+        let dir = tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        fs::write(&lock, "version = 4\n").unwrap();
+        let site =
+            Site::new(Ecosystem::Cargo, SiteKind::Lockfile, PathShared::from(lock));
+        let site_to_origins: HashMap<Site, Vec<Origin>> =
+            [(site, Vec::new())].into_iter().collect();
+        let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
+        assert!(report.get_records().is_empty());
     }
 }

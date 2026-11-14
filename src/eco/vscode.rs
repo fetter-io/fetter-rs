@@ -17,6 +17,7 @@ use serde_json::Value as JsonValue;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
+use crate::eco::Hook;
 use crate::eco::EDITOR_DIRS;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
@@ -105,6 +106,34 @@ fn extension_package(ext: &Path) -> Option<Package> {
         VersionSpec::new(version),
         None,
     ))
+}
+
+/// Activation events that run an extension on every editor start, regardless of what is opened.
+const STARTUP_ACTIVATION: [&str; 2] = ["*", "onStartupFinished"];
+
+/// A hook if an installed extension activates on every editor start; the detail gives the activation events and its entry point.
+fn extension_hook(ext: &Path) -> Option<Hook> {
+    let pj: JsonValue =
+        serde_json::from_str(&fs::read_to_string(ext.join(PACKAGE_JSON)).ok()?).ok()?;
+    let events: Vec<&str> = pj
+        .get("activationEvents")?
+        .as_array()?
+        .iter()
+        .filter_map(JsonValue::as_str)
+        .filter(|e| STARTUP_ACTIVATION.contains(e))
+        .collect();
+    if events.is_empty() {
+        return None;
+    }
+    let package = extension_package(ext)?;
+    let mut detail = format!("activationEvents: {}", events.join(", "));
+    if let Some(main) = pj.get("main").and_then(JsonValue::as_str) {
+        detail.push_str(&format!("; main: {main}"));
+    }
+    Some(Hook {
+        name: package.to_string(),
+        detail,
+    })
 }
 
 /// Editor directories under the home directory.
@@ -204,6 +233,14 @@ impl EcosystemScanner for VsCodeScanner {
             }
         }
         sites
+    }
+
+    /// Installed extensions that activate on every editor start.
+    fn site_to_hooks(&self, site: &Site) -> Vec<Hook> {
+        installed_extensions(site.as_path())
+            .iter()
+            .filter_map(|e| extension_hook(e))
+            .collect()
     }
 
     fn site_to_packages(&self, site: &Site) -> Vec<Package> {
@@ -420,6 +457,36 @@ mod tests {
         assert!(!VsCodeScanner
             .accepts(&editor.join("extensions/ms-vscode.cpptools-1.35.6-darwin-arm64")));
         assert!(!VsCodeScanner.accepts(dir.path()));
+    }
+
+    #[test]
+    fn test_site_to_hooks_a() {
+        let dir = tempdir().unwrap();
+        let editor = make_editor(dir.path());
+        let ext_dir = editor.join(EXTENSIONS);
+        // the installed cpptools activates on startup; the obsolete one would too but is not installed
+        for rel in [
+            "ms-vscode.cpptools-1.35.6-darwin-arm64",
+            "ms-vscode.cpptools-1.34.0-darwin-arm64",
+        ] {
+            fs::write(
+                ext_dir.join(rel).join(PACKAGE_JSON),
+                r#"{"publisher": "ms-vscode", "name": "cpptools", "version": "1.35.6", "main": "./dist/main.js", "activationEvents": ["onLanguage:cpp", "onStartupFinished"]}"#,
+            )
+            .unwrap();
+        }
+        let site = Site::new(
+            Ecosystem::VsCode,
+            SiteKind::Installed,
+            PathShared::from(ext_dir),
+        );
+        let hooks = VsCodeScanner.site_to_hooks(&site);
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].name, "ms-vscode.cpptools-1.35.6");
+        assert_eq!(
+            hooks[0].detail,
+            "activationEvents: onStartupFinished; main: ./dist/main.js"
+        );
     }
 
     #[test]

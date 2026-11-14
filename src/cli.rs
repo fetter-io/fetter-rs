@@ -730,7 +730,7 @@ where
             Some(ScanSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
                 let sr = sfs.to_scan_report();
-                let _ = sr.to_file(output, *delimiter);
+                sr.to_file(output, *delimiter)?;
             }
             Some(ScanSubcommand::Display) | None => {
                 let sfs = get_sfs()?;
@@ -742,7 +742,7 @@ where
             Some(InspectSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
                 let it = InspectReport::from_site_to_origins(&sfs.site_to_origins)?;
-                let _ = it.to_file(output, *delimiter);
+                it.to_file(output, *delimiter)?;
             }
             Some(InspectSubcommand::Display) | None => {
                 let sfs = get_sfs()?;
@@ -758,7 +758,7 @@ where
             Some(SearchSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
                 let sr = sfs.to_search_report(pattern, !case);
-                let _ = sr.to_file(output, *delimiter);
+                sr.to_file(output, *delimiter)?;
             }
             Some(SearchSubcommand::Display) | None => {
                 // default
@@ -771,7 +771,7 @@ where
             Some(CountSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
                 let cr = sfs.to_count_report();
-                let _ = cr.to_file(output, *delimiter);
+                cr.to_file(output, *delimiter)?;
             }
             Some(CountSubcommand::Display) | None => {
                 // default
@@ -788,7 +788,7 @@ where
                 let sfs = get_sfs()?;
                 let dm = sfs.to_dep_manifest((*anchor).into())?;
                 let dmr = dm.to_dep_manifest_report();
-                let _ = dmr.to_file(output, ' ');
+                dmr.to_file(output, ' ')?;
             }
             Some(DeriveSubcommand::Display) | None => {
                 // default
@@ -832,7 +832,7 @@ where
                     println!("{}", serde_json::to_string(&vr.to_validation_digest())?);
                 }
                 Some(ValidateSubcommand::Write { output, delimiter }) => {
-                    let _ = vr.to_file(output, *delimiter);
+                    vr.to_file(output, *delimiter)?;
                 }
                 Some(ValidateSubcommand::Exit { code }) => {
                     process::exit(if !vr.is_empty() { *code } else { 0 });
@@ -902,7 +902,7 @@ where
                     println!("{}", serde_json::to_string(&ar)?);
                 }
                 Some(AuditSubcommand::Write { output, delimiter }) => {
-                    let _ = ar.to_file(output, *delimiter);
+                    ar.to_file(output, *delimiter)?;
                 }
                 Some(AuditSubcommand::Exit { code }) => {
                     process::exit(if !ar.is_empty() { *code } else { 0 });
@@ -957,7 +957,7 @@ where
                     println!("{}", serde_json::to_string(&lr)?);
                 }
                 Some(LookupNameSubcommand::Write { output, delimiter }) => {
-                    let _ = lr.to_file(output, *delimiter);
+                    lr.to_file(output, *delimiter)?;
                 }
                 Some(LookupNameSubcommand::Exit { code }) => {
                     process::exit(if !lr.is_empty() { *code } else { 0 });
@@ -1035,7 +1035,7 @@ where
                     println!("{}", serde_json::to_string(&lr)?);
                 }
                 Some(LookupBoundSubcommand::Write { output, delimiter }) => {
-                    let _ = lr.to_file(output, *delimiter);
+                    lr.to_file(output, *delimiter)?;
                 }
                 Some(LookupBoundSubcommand::Exit { code }) => {
                     process::exit(if !lr.is_empty() { *code } else { 0 });
@@ -1058,7 +1058,7 @@ where
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
                 Some(UnpackCountSubcommand::Write { output, delimiter }) => {
-                    let _ = ir.to_file(output, *delimiter);
+                    ir.to_file(output, *delimiter)?;
                 }
                 Some(UnpackCountSubcommand::Display) | None => {
                     // default
@@ -1076,7 +1076,7 @@ where
             let ir = sfs.to_unpack_report(pattern, !case, count);
             match subcommands {
                 Some(UnpackFilesSubcommand::Write { output, delimiter }) => {
-                    let _ = ir.to_file(output, *delimiter);
+                    ir.to_file(output, *delimiter)?;
                 }
                 Some(UnpackFilesSubcommand::Display) | None => {
                     // default

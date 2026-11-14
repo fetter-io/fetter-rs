@@ -15,6 +15,7 @@ use serde_json::Value as JsonValue;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
+use crate::eco::Hook;
 use crate::eco::EDITOR_DIRS;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
@@ -150,21 +151,16 @@ fn split_name_version(s: &str) -> Option<(&str, &str)> {
 //------------------------------------------------------------------------------
 // node_modules
 
-/// Read the package at `dir` (its `package.json` name and version), then any nested `node_modules`.
-fn read_package_dir(dir: &Path, out: &mut Vec<Package>) {
+/// Visit the package at `dir` (its parsed `package.json`), then any nested `node_modules`.
+fn visit_package_dir(dir: &Path, visit: &mut dyn FnMut(&JsonValue)) {
     if let Ok(content) = fs::read_to_string(dir.join(PACKAGE_JSON)) {
         if let Ok(pj) = serde_json::from_str::<JsonValue>(&content) {
-            if let (Some(name), Some(version)) = (
-                pj.get("name").and_then(JsonValue::as_str),
-                pj.get("version").and_then(JsonValue::as_str),
-            ) {
-                out.push(package(name, version, None));
-            }
+            visit(&pj);
         }
     }
     let nested = dir.join(NODE_MODULES);
     if nested.is_dir() {
-        walk_node_modules(&nested, out);
+        visit_node_modules(&nested, visit);
     }
 }
 
@@ -180,8 +176,8 @@ fn child_dirs(dir: &Path) -> Vec<PathBuf> {
     }
 }
 
-/// Collect all packages installed in a `node_modules` directory, including scoped and nested packages and pnpm's `.pnpm` store. Symlinks are never followed: they are workspace links, `npm link`s, or pnpm's links into its store (which is read directly).
-fn walk_node_modules(nm: &Path, out: &mut Vec<Package>) {
+/// Visit the `package.json` of every package installed in a `node_modules` directory, including scoped and nested packages and pnpm's `.pnpm` store. Symlinks are never followed: they are workspace links, `npm link`s, or pnpm's links into its store (which is read directly).
+fn visit_node_modules(nm: &Path, visit: &mut dyn FnMut(&JsonValue)) {
     for child in child_dirs(nm) {
         let Some(name) = child.file_name().and_then(|n| n.to_str()) else {
             continue;
@@ -191,7 +187,7 @@ fn walk_node_modules(nm: &Path, out: &mut Vec<Package>) {
             for entry in child_dirs(&child) {
                 let inner = entry.join(NODE_MODULES);
                 if inner.is_dir() {
-                    walk_node_modules(&inner, out);
+                    visit_node_modules(&inner, visit);
                 }
             }
         } else if name.starts_with('.') {
@@ -199,12 +195,84 @@ fn walk_node_modules(nm: &Path, out: &mut Vec<Package>) {
             continue;
         } else if name.starts_with('@') {
             for scoped in child_dirs(&child) {
-                read_package_dir(&scoped, out);
+                visit_package_dir(&scoped, visit);
             }
         } else {
-            read_package_dir(&child, out);
+            visit_package_dir(&child, visit);
         }
     }
+}
+
+/// The name and version from a `package.json`.
+fn name_version(pj: &JsonValue) -> Option<(&str, &str)> {
+    Some((pj.get("name")?.as_str()?, pj.get("version")?.as_str()?))
+}
+
+/// Collect all packages installed in a `node_modules` directory.
+fn walk_node_modules(nm: &Path, out: &mut Vec<Package>) {
+    visit_node_modules(nm, &mut |pj| {
+        if let Some((name, version)) = name_version(pj) {
+            out.push(package(name, version, None));
+        }
+    });
+}
+
+/// Scripts that npm runs when a package is installed from a registry. `prepare` is excluded: it runs only for git dependencies and a package's own development install.
+const INSTALL_SCRIPTS: [&str; 3] = ["preinstall", "install", "postinstall"];
+
+fn install_hook(name: &str, version: &str, script: &str, detail: &str) -> Hook {
+    Hook {
+        name: format!("{name}-{version} {script}"),
+        detail: detail.to_string(),
+    }
+}
+
+/// Install scripts of all packages installed in a `node_modules` directory; the detail is the script command.
+fn hooks_from_node_modules(nm: &Path) -> Vec<Hook> {
+    let mut out = Vec::new();
+    visit_node_modules(nm, &mut |pj| {
+        let Some((name, version)) = name_version(pj) else {
+            return;
+        };
+        let Some(scripts) = pj.get("scripts").and_then(JsonValue::as_object) else {
+            return;
+        };
+        for script in INSTALL_SCRIPTS {
+            if let Some(cmd) = scripts.get(script).and_then(JsonValue::as_str) {
+                out.push(install_hook(name, version, script, cmd));
+            }
+        }
+    });
+    out
+}
+
+/// Packages with install scripts in a `package-lock.json` (v2/v3 record `hasInstallScript`, but not the script itself).
+fn hooks_from_package_lock(content: &str) -> Vec<Hook> {
+    let Ok(v) = serde_json::from_str::<JsonValue>(content) else {
+        return Vec::new();
+    };
+    let Some(pkgs) = v.get("packages").and_then(JsonValue::as_object) else {
+        return Vec::new();
+    };
+    pkgs.iter()
+        .filter_map(|(key, entry)| {
+            let idx = key.rfind("node_modules/")?;
+            if entry.get("hasInstallScript").and_then(JsonValue::as_bool) != Some(true) {
+                return None;
+            }
+            let name = entry
+                .get("name")
+                .and_then(JsonValue::as_str)
+                .unwrap_or(&key[idx + "node_modules/".len()..]);
+            let version = entry.get("version")?.as_str()?;
+            Some(install_hook(
+                name,
+                version,
+                "install script",
+                "hasInstallScript (lockfile)",
+            ))
+        })
+        .collect()
 }
 
 //------------------------------------------------------------------------------
@@ -628,6 +696,20 @@ impl EcosystemScanner for NpmScanner {
             .map(|l| site(SiteKind::Lockfile, l))
             .into_iter()
             .collect()
+    }
+
+    /// Install scripts: from installed packages' `package.json`, or (for a lockfile site) `hasInstallScript` in a package-lock. Other lockfiles do not record install scripts.
+    fn site_to_hooks(&self, site: &Site) -> Vec<Hook> {
+        let path = site.as_path();
+        match site.kind {
+            SiteKind::Installed => hooks_from_node_modules(path),
+            _ => match path.file_name().and_then(|n| n.to_str()) {
+                Some(SHRINKWRAP) | Some(PACKAGE_LOCK) => fs::read_to_string(path)
+                    .map(|c| hooks_from_package_lock(&c))
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            },
+        }
     }
 
     fn site_to_packages(&self, site: &Site) -> Vec<Package> {
@@ -1313,6 +1395,76 @@ __metadata:
             names(&NpmScanner.site_to_packages(&sites[0])),
             vec!["lodash-4.17.21"]
         );
+    }
+
+    #[test]
+    fn test_hooks_from_node_modules_a() {
+        let dir = tempdir().unwrap();
+        let nm = dir.path().join(NODE_MODULES);
+        let write = |rel: &str, json: &str| {
+            fs::create_dir_all(nm.join(rel)).unwrap();
+            fs::write(nm.join(rel).join(PACKAGE_JSON), json).unwrap();
+        };
+        write(
+            "esbuild",
+            r#"{"name": "esbuild", "version": "0.21.5", "scripts": {"postinstall": "node install.js"}}"#,
+        );
+        write(
+            "@scope/native",
+            r#"{"name": "@scope/native", "version": "1.0.0", "scripts": {"preinstall": "a", "install": "node-gyp rebuild", "test": "x"}}"#,
+        );
+        write(
+            "dev-only",
+            r#"{"name": "dev-only", "version": "1.0.0", "scripts": {"prepare": "husky install", "build": "tsc"}}"#,
+        );
+        write("plain", r#"{"name": "plain", "version": "1.0.0"}"#);
+        write(
+            "plain/node_modules/nested",
+            r#"{"name": "nested", "version": "2.0.0", "scripts": {"postinstall": "echo hi"}}"#,
+        );
+        let site = Site::new(Ecosystem::Npm, SiteKind::Installed, PathShared::from(nm));
+        let mut hooks: Vec<(String, String)> = NpmScanner
+            .site_to_hooks(&site)
+            .into_iter()
+            .map(|h| (h.name, h.detail))
+            .collect();
+        hooks.sort();
+        // prepare and other scripts are not install hooks; nested packages are included
+        assert_eq!(
+            hooks,
+            vec![
+                (
+                    "@scope/native-1.0.0 install".to_string(),
+                    "node-gyp rebuild".to_string()
+                ),
+                (
+                    "@scope/native-1.0.0 preinstall".to_string(),
+                    "a".to_string()
+                ),
+                (
+                    "esbuild-0.21.5 postinstall".to_string(),
+                    "node install.js".to_string()
+                ),
+                (
+                    "nested-2.0.0 postinstall".to_string(),
+                    "echo hi".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hooks_from_package_lock_a() {
+        let lock = r#"{"lockfileVersion": 3, "packages": {
+            "": {"name": "app", "hasInstallScript": true},
+            "node_modules/esbuild": {"version": "0.21.5", "hasInstallScript": true},
+            "node_modules/lodash": {"version": "4.17.21"},
+            "packages/member": {"name": "member", "version": "1.0.0", "hasInstallScript": true}}}"#;
+        let hooks = hooks_from_package_lock(lock);
+        // the root project and workspace members are not dependencies
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].name, "esbuild-0.21.5 install script");
+        assert!(hooks_from_package_lock("not json").is_empty());
     }
 
     #[test]
