@@ -6,8 +6,9 @@ use std::fmt;
 
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::origin_site::Origin;
+use crate::origin_site::Site;
 use crate::package::Package;
-use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
@@ -45,14 +46,14 @@ pub struct ValidationFlags {
 pub struct ValidationRecord {
     pub package: Option<Package>,
     pub dep_spec: Option<DepSpec>,
-    pub sites: Option<Vec<PathShared>>,
+    pub sites: Option<Vec<Site>>,
 }
 
 impl ValidationRecord {
     pub fn new(
         package: Option<Package>,
         dep_spec: Option<DepSpec>,
-        sites: Option<Vec<PathShared>>,
+        sites: Option<Vec<Site>>,
     ) -> Self {
         ValidationRecord {
             package,
@@ -124,9 +125,9 @@ pub struct ValidationReport {
 impl ValidationReport {
     pub fn from_components(
         packages: &Vec<Package>, // ordered for reporting
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-        site_to_exes: &HashMap<PathShared, Vec<PathShared>>, // only needed if exe_to_ems is Some
-        exe_to_ems: &Option<HashMap<PathShared, EnvMarkerState>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
+        site_to_origins: &HashMap<Site, Vec<Origin>>, // only needed if origin_to_ems is Some
+        origin_to_ems: &Option<HashMap<Origin, EnvMarkerState>>,
         dm: &DepManifest,
         vf: &ValidationFlags,
         ignore: Option<&HashSet<String>>,
@@ -151,16 +152,16 @@ impl ValidationReport {
                     ));
                 }
                 // else do not add record
-            } else if let Some(exe_to_ems) = exe_to_ems {
+            } else if let Some(origin_to_ems) = origin_to_ems {
                 // For each package, if the DepManifest has env_marker_active, we have already loaded EnvMarkerState
                 for site in package_to_sites.get(package).unwrap() {
-                    // let exe = site_to_exes.get(site).unwrap()
-                    let exe = site_to_exes
+                    // origins are sorted, so the first is the smallest path
+                    let origin = site_to_origins
                         .get(site)
-                        .and_then(|exes| exes.iter().min_by_key(|p| p.to_string())) // pick smallest path
-                        .expect("no exe mapped for site");
+                        .and_then(|origins| origins.first())
+                        .expect("no origin mapped for site");
 
-                    let ems = exe_to_ems.get(exe);
+                    let ems = origin_to_ems.get(origin);
                     // validate() expects Option
                     let (valid, ds) = dm.validate(package, vf.permit_superset, ems);
                     if let Some(ds) = ds {
@@ -202,8 +203,8 @@ impl ValidationReport {
                         }
                         // if a DS has an env_marker, that env_marker must be valid for at least one of our exe environents
                         if !ds.env_marker.is_empty() {
-                            if let Some(exe_to_ems) = exe_to_ems {
-                                if exe_to_ems
+                            if let Some(origin_to_ems) = origin_to_ems {
+                                if origin_to_ems
                                     .values()
                                     .any(|ems| ds.validate_env_marker(ems))
                                 {

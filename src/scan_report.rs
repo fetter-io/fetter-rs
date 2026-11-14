@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::origin_site::Site;
 use crate::package::Package;
-use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
@@ -10,12 +10,19 @@ use crate::table::Tableable;
 #[derive(Debug, Clone)]
 pub(crate) struct ScanRecord {
     package: Package,
-    sites: Vec<PathShared>,
+    sites: Vec<Site>,
 }
 
 impl ScanRecord {
-    pub(crate) fn new(package: Package, sites: Vec<PathShared>) -> Self {
+    pub(crate) fn new(package: Package, sites: Vec<Site>) -> Self {
         ScanRecord { package, sites }
+    }
+
+    /// Display order: by package, then by sites. Distinct packages can compare equal (e.g. the same name and version with different `direct_url`), so the sites tie-break keeps output deterministic.
+    fn cmp_display(a: &Self, b: &Self) -> std::cmp::Ordering {
+        a.package
+            .cmp(&b.package)
+            .then_with(|| a.sites.cmp(&b.sites))
     }
 }
 
@@ -25,13 +32,14 @@ impl Rowable for ScanRecord {
         let pkg_display = self.package.to_string();
         let is_tty = *context == RowableContext::Tty;
 
+        let eco_display = self.package.ecosystem.to_string();
         for (i, path) in self.sites.iter().enumerate() {
-            let p = if i > 0 && is_tty {
-                "".to_string()
+            let (e, p) = if i > 0 && is_tty {
+                ("".to_string(), "".to_string())
             } else {
-                pkg_display.clone()
+                (eco_display.clone(), pkg_display.clone())
             };
-            rows.push(vec![p, path.to_string()]);
+            rows.push(vec![e, p, path.to_string()]);
         }
         rows
     }
@@ -44,21 +52,21 @@ pub struct ScanReport {
 
 impl ScanReport {
     pub(crate) fn from_package_to_sites(
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
     ) -> Self {
         let mut records = Vec::new();
         for (package, sites) in package_to_sites {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
-        records.sort_by_key(|item| item.package.clone());
+        records.sort_by(ScanRecord::cmp_display);
         ScanReport { records }
     }
 
     // Alternative constructor when we want to report on a subset of all packages.
     pub(crate) fn from_packages(
         packages: &Vec<Package>,
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
     ) -> Self {
         let mut records = Vec::new();
         for package in packages {
@@ -66,7 +74,7 @@ impl ScanReport {
             let record = ScanRecord::new(package.clone(), sites.clone());
             records.push(record);
         }
-        records.sort_by_key(|item| item.package.clone());
+        records.sort_by(ScanRecord::cmp_display);
         ScanReport { records }
     }
 }
@@ -74,6 +82,7 @@ impl ScanReport {
 impl Tableable<ScanRecord> for ScanReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Package".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Site".to_string(), true, "#666666".to_string()),
         ]
@@ -115,22 +124,22 @@ mod tests {
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
 
-        assert_eq!(lines.next().unwrap().unwrap(), "Package|Site");
+        assert_eq!(lines.next().unwrap().unwrap(), "Ecosystem|Package|Site");
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "flask-1.2|/usr/lib/python3/site-packages"
+            "python|flask-1.2|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "numpy-1.19.3|/usr/lib/python3/site-packages"
+            "python|numpy-1.19.3|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "packaging-24.1|/usr/lib/python3/site-packages"
+            "python|packaging-24.1|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "static-frame-2.13.0|/usr/lib/python3/site-packages"
+            "python|static-frame-2.13.0|/usr/lib/python3/site-packages"
         );
         assert!(lines.next().is_none());
     }

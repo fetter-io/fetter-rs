@@ -1,12 +1,12 @@
 use crate::audit_report::AuditReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::package::Package;
 use crate::pypi_project::query_pypi_project;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
-use crate::util::name_to_key;
 use crate::util::CacheConfig;
 use crate::util::FlagCacheRefresh;
 use crate::util::FlagLog;
@@ -32,12 +32,12 @@ impl LookupReport {
     ) -> Option<Vec<Package>> {
         // if a package is pinned (exact) do not query pypi
         match ds.get_exact() {
-            Some(version) => Some(vec![Package {
-                name: ds.name.clone(),
-                key: name_to_key(&ds.name),
+            Some(version) => Some(vec![Package::new(
+                Ecosystem::Python,
+                &ds.name,
                 version,
-                direct_url: None,
-            }]),
+                None,
+            )]),
             None => {
                 query_pypi_project(client, &ds.key, cache_config, log)
                     .ok()
@@ -45,11 +45,8 @@ impl LookupReport {
                         project
                             .get_version_specs(Some(ds), limit) // filter by ds, limit
                             .into_iter()
-                            .map(|version| Package {
-                                name: ds.name.clone(),
-                                key: name_to_key(&ds.name),
-                                version,
-                                direct_url: None,
+                            .map(|version| {
+                                Package::new(Ecosystem::Python, &ds.name, version, None)
                             })
                             .collect()
                     })
@@ -71,21 +68,13 @@ impl LookupReport {
     ) -> ResultDynError<Self> {
         // Versions are sorted when returned here
         let packages: Vec<Package> = match ds.get_exact() {
-            Some(version) => vec![Package {
-                name: ds.name.clone(),
-                key: name_to_key(&ds.name),
-                version,
-                direct_url: None,
-            }],
+            Some(version) => {
+                vec![Package::new(Ecosystem::Python, &ds.name, version, None)]
+            }
             None => query_pypi_project(client.clone(), &ds.key, cache_config, log)?
                 .get_version_specs(Some(ds), limit) // filter by DepSpec
                 .into_iter()
-                .map(|version| Package {
-                    name: ds.name.clone(),
-                    key: name_to_key(&ds.name),
-                    version,
-                    direct_url: None,
-                })
+                .map(|version| Package::new(Ecosystem::Python, &ds.name, version, None))
                 .collect(),
         };
 
@@ -104,7 +93,7 @@ impl LookupReport {
             log,
             filter_cvss,
             retain_passing,
-        );
+        )?;
         Ok(LookupReport(audit_report))
     }
 
@@ -156,7 +145,7 @@ impl LookupReport {
             log,
             filter_cvss,
             retain_passing,
-        );
+        )?;
         Ok(LookupReport(audit_report))
     }
 }
@@ -232,8 +221,8 @@ mod tests {
         // Sample PyPI JSON for gradio package
         let pypi_json = r#"{"info":{"author":"Abubakar Abid","name":"gradio","project_urls":{"Homepage":"https://github.com/gradio-app/gradio"}},"releases":{"4.0.0":[{"filename":"gradio-4.0.0-py3-none-any.whl"}],"4.18.0":[{"filename":"gradio-4.18.0-py3-none-any.whl"}],"4.19.2":[{"filename":"gradio-4.19.2-py3-none-any.whl"}]}}"#;
 
-        // Sample OSV batch query response
-        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-48cq-79qq-6f7x","modified":"2024-05-21T14:58:25.710902Z"}]}]}"#;
+        // Sample OSV batch query response: one result per queried version (4.0.0, 4.18.0, 4.19.2), only the first vulnerable
+        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-48cq-79qq-6f7x","modified":"2024-05-21T14:58:25.710902Z"}]},{},{}]}"#;
 
         // Sample OSV vuln detail response
         let osv_vuln_json = r#"{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L"}]}"#;
@@ -275,6 +264,7 @@ mod tests {
         // We should get 3 versions (4.0.0, 4.18.0, 4.19.2) but only one has vulns
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].package.name, "gradio");
+        assert_eq!(records[0].package.version.to_string(), "4.0.0");
         assert_eq!(records[0].vuln_ids, vec!["GHSA-48cq-79qq-6f7x"]);
     }
 

@@ -1,7 +1,7 @@
 use crate::write_color::write_color;
 use crossterm::tty::IsTty;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -18,6 +18,8 @@ use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml::Value as TomlValue;
+
+use crate::ecosystem::Ecosystem;
 
 //------------------------------------------------------------------------------
 
@@ -54,18 +56,41 @@ impl From<FlagLog> for bool {
 
 //------------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScanConfig {
     pub force_usite: bool,
     pub all_users: bool,
+    /// Ecosystems to scan; always sorted and unique.
+    pub ecosystems: Vec<Ecosystem>,
+    /// If non-empty, the only directories (searched recursively) used for discovery; otherwise home directories plus each scanner's own roots and default origins are used.
+    pub roots: Vec<PathBuf>,
 }
 
 impl ScanConfig {
+    /// Create a configuration for all ecosystems with default discovery roots.
     pub fn new(force_usite: bool, all_users: bool) -> Self {
         Self {
             force_usite,
             all_users,
+            ecosystems: Ecosystem::ALL.to_vec(),
+            roots: Vec::new(),
         }
+    }
+
+    pub fn with_ecosystems(mut self, ecosystems: &[Ecosystem]) -> Self {
+        let mut e = ecosystems.to_vec();
+        e.sort();
+        e.dedup();
+        self.ecosystems = e;
+        self
+    }
+
+    pub fn with_roots(mut self, roots: Vec<PathBuf>) -> Self {
+        let mut r = roots;
+        r.sort();
+        r.dedup();
+        self.roots = r;
+        self
     }
 }
 
@@ -199,15 +224,6 @@ pub(crate) fn get_writer(stderr: bool) -> StdWriter {
 
 //------------------------------------------------------------------------------
 
-pub fn vecs_equal_as_sets<T: Eq + std::hash::Hash>(vec1: &[T], vec2: &[T]) -> bool {
-    if vec1.len() != vec2.len() {
-        return false;
-    }
-    let set1: HashSet<_> = vec1.iter().collect();
-    let set2: HashSet<_> = vec2.iter().collect();
-    set1 == set2
-}
-
 // Normalize all names
 pub(crate) fn name_to_key(name: &str) -> String {
     name.to_lowercase().replace('-', "_")
@@ -258,7 +274,7 @@ pub(crate) fn get_absolute_path_from_exe(executable: &str) -> Option<PathBuf> {
 //------------------------------------------------------------------------------
 
 // Determine if the Path is an exe; must be an absolute path.
-fn is_python_exe_file_name(path: &Path) -> bool {
+pub(crate) fn is_python_exe_file_name(path: &Path) -> bool {
     match path.file_name().and_then(|f| f.to_str()) {
         Some(name) => {
             // Compare case-insensitively: Windows paths are case-insensitive, and
@@ -440,8 +456,20 @@ pub(crate) fn hash_paths(paths: &[PathBuf], config: &ScanConfig) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
+    let ecosystems = config
+        .ecosystems
+        .iter()
+        .map(|e| e.cli_name())
+        .collect::<Vec<_>>()
+        .join(",");
+    let roots = config
+        .roots
+        .iter()
+        .map(|p| p.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
     let input = format!(
-        "{concatenated}\n{}\n{}",
+        "{concatenated}\n{}\n{}\n{ecosystems}\n{roots}",
         config.force_usite, config.all_users
     );
     hash_string(&input)
@@ -662,7 +690,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "83259d61ab78d5a4afb670e167bab74b0d1532878a45aa5c2848a8bb05f41903"
+            "238b8ea7c04b3f45b6278f344a4877ac9d5e515ed00d3c56500d0794b5e8839e"
         )
     }
 
@@ -673,8 +701,28 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "aa0a2150615aa2de8849dedd49f8fb9bb6114270c98bfbf4d117faf39b172720"
+            "00ab8a64d2a7ef5313233b0c44ea6f93bd5a00766b878e8b789827461b64aaa4"
         )
+    }
+
+    #[test]
+    fn test_hash_paths_c() {
+        // ecosystems and roots are part of the cache identity
+        let paths = vec![Path::new("*").to_path_buf()];
+        let c1 = ScanConfig::new(false, false);
+        let c2 = c1.clone().with_ecosystems(&[Ecosystem::Python]);
+        let c3 = c1.clone().with_roots(vec![PathBuf::from("/a")]);
+        let h1 = hash_paths(&paths, &c1);
+        assert_ne!(h1, hash_paths(&paths, &c2));
+        assert_ne!(h1, hash_paths(&paths, &c3));
+        // ecosystem order and duplicates do not matter
+        let c4 = c1.clone().with_ecosystems(&[
+            Ecosystem::Npm,
+            Ecosystem::Python,
+            Ecosystem::Npm,
+        ]);
+        let c5 = c1.with_ecosystems(&[Ecosystem::Python, Ecosystem::Npm]);
+        assert_eq!(hash_paths(&paths, &c4), hash_paths(&paths, &c5));
     }
     //--------------------------------------------------------------------------
     #[test]

@@ -4,6 +4,9 @@ use std::fs::File;
 use std::io;
 use std::io::BufRead;
 // use crate::package::Package;
+use crate::ecosystem::Ecosystem;
+use crate::origin_site::Origin;
+use crate::origin_site::Site;
 use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
@@ -82,13 +85,19 @@ const EXT_KEEP: [&str; 2] = ["py", "pth"];
 pub(crate) const PY_NAME_KEEP: [&str; 2] = ["sitecustomize.py", "usercustomize.py"];
 
 impl InspectReport {
-    /// Given a `site_to_exes` mapping from a `ScanFS`, search all sites for non-directory content.
-    pub(crate) fn from_site_to_exes(
-        site_to_exes: &HashMap<PathShared, Vec<PathShared>>,
+    /// Given a `site_to_origins` mapping from a `ScanFS`, search all Python sites for non-directory content.
+    pub(crate) fn from_site_to_origins(
+        site_to_origins: &HashMap<Site, Vec<Origin>>,
     ) -> ResultDynError<Self> {
         let mut records = Vec::new();
+        let mut sites: Vec<&PathShared> = site_to_origins
+            .keys()
+            .filter(|s| s.ecosystem == Ecosystem::Python)
+            .map(|s| &s.path)
+            .collect();
+        sites.sort();
 
-        for site in site_to_exes.keys() {
+        for site in sites {
             let mut files: Vec<InspectTarget> = Vec::new();
             // Skip sites that don't exist or are not dirs
             if !site.as_path().is_dir() {
@@ -133,7 +142,7 @@ impl InspectReport {
                 }
             }
             records.push(InspectRecord {
-                site: site.clone(),
+                site: (*site).clone(),
                 files,
             });
         }
@@ -250,13 +259,16 @@ mod tests {
         writeln!(file, "Some readme").unwrap();
 
         // Create site_to_exes mapping with dummy exe paths
-        let mut site_to_exes = HashMap::new();
-        site_to_exes.insert(
-            PathShared::from(site1.clone()),
-            vec![PathShared::from(PathBuf::from("/fake/python3"))],
+        let mut site_to_origins = HashMap::new();
+        site_to_origins.insert(
+            Site::python(PathShared::from(site1.clone())),
+            vec![Origin::new(
+                Ecosystem::Python,
+                PathShared::from(PathBuf::from("/fake/python3")),
+            )],
         );
 
-        let report = InspectReport::from_site_to_exes(&site_to_exes).unwrap();
+        let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
         let records = report.get_records();
 
         assert_eq!(records.len(), 1);
@@ -308,17 +320,23 @@ mod tests {
         writeln!(file, "/extra/path").unwrap();
 
         // Create site_to_exes mapping
-        let mut site_to_exes = HashMap::new();
-        site_to_exes.insert(
-            PathShared::from(site1.clone()),
-            vec![PathShared::from(PathBuf::from("/fake/python3.11"))],
+        let mut site_to_origins = HashMap::new();
+        site_to_origins.insert(
+            Site::python(PathShared::from(site1.clone())),
+            vec![Origin::new(
+                Ecosystem::Python,
+                PathShared::from(PathBuf::from("/fake/python3.11")),
+            )],
         );
-        site_to_exes.insert(
-            PathShared::from(site2.clone()),
-            vec![PathShared::from(PathBuf::from("/fake/python3.12"))],
+        site_to_origins.insert(
+            Site::python(PathShared::from(site2.clone())),
+            vec![Origin::new(
+                Ecosystem::Python,
+                PathShared::from(PathBuf::from("/fake/python3.12")),
+            )],
         );
 
-        let report = InspectReport::from_site_to_exes(&site_to_exes).unwrap();
+        let report = InspectReport::from_site_to_origins(&site_to_origins).unwrap();
         let records = report.get_records();
 
         assert_eq!(records.len(), 2);

@@ -7,7 +7,9 @@ use std::path::PathBuf;
 
 use rayon::prelude::*;
 
+use crate::origin_site::Site;
 use crate::package::Package;
+#[cfg(test)]
 use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
@@ -26,7 +28,7 @@ struct Artifacts {
 }
 
 impl Artifacts {
-    fn from_package(package: &Package, site: &PathShared) -> ResultDynError<Self> {
+    fn from_package(package: &Package, site: &Site) -> ResultDynError<Self> {
         let dir_dist_info = package
             .to_dist_info_dir(site)
             .ok_or("Cannot find dist-info dir")?;
@@ -95,19 +97,19 @@ impl Artifacts {
 //------------------------------------------------------------------------------
 trait UnpackRecordTrait {
     /// Return a new record; caller must clone as needed.
-    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self;
+    fn new(package: Package, site: Site, artifacts: Artifacts) -> Self;
 }
 
 //------------------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub(crate) struct UnpackFullRecord {
     package: Package,
-    site: PathShared,
+    site: Site,
     artifacts: Artifacts,
 }
 
 impl UnpackRecordTrait for UnpackFullRecord {
-    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self {
+    fn new(package: Package, site: Site, artifacts: Artifacts) -> Self {
         UnpackFullRecord {
             package,
             site,
@@ -166,12 +168,12 @@ impl Rowable for UnpackFullRecord {
 #[derive(Debug, Clone)]
 pub(crate) struct UnpackCountRecord {
     package: Package,
-    site: PathShared,
+    site: Site,
     artifacts: Artifacts,
 }
 
 impl UnpackRecordTrait for UnpackCountRecord {
-    fn new(package: Package, site: PathShared, artifacts: Artifacts) -> Self {
+    fn new(package: Package, site: Site, artifacts: Artifacts) -> Self {
         UnpackCountRecord {
             package,
             site,
@@ -192,15 +194,17 @@ impl Rowable for UnpackCountRecord {
 }
 
 //------------------------------------------------------------------------------
-/// Generic function to covert a `HashMap` to a `Vec` of of UnpackRecords.
+/// Generic function to covert a `HashMap` to a `Vec` of of UnpackRecords. Records are ordered by package, then site (rayon's indexed `collect` preserves input order).
 fn package_to_sites_to_records<R>(
-    package_to_sites: &HashMap<Package, Vec<PathShared>>,
+    package_to_sites: &HashMap<Package, Vec<Site>>,
 ) -> Vec<R>
 where
     R: UnpackRecordTrait + Sync + Send,
 {
-    package_to_sites
-        .par_iter()
+    let mut items: Vec<(&Package, &Vec<Site>)> = package_to_sites.iter().collect();
+    items.sort_by_key(|(package, _)| *package);
+    items
+        .into_par_iter()
         .flat_map(|(package, sites)| {
             sites.par_iter().filter_map(move |site| {
                 if let Ok(artifacts) = Artifacts::from_package(package, site) {
@@ -265,7 +269,7 @@ pub(crate) enum UnpackReport {
 impl UnpackReport {
     pub(crate) fn from_package_to_sites(
         count: bool,
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
     ) -> Self {
         if count {
             let records = package_to_sites_to_records(package_to_sites);
@@ -320,7 +324,7 @@ mod tests {
     fn test_record_a() {
         let pkg = Package::from_dist_info("xarray-0.21.1.dist-info", None, None).unwrap();
         let dir_temp = tempdir().unwrap(); // this is our site
-        let site = PathShared::from_path_buf(dir_temp.path().to_path_buf());
+        let site = Site::python(PathShared::from_path_buf(dir_temp.path().to_path_buf()));
         let dir_dist_info = dir_temp.path().join("xarray-0.21.1.dist-info");
         fs::create_dir(&dir_dist_info).unwrap();
         let fp_record = dir_dist_info.as_path().join("RECORD");

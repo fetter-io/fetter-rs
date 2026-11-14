@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ecosystem::Ecosystem;
+use crate::origin_site::Site;
 use crate::package_durl::DirectURL;
-use crate::path_shared::PathShared;
-use crate::util::name_to_key;
 use crate::version_spec::VersionSpec;
 
 //------------------------------------------------------------------------------
@@ -45,24 +45,41 @@ fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
 #[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct Package {
+    pub ecosystem: Ecosystem,
     pub name: String,
     pub key: String,
     pub version: VersionSpec,
     pub direct_url: Option<DirectURL>,
 }
 impl Package {
+    /// General constructor for any ecosystem; the key is normalized per the ecosystem's rules.
+    pub(crate) fn new(
+        ecosystem: Ecosystem,
+        name: &str,
+        version: VersionSpec,
+        direct_url: Option<DirectURL>,
+    ) -> Self {
+        Package {
+            ecosystem,
+            key: ecosystem.name_to_key(name),
+            name: name.to_string(),
+            version,
+            direct_url,
+        }
+    }
+
+    /// Create a Python Package from a name and version string.
     pub(crate) fn from_name_version_durl(
         name: &str,
         version: &str,
         direct_url: Option<DirectURL>,
     ) -> Option<Self> {
-        let ns = name.to_string();
-        Some(Package {
-            key: name_to_key(&ns),
-            name: ns,
-            version: VersionSpec::new(version),
+        Some(Self::new(
+            Ecosystem::Python,
+            name,
+            VersionSpec::new(version),
             direct_url,
-        })
+        ))
     }
     /// Create a Package from a dist-info string. As the name of the package / source dir may be different than the dist-info representation, optionall provide a `name`
     #[cfg(test)]
@@ -107,7 +124,7 @@ impl Package {
     }
 
     /// Given a site directory, return a `PathBuf` to this Package's dist info directory.
-    pub(crate) fn to_dist_info_dir(&self, site: &PathShared) -> Option<PathBuf> {
+    pub(crate) fn to_dist_info_dir(&self, site: &Site) -> Option<PathBuf> {
         // dist-info files will always be written in normalized key style
         let fp = site.join(&format!("{}-{}.dist-info", self.key, self.version));
         if fp.exists() {
@@ -118,7 +135,7 @@ impl Package {
     }
 
     /// Given a site directory, return a `PathBuf` to this Package's src directory. This assumes that the name, if case sensitive, was observed as with case.
-    pub(crate) fn to_src_dir(&self, site: &PathShared) -> Option<PathBuf> {
+    pub(crate) fn to_src_dir(&self, site: &Site) -> Option<PathBuf> {
         let fp = site.join(&self.name);
         if fp.exists() {
             Some(fp)
@@ -131,9 +148,9 @@ impl Package {
 // A case insensitive ordering.
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.name
-            .to_lowercase()
-            .cmp(&other.name.to_lowercase())
+        self.ecosystem
+            .cmp(&other.ecosystem)
+            .then_with(|| self.name.to_lowercase().cmp(&other.name.to_lowercase()))
             .then_with(|| self.version.cmp(&other.version))
     }
 }
@@ -209,7 +226,7 @@ mod tests {
     fn test_package_json_a() {
         let p1 = Package::from_name_version_durl("numpy", "2.1.2", None);
         let json = serde_json::to_string(&p1).unwrap();
-        assert_eq!(json, "{\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"2.1.2\",\"direct_url\":null}");
+        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"2.1.2\",\"direct_url\":null}");
     }
     #[test]
     fn test_package_json_b() {
@@ -220,7 +237,7 @@ mod tests {
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
         let json = serde_json::to_string(&p1).unwrap();
-        assert_eq!(json, "{\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"revision\":\"0.3.8\"}}}");
+        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"revision\":\"0.3.8\"}}}");
 
         let p2: Package = serde_json::from_str(&json).unwrap();
         assert_eq!(p2.to_string(), "dill-0.3.8");

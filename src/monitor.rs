@@ -14,7 +14,7 @@ use std::{thread, time::Duration};
 
 #[allow(clippy::too_many_arguments)]
 fn monitor_scan(
-    exe_paths: Arc<Vec<PathBuf>>,
+    origin_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
     sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
     client: Arc<dyn UreqClient>,
@@ -23,8 +23,9 @@ fn monitor_scan(
     config: ScanConfig,
     log: FlagLog,
 ) {
-    logger!(log, module_path!(), "Calling from_exes().");
-    let sfs = ScanFS::from_exes(&exe_paths, &config, log).expect("from_exes() failed.");
+    logger!(log, module_path!(), "Calling from_origin_paths().");
+    let sfs = ScanFS::from_origin_paths(&origin_paths, &config, log)
+        .expect("from_origin_paths() failed.");
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -52,7 +53,7 @@ fn monitor_scan(
 }
 
 pub(crate) fn monitor_scan_loop(
-    exe_paths: &[PathBuf],
+    origin_paths: &[PathBuf],
     client: Arc<dyn UreqClient>,
     url: &String,
     tenant: &String,
@@ -60,7 +61,7 @@ pub(crate) fn monitor_scan_loop(
     period: u64,
     log: FlagLog,
 ) -> ResultDynError<()> {
-    let eps = Arc::new(exe_paths.to_owned());
+    let eps = Arc::new(origin_paths.to_owned());
     let url_arc = Arc::new(url.to_owned());
     let tenant_arc = Arc::new(tenant.to_owned());
 
@@ -76,7 +77,7 @@ pub(crate) fn monitor_scan_loop(
             client,
             url_arc,
             tenant_arc,
-            *config,
+            config.clone(),
             log,
         );
         return Ok(());
@@ -101,7 +102,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&client),
             Arc::clone(&url_arc),
             Arc::clone(&tenant_arc),
-            *config,
+            config.clone(),
             log,
         )) {
             logger!(log, module_path!(), "Worker panicked: {e}");

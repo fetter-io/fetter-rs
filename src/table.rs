@@ -36,13 +36,23 @@ fn optimize_widths(
     ellipsisable: &[bool],
     w_gutter: usize,
 ) -> Vec<WidthFormat> {
-    // total characters needed; we add a gutter after all columns, even the last one
-    let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
-    let ellipsisable_any = ellipsisable.iter().any(|&x| x);
     let w_terminal = match terminal::size() {
         Ok((w, _)) => w,
         _ => 0,
     };
+    optimize_widths_for(widths_max, ellipsisable, w_gutter, w_terminal)
+}
+
+/// Fit columns to `w_terminal` by shrinking only ellipsisable columns, in proportion to their widths. A terminal width of 0 means unknown: no fitting. If the terminal is narrower than the non-ellipsisable columns alone, ellipsisable columns shrink to their minimum and the table overflows rather than failing.
+fn optimize_widths_for(
+    widths_max: &[usize],
+    ellipsisable: &[bool],
+    w_gutter: usize,
+    w_terminal: u16,
+) -> Vec<WidthFormat> {
+    // total characters needed; we add a gutter after all columns, even the last one
+    let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
+    let ellipsisable_any = ellipsisable.iter().any(|&x| x);
 
     if !ellipsisable_any || w_total <= w_terminal.into() || w_terminal == 0 {
         return widths_max
@@ -69,7 +79,8 @@ fn optimize_widths(
             // we derive proportion based on observed max_width
             let proportion = *width as f64 / w_ellipsisable as f64;
             let reduction = (proportion * w_excess) as usize;
-            let w_field = (*width - reduction).max(3);
+            // saturating: the reduction exceeds the column when the terminal is narrower than the non-ellipsisable columns
+            let w_field = width.saturating_sub(reduction).max(w_gutter + 1);
             widths.push(WidthFormat {
                 width_chars: w_field - w_gutter,
                 width_pad: w_field,
@@ -242,5 +253,41 @@ pub trait Tableable<T: Rowable> {
     fn to_writer(&self, stderr: bool) -> io::Result<()> {
         let mut writer = get_writer(stderr);
         to_table_display(&mut writer, self.get_header(), self.get_records())
+    }
+}
+
+#[cfg(test)]
+mod tests_widths {
+    use super::*;
+
+    #[test]
+    fn test_optimize_widths_fits_a() {
+        // fits: unchanged
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 100);
+        assert_eq!((w[1].width_chars, w[1].width_pad), (40, 42));
+        // unknown terminal width: unchanged
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 0);
+        assert_eq!(w[1].width_chars, 40);
+    }
+
+    #[test]
+    fn test_optimize_widths_shrinks_a() {
+        // 10+2 + 40+2 = 54 needed, 34 available: only the ellipsisable column shrinks, and the row fits
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 34);
+        assert_eq!((w[0].width_chars, w[0].width_pad), (10, 12));
+        assert!(w[1].width_chars < 40);
+        assert!(w[0].width_pad + w[1].width_pad <= 34);
+    }
+
+    #[test]
+    fn test_optimize_widths_narrow_terminal_a() {
+        // the non-ellipsisable column alone exceeds the terminal: no underflow, minimum widths
+        let w = optimize_widths_for(&[60, 40, 30], &[false, true, true], 2, 20);
+        assert_eq!(w[0].width_chars, 60);
+        assert!(w[1].width_chars >= 1 && w[1].width_pad == w[1].width_chars + 2);
+        assert!(w[2].width_chars >= 1 && w[2].width_pad == w[2].width_chars + 2);
+        // fields render without panicking
+        let _ = prepare_field(&"x".repeat(100), &w[1]);
+        let _ = prepare_field(&"y".to_string(), &w[2]);
     }
 }

@@ -20,6 +20,8 @@ use std::time::Duration;
 
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::eco::scanner_for;
+use crate::ecosystem::Ecosystem;
 use crate::lookup_report::LookupReport;
 use crate::monitor::monitor_scan_loop;
 use crate::scan_fs::ScanFS;
@@ -81,33 +83,52 @@ impl CvssFilter {
 //------------------------------------------------------------------------------
 
 const ERROR_EXIT_CODE: i32 = 3;
-const TITLE: &str = "fetter: System-wide Python package discovery and validation";
+const TITLE: &str =
+    "fetter: System-wide package discovery, validation, and vulnerability scanning";
 
 const AFTER_HELP: &str = "\
 Examples:
   fetter scan
+  fetter -E python scan
+  fetter --root ~/src scan
   fetter scan write -o /tmp/pkgscan.txt --delimiter '|'
   fetter search --pattern pip*
-  fetter -e python3 derive -a lower write -o /tmp/bound_requirements.txt
-  fetter -e python3 validate --bound /tmp/bound_requirements.txt
+  fetter --origin python3 derive -a lower write -o /tmp/bound_requirements.txt
+  fetter --origin python3 validate --bound /tmp/bound_requirements.txt
+  fetter --origin .venv count
   fetter audit
-  fetter -e python3 -e /usr/bin/python audit write -o /tmp/audit.txt  -d '|'
-  fetter -e python3 unpack-count
-  fetter unpack-count -p pip*
+  fetter --origin python3 --origin /usr/bin/python audit write -o /tmp/audit.txt -d '|'
+  fetter --origin python3 unpack-count
+  fetter --origin .venv python site-install --bound requirements.txt
 ";
 
 #[derive(clap::Parser)]
 #[command(version, about, long_about = TITLE, after_help = AFTER_HELP)]
 struct Cli {
-    /// Zero or more executable paths to derive site package locations. If not provided, all discoverable executables will be used.
+    /// Ecosystems to scan, as a comma-separated list or repeated flag. If not provided, all supported ecosystems are scanned.
     #[arg(
-        short,
+        short = 'E',
         long,
-        value_name = "EXECUTABLES",
-        required = false,
-        default_value = "*"
+        value_enum,
+        value_delimiter = ',',
+        value_name = "ECOSYSTEMS"
     )]
-    exe: Vec<PathBuf>,
+    ecosystem: Vec<Ecosystem>,
+
+    /// Zero or more origin paths (e.g. a Python executable or virtual environment). The ecosystem of each path is inferred. If not provided, all discoverable origins will be used.
+    #[arg(
+        long,
+        value_name = "ORIGINS",
+        required = false,
+        default_value = "*",
+        short_alias = 'e',
+        alias = "exe"
+    )]
+    origin: Vec<PathBuf>,
+
+    /// Directories to search (recursively) for origins, replacing the default search of home directories and system locations.
+    #[arg(long, value_name = "DIRECTORIES")]
+    root: Vec<PathBuf>,
 
     /// Create or use caches that expire after the provided number of seconds. A duration of zero will disable caching.
     #[arg(long, short, required = false, default_value = "120")]
@@ -169,7 +190,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<SearchSubcommand>,
     },
-    /// Count discovered executables, sites, and packages.
+    /// Count discovered origins, sites, and packages, by ecosystem.
     Count {
         #[command(subcommand)]
         subcommands: Option<CountSubcommand>,
@@ -208,33 +229,6 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<ValidateSubcommand>,
     },
-    /// Install in site-packages automatic validation checks on every Python run. This command will only run with one Python environment.
-    SiteInstall {
-        /// File path or URL from which to read bound requirements.
-        #[arg(short, long, value_name = "FILE")]
-        bound: PathBuf,
-
-        /// Names of additional optional (extra) dependency groups.
-        #[arg(long, value_name = "OPTIONS")]
-        bound_options: Option<Vec<String>>,
-
-        /// Names of packages to be excluded from all evaluation.
-        #[arg(long, value_name = "OPTIONS", default_value = "pip")]
-        ignore: Vec<String>,
-
-        /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
-        #[arg(long)]
-        subset: bool,
-
-        /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
-        #[arg(long)]
-        superset: bool,
-
-        #[command(subcommand)]
-        subcommands: Option<SiteInstallSubcommand>,
-    },
-    /// Uninstall from site-packages automatic validation checks. This command will only run with one Python environment.
-    SiteUninstall,
     /// Search for package security vulnerabilities via the OSV DB.
     Audit {
         /// Provide a glob-like pattern to select packages.
@@ -260,6 +254,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
     },
+    /// Search for security vulnerabilities in a named package (from PyPI) via the OSV DB.
     LookupName {
         /// Provide a package name or dependency specification.
         #[arg(value_name = "NAME")]
@@ -284,6 +279,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<LookupNameSubcommand>,
     },
+    /// Search for security vulnerabilities in packages from a requirements or lock file via the OSV DB.
     LookupBound {
         /// Directory, file path, URL, or git repository from which to read bound requirements. The provided file can be requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`. If no argument is provided (or a directory is provided), the current directory is searched for a lock file, requirements.txt, or pyproject.toml.
         #[arg(value_name = "FILE")]
@@ -362,6 +358,11 @@ enum Commands {
         #[arg(long)]
         superset: bool,
     },
+    /// Commands that apply only to Python environments.
+    Python {
+        #[command(subcommand)]
+        command: PythonCommands,
+    },
     /// Periodically scan system and post JSON output to a URL.
     MonitorScan {
         /// Set the period of scan in seconds.
@@ -378,6 +379,38 @@ enum Commands {
     },
 }
 
+/// Commands that apply only to Python environments.
+#[derive(Subcommand)]
+enum PythonCommands {
+    /// Install in site-packages automatic validation checks on every Python run. This command will only run with one Python environment.
+    SiteInstall {
+        /// File path or URL from which to read bound requirements.
+        #[arg(short, long, value_name = "FILE")]
+        bound: PathBuf,
+
+        /// Names of additional optional (extra) dependency groups.
+        #[arg(long, value_name = "OPTIONS")]
+        bound_options: Option<Vec<String>>,
+
+        /// Names of packages to be excluded from all evaluation.
+        #[arg(long, value_name = "OPTIONS", default_value = "pip")]
+        ignore: Vec<String>,
+
+        /// If the subset flag is set, the observed packages can be a subset of the bound requirements.
+        #[arg(long)]
+        subset: bool,
+
+        /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
+        #[arg(long)]
+        superset: bool,
+
+        #[command(subcommand)]
+        subcommands: Option<SiteInstallSubcommand>,
+    },
+    /// Uninstall from site-packages automatic validation checks. This command will only run with one Python environment.
+    SiteUninstall,
+}
+
 impl fmt::Display for Commands {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op_str = match self {
@@ -387,8 +420,6 @@ impl fmt::Display for Commands {
             Commands::Count { .. } => "count",
             Commands::Derive { .. } => "derive",
             Commands::Validate { .. } => "validate",
-            Commands::SiteInstall { .. } => "site-install",
-            Commands::SiteUninstall => "site-uninstall",
             Commands::Audit { .. } => "audit",
             Commands::LookupName { .. } => "lookup-name",
             Commands::LookupBound { .. } => "lookup-bound",
@@ -396,6 +427,7 @@ impl fmt::Display for Commands {
             Commands::UnpackFiles { .. } => "unpack-files",
             Commands::PurgePattern { .. } => "purge-pattern",
             Commands::PurgeInvalid { .. } => "purge-invalid",
+            Commands::Python { .. } => "python",
             Commands::MonitorScan { .. } => "monitor-scan",
         };
         write!(f, "{op_str}")
@@ -591,16 +623,44 @@ enum UnpackFilesSubcommand {
 //------------------------------------------------------------------------------
 // Utility constructors specialized for CLI contexts
 
-// Provided `exe_paths` are not normalize.
-fn from_cache_or_exes(
-    exe_paths: &Vec<PathBuf>,
+/// Determine the ecosystems to scan. Python-only commands require Python; lookup commands currently support only Python. Explicitly requested ecosystems that are not yet implemented are reported and skipped.
+fn resolve_ecosystems(
+    requested: &[Ecosystem],
+    command: Option<&Commands>,
+) -> ResultDynError<Vec<Ecosystem>> {
+    let python_only = match command {
+        Some(Commands::Python { .. }) => Some("python"),
+        Some(Commands::LookupName { .. }) => Some("lookup-name"),
+        Some(Commands::LookupBound { .. }) => Some("lookup-bound"),
+        _ => None,
+    };
+    if let Some(name) = python_only {
+        if requested.iter().any(|e| *e != Ecosystem::Python) {
+            return Err(format!("`{name}` supports only the python ecosystem").into());
+        }
+        return Ok(vec![Ecosystem::Python]);
+    }
+    if requested.is_empty() {
+        return Ok(Ecosystem::ALL.to_vec());
+    }
+    for e in requested {
+        if scanner_for(*e).is_none() {
+            eprintln!("fetter: ecosystem `{e}` is not yet supported and will be skipped");
+        }
+    }
+    Ok(requested.to_vec())
+}
+
+// Provided `origin_paths` are not normalized.
+fn from_cache_or_scan(
+    origin_paths: &Vec<PathBuf>,
     config: &ScanConfig,
     animate: bool,
     cache_config: &CacheConfig,
     log: FlagLog,
     stderr: bool,
 ) -> ResultDynError<ScanFS> {
-    ScanFS::from_cache(exe_paths, config, cache_config, log).or_else(|err| {
+    ScanFS::from_cache(origin_paths, config, cache_config, log).or_else(|err| {
         logger!(
             log,
             module_path!(),
@@ -612,7 +672,7 @@ fn from_cache_or_exes(
         if animate {
             spin(active.clone(), "scanning".to_string(), stderr);
         }
-        let sfs = ScanFS::from_exes(exe_paths, config, log)?;
+        let sfs = ScanFS::from_origin_paths(origin_paths, config, log)?;
 
         if cache_config.duration > DURATION_0 {
             sfs.to_cache(cache_config, log)?;
@@ -649,11 +709,20 @@ where
     };
     logger!(log, module_path!(), "Cache dir: {:?}", cache_dir);
 
+    let ecosystems = resolve_ecosystems(&cli.ecosystem, cli.command.as_ref())?;
+    let roots = cli
+        .root
+        .iter()
+        .map(|r| path_normalize(r, true))
+        .collect::<ResultDynError<Vec<PathBuf>>>()?;
+    let config = ScanConfig::new(cli.user_site, cli.all_users)
+        .with_ecosystems(&ecosystems)
+        .with_roots(roots);
+
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {
-        let config = ScanConfig::new(cli.user_site, cli.all_users);
         let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
-        from_cache_or_exes(&cli.exe, &config, !quiet, &cache_config, log, stderr)
+        from_cache_or_scan(&cli.origin, &config, !quiet, &cache_config, log, stderr)
     };
 
     match &cli.command {
@@ -672,12 +741,12 @@ where
         Some(Commands::Inspect { subcommands }) => match subcommands {
             Some(InspectSubcommand::Write { output, delimiter }) => {
                 let sfs = get_sfs()?;
-                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let it = InspectReport::from_site_to_origins(&sfs.site_to_origins)?;
                 let _ = it.to_file(output, *delimiter);
             }
             Some(InspectSubcommand::Display) | None => {
                 let sfs = get_sfs()?;
-                let it = InspectReport::from_site_to_exes(&sfs.site_to_exes)?;
+                let it = InspectReport::from_site_to_origins(&sfs.site_to_origins)?;
                 let _ = it.to_writer(stderr);
             }
         },
@@ -781,36 +850,6 @@ where
                 }
             }
         }
-        Some(Commands::SiteInstall {
-            bound,
-            bound_options,
-            ignore,
-            subset,
-            superset,
-            subcommands,
-        }) => {
-            let sfs = get_sfs()?;
-            let vf = ValidationFlags {
-                permit_superset: *superset,
-                permit_subset: *subset,
-            };
-            let exit_else_warn: Option<i32> = match subcommands {
-                Some(SiteInstallSubcommand::Warn) | None => None,
-                Some(SiteInstallSubcommand::Exit { code }) => Some(*code),
-            };
-            sfs.site_validate_install(
-                bound,
-                bound_options,
-                ignore,
-                &vf,
-                exit_else_warn,
-                log,
-            )?;
-        }
-        Some(Commands::SiteUninstall) => {
-            let sfs = get_sfs()?;
-            sfs.site_validate_uninstall(log)?;
-        }
         Some(Commands::Audit {
             subcommands,
             pattern,
@@ -844,6 +883,19 @@ where
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
+            }
+            // stop the spinner before propagating any error
+            let ar = ar?;
+            if !ar.unaudited.is_empty() {
+                eprintln!(
+                    "fetter: {} package(s) could not be audited: {}",
+                    ar.unaudited.len(),
+                    ar.unaudited
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
             match subcommands {
                 Some(AuditSubcommand::Json) => {
@@ -893,11 +945,13 @@ where
                 log,
                 cvss_filter,
                 FlagRetainPassing(*retain_passing),
-            )?;
+            );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
+            // stop the spinner before propagating any error
+            let lr = lr?;
             match subcommands {
                 Some(LookupNameSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
@@ -969,11 +1023,13 @@ where
                 log,
                 cvss_filter,
                 FlagRetainPassing(*retain_passing),
-            )?;
+            );
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
+            // stop the spinner before propagating any error
+            let lr = lr?;
             match subcommands {
                 Some(LookupBoundSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
@@ -1051,15 +1107,52 @@ where
                 log,
             );
         }
+        Some(Commands::Python { command }) => match command {
+            PythonCommands::SiteInstall {
+                bound,
+                bound_options,
+                ignore,
+                subset,
+                superset,
+                subcommands,
+            } => {
+                let sfs = get_sfs()?;
+                let vf = ValidationFlags {
+                    permit_superset: *superset,
+                    permit_subset: *subset,
+                };
+                let exit_else_warn: Option<i32> = match subcommands {
+                    Some(SiteInstallSubcommand::Warn) | None => None,
+                    Some(SiteInstallSubcommand::Exit { code }) => Some(*code),
+                };
+                sfs.site_validate_install(
+                    bound,
+                    bound_options,
+                    ignore,
+                    &vf,
+                    exit_else_warn,
+                    log,
+                )?;
+            }
+            PythonCommands::SiteUninstall => {
+                let sfs = get_sfs()?;
+                sfs.site_validate_uninstall(log)?;
+            }
+        },
         Some(Commands::MonitorScan {
             period,
             url,
             tenant,
         }) => {
-            // let ureq clone for increment ref count
-            let config = ScanConfig::new(cli.user_site, cli.all_users);
-            let _ =
-                monitor_scan_loop(&cli.exe, client, url, tenant, &config, *period, log);
+            let _ = monitor_scan_loop(
+                &cli.origin,
+                client,
+                url,
+                tenant,
+                &config,
+                *period,
+                log,
+            );
         }
         None => {}
     }
@@ -1069,12 +1162,88 @@ where
 //-----------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    use std::ffi::OsString;
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(args).unwrap()
+    }
 
     #[test]
-    fn test_run_cli_a() {
-        let _args = [OsString::from("fetter"), OsString::from("-h")];
-        // run_cli(args);
+    fn test_parse_ecosystem_a() {
+        let cli = parse(&["fetter", "-E", "python,npm", "scan"]);
+        assert_eq!(cli.ecosystem, vec![Ecosystem::Python, Ecosystem::Npm]);
+        let cli = parse(&["fetter", "-E", "vscode", "--ecosystem", "gha", "scan"]);
+        assert_eq!(cli.ecosystem, vec![Ecosystem::VsCode, Ecosystem::Gha]);
+        assert!(Cli::try_parse_from(["fetter", "-E", "ruby", "scan"]).is_err());
+    }
+
+    #[test]
+    fn test_parse_origin_a() {
+        let cli = parse(&["fetter", "scan"]);
+        assert_eq!(cli.origin, vec![PathBuf::from("*")]);
+        let cli = parse(&["fetter", "--origin", "python3", "--origin", ".venv", "scan"]);
+        assert_eq!(
+            cli.origin,
+            vec![PathBuf::from("python3"), PathBuf::from(".venv")]
+        );
+        // `-e` and `--exe` remain as hidden aliases
+        let cli = parse(&["fetter", "-e", "python3", "--exe", "python", "scan"]);
+        assert_eq!(
+            cli.origin,
+            vec![PathBuf::from("python3"), PathBuf::from("python")]
+        );
+    }
+
+    #[test]
+    fn test_parse_origin_b() {
+        // `-o` is not a short flag for `--origin` (it reads as "output")
+        assert!(Cli::try_parse_from(["fetter", "-o", "python3", "scan"]).is_err());
+    }
+
+    #[test]
+    fn test_parse_python_commands_a() {
+        let cli = parse(&["fetter", "python", "site-uninstall"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Python {
+                command: PythonCommands::SiteUninstall
+            })
+        ));
+        // site commands are no longer top-level
+        assert!(Cli::try_parse_from(["fetter", "site-uninstall"]).is_err());
+        // unpack and purge commands are shared, top-level commands
+        let cli = parse(&["fetter", "unpack-count", "-p", "pip*"]);
+        assert!(matches!(cli.command, Some(Commands::UnpackCount { .. })));
+        assert!(Cli::try_parse_from(["fetter", "python", "unpack-count"]).is_err());
+    }
+
+    #[test]
+    fn test_resolve_ecosystems_a() {
+        let scan = parse(&["fetter", "scan"]).command;
+        assert_eq!(
+            resolve_ecosystems(&[], scan.as_ref()).unwrap(),
+            Ecosystem::ALL.to_vec()
+        );
+        assert_eq!(
+            resolve_ecosystems(&[Ecosystem::Npm], scan.as_ref()).unwrap(),
+            vec![Ecosystem::Npm]
+        );
+    }
+
+    #[test]
+    fn test_resolve_ecosystems_b() {
+        let py = parse(&["fetter", "python", "site-uninstall"]).command;
+        assert_eq!(
+            resolve_ecosystems(&[], py.as_ref()).unwrap(),
+            vec![Ecosystem::Python]
+        );
+        assert!(resolve_ecosystems(&[Ecosystem::Npm], py.as_ref()).is_err());
+
+        let lookup = parse(&["fetter", "lookup-name", "numpy"]).command;
+        assert_eq!(
+            resolve_ecosystems(&[Ecosystem::Python], lookup.as_ref()).unwrap(),
+            vec![Ecosystem::Python]
+        );
+        assert!(resolve_ecosystems(&[Ecosystem::Cargo], lookup.as_ref()).is_err());
     }
 }
