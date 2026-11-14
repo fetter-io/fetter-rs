@@ -11,20 +11,20 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-13, at the end of milestone 6.*
+*Last updated 2026-11-13, at the end of milestone 7.*
 
 ### Where we are
 
-- **Branch** `207/polye`. Milestones **1–6 are done** (§7): spec, core types, scanner trait + walker, CLI rework, OSV multi-ecosystem (including pagination and error handling), and the Cargo scanner.
-- **Milestone 6 (Cargo) was not yet committed** when this was written. Check `git status`; if `src/eco/cargo.rs` is untracked, review and commit it before starting milestone 7.
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 352 passed and 4 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. Milestones **1–7 are done** (§7): spec, core types, scanner trait + walker, CLI rework, OSV multi-ecosystem (including pagination and error handling), and the Cargo and npm scanners.
+- **Milestone 7 (npm) may not be committed yet.** Check `git status`; if `src/eco/npm.rs` is untracked, review and commit it before starting milestone 8. That change also raises the MSRV to 1.89 (`Cargo.toml`, `.github/workflows/ci.yml`) and replaces `serde_yaml` with `serde-saphyr`.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 378 passed and 4 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
   - `test_from_dep_manifest_live`
 
   Run them with `cargo test <name> -- --ignored`. `tests/windows_session.rs` runs only on Windows and has not been run since milestone 4 changed `count` output and `--origin`. It was updated by hand; verify it in CI.
-- **Implemented scanners**: Python (`src/eco/python.rs`) and Cargo (`src/eco/cargo.rs`). `-E npm|gha|vscode` prints a "not yet supported" warning and is skipped.
+- **Implemented scanners**: Python (`src/eco/python.rs`), Cargo (`src/eco/cargo.rs`), and npm (`src/eco/npm.rs`). `-E gha|vscode` prints a "not yet supported" warning and is skipped.
 - **Python-only isolation in shared commands** (remove as each generalizes):
   - `validate`, `derive`, `purge-invalid` → Python packages only (`scan_fs.rs`, until milestone 11)
   - `unpack-*`, `purge-*` → `supports_artifacts` (Python only, until milestone 13)
@@ -38,7 +38,9 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | Ecosystem enum, OSV names, key normalization | `src/ecosystem.rs` |
 | `Origin`, `Site`, `SiteKind` | `src/origin_site.rs` |
 | Scanner trait, `Detect`, `DirItem`, registry, `infer_origins` | `src/eco/mod.rs` |
-| Per-ecosystem scanners | `src/eco/{python,cargo}.rs` |
+| Per-ecosystem scanners | `src/eco/{python,cargo,npm}.rs` |
+| YAML parsing (into `serde_json::Value`) | `serde_saphyr::from_str`; see `eco/npm.rs`, `lock_file.rs` |
+| Table rendering, column fitting | `src/table.rs` (`optimize_widths_for` is the testable core) |
 | Single filesystem walk (parallel; prune / skip_children / excludes) | `src/walk.rs` |
 | `ScanFS`: assembly (`from_parts`, the only constructor path), serialization, cache, report entry points | `src/scan_fs.rs` |
 | `ScanConfig` (ecosystems, roots; hashed for the cache) | `src/util.rs` |
@@ -46,26 +48,47 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | OSV batch query, pagination, `is_osv_queryable` | `src/osv_query.rs` |
 | Audit report (`unaudited`, errors) | `src/audit_report.rs` |
 
-### Next: milestone 7, the npm scanner
+### Next: milestone 8, the GitHub Actions scanner
 
-The plan, building on what milestone 6 established:
-1. **Survey real data first**, as for Cargo: `find ~ -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name .package-lock.json` (excluding `Library`). Note where lockfiles occur that are *not* projects, as `~/.cargo/registry` was for Cargo. Expect `~/.npm` (already excluded by the walker), global installs (`$(npm root -g)`, e.g. `/opt/homebrew/lib/node_modules`), `~/.nvm/versions/node/*/lib/node_modules`, and nested `node_modules/*/package.json`.
-2. **Origins**: a directory with `package.json` plus a lockfile or `node_modules`. Workspaces (npm/yarn/pnpm) have one lockfile at the root; members resolve upward, like Cargo's `find_lock_dir`. Decide whether global install dirs are origins (probably yes, as `Installed`, like `~/.cargo`).
-3. **Sites and precedence** (decision log: report both, record the `SiteKind`): `node_modules/.package-lock.json` (npm ≥7's hidden lockfile, the cheapest accurate Installed source) → else walk `node_modules/**/package.json` → plus the project lockfile (`package-lock.json` v1–v3, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock` classic and berry) as Lockfile.
-4. **Walk**: return `skip_children: ["node_modules"]` for any dir with `package.json`; the scanner reads `node_modules` itself from the origin. Do *not* prune the project dir, since it may contain venvs or Cargo crates.
-5. **Packages**: npm names are case-sensitive but lowercase-normalized as keys; scoped names (`@scope/name`) are kept whole. Exclude the root project and workspace members, as Cargo excludes source-less entries. Sources: `resolved` URLs from non-npm registries, `git+`, `file:`/`link:` → `DirectURL`, same rules as Cargo.
-6. **YAML is needed** for `pnpm-lock.yaml` (and yarn berry's `yarn.lock`, which is YAML). Resolve the "replace deprecated `serde_yaml`" open question now; it is shared with milestone 8.
-7. **Verify** as in previous milestones: Python and Cargo counts unchanged (baseline below); compare a full `scan` against the previous commit (build it in a `git worktree`); time the full scan; run `audit` on a real npm project (`lodash@4.17.15` is a known-vulnerable control).
-8. Open question to settle in this milestone: transitive dependencies and table size (§9).
+The plan:
+1. **Survey real data first**: workflow files (`find ~ -path '*/.github/workflows/*' \( -name '*.yml' -o -name '*.yaml' \)`) and local `action.yml`/`action.yaml` files. Tally the `uses:` forms in use:
+   - semver tags (`@v4.1.0`)
+   - floating major tags (`@v4`)
+   - SHA pins (`@11bd719…`)
+   - branches (`@main`)
+   - subpath actions (`github/codeql-action/init@v3`)
+   - reusable workflows (`owner/repo/.github/workflows/x.yml@ref`)
+   - local (`./.github/actions/x`) and `docker://`, both skipped
+
+   Also check whether any `.github` directories sit somewhere non-projects live, the way `Cargo.lock` files sat in `~/.cargo/registry`.
+2. **Probe OSV for package naming before writing code**: for subpath actions, is the OSV package `github/codeql-action` or `github/codeql-action/init`? Query both live and record the answer in §6.
+3. **Origins and sites**:
+   - The origin is the repo root (a directory containing `.github/workflows`).
+   - Each workflow file is a site (`SiteKind::Manifest`), as are local composite `action.yml` files.
+   - The walker visits `.github` (only `.git` is skipped).
+   - `--origin` accepts a repo dir, a `.github/workflows` dir, or a single workflow file.
+4. **Packages**:
+   - Each `uses: owner/repo[/path]@ref` gives the name `owner/repo` (lowercase key) and `ref` as the version.
+   - YAML is parsed with `serde-saphyr` into `serde_json::Value`. Walk `jobs.*.steps[*].uses` and `jobs.*.uses` (reusable workflows), plus `runs.steps[*].uses` in composite `action.yml`.
+5. **Auditing requires client-side version matching** (§6: OSV does no server-side matching for GHA):
+   - Add an ecosystem capability, e.g. `Ecosystem::osv_server_side_versions()`.
+   - For GHA, query `/v1/query` by package name only and parse `affected[].ranges` (type `ECOSYSTEM`, events `introduced`/`fixed`/`last_affected`) in `osv_vulns.rs`, where `affected` is currently commented out.
+   - Compare the ref's version locally. That needs semver-like ordering with an optional `v` prefix; this is the first real need for `PackageVersion`/range matching (§3). Decide between the `semver` crate and extending `VersionSpec`.
+   - Floating major tags and SHAs cannot be placed in a range without resolving them (GitHub API; open question §9), so they go in `AuditReport.unaudited`.
+   - Keep the batch path for the other ecosystems and merge the results.
+6. **Verify** as before: other ecosystems unchanged (baselines below), deterministic `scan`, timing, and a live `audit` against a known-affected control. `actions/download-artifact@v4.0.0` falls in GHSA-cxww-7g56-2vh6 (`introduced 4.0.0`, `fixed 4.1.3`), and `tj-actions/changed-files@v35.0.0` in GHSA-mrrh-fwg8-r2c3.
 
 ### Baselines for regression checks (dev machine, release build, warm cache)
 
-- Full home scan, `count`: python 54 origins / 57 sites / 764 packages; cargo 27 / 25 / 1,737; ≈6.1s.
-- Full home `scan`: 1,585 Python rows, byte-identical across runs.
+- Full home scan, `count`: python 54 origins / 57 sites / 764 packages; npm 40 / 40 / 5,840 (36 / 36 / 5,803 before `bun.lock` support); cargo 27 / 25 / 1,747; ≈4.0s. (Cargo was 1,737 before this repo's own `Cargo.lock` gained 12 crates from the `serde-saphyr` swap; `Cargo.lock` is gitignored here.)
+- Full home `scan`: byte-identical across runs.
+- `fetter -E npm audit` (full home): 372 npm packages with advisories, ≈68s uncached (mostly per-advisory detail fetches).
 
 ### Habits that have paid off
 
-- **Survey the real filesystem before writing a scanner**: the 680 non-project `Cargo.lock` files were found this way.
+- **Survey the real filesystem before writing a scanner**: the 680 non-project `Cargo.lock` files were found this way. For npm, the survey found 65 lockfiles shipped inside `node_modules` packages, 28 VS Code extensions with bundled `node_modules`, and that hidden lockfiles are unreliable.
+- **Cross-check found vs. expected with an independent script.** For npm, a Python `os.walk` reimplementing the origin rule found exactly the scanner's 37 project origins. The 2 that had no packages turned out to be Next.js `.next` build output.
+- **Run the release binary's table output, not just `write` and tests.** The milestone 7 `optimize_widths` underflow appeared only when rendering a table with long npm names on a narrow terminal.
 - **Probe the live API before trusting docs or assumptions.** This is how we learned that GHA has no server-side version matching, that empty versions match everything, that one bad query fails a whole batch, and that pagination can return empty pages carrying tokens.
 - **Diff against the previous commit**, built in a scratch `git worktree`, after any change to discovery.
 - **Make anything that reaches output deterministic**: sort at construction, tie-break equal `Package`s.
@@ -74,6 +97,7 @@ The plan, building on what milestone 6 established:
 
 - fetter's own dependencies have OSV advisories (`ring` 0.17.8, `rustls` 0.23.27, `bytes` 1.10.1, `rustix`, `crossbeam-epoch`, …), mostly via `ureq`; run `fetter --origin . audit`. A `cargo update` likely clears most of them. Not done, because dependency changes are the maintainer's call.
 - README examples are stale (`-e`, top-level `site-install`); deferred to milestone 14.
+- The `unsafe-libyaml` advisory (RUSTSEC-2024-0449) is resolved: `serde_yaml` was replaced with `serde-saphyr`.
 
 ---
 
@@ -106,12 +130,12 @@ v5 is built around *exe → site-packages → packages*. That model doesn't carr
 | Ecosystem | Origin | Site(s) | Package source |
 |---|---|---|---|
 | python | interpreter exe | site-packages dirs (Installed) | `*.dist-info` (existing logic) |
-| npm | project dir containing `package.json` | `node_modules` (Installed), else `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` (Lockfile) | `node_modules/.package-lock.json`, or a walk of `node_modules/**/package.json`; lockfile parsers |
+| npm | dir with `package.json` and `node_modules` or a lockfile; or an install dir (a `node_modules` with no sibling `package.json`, e.g. global) | `node_modules` (Installed), else the first of `npm-shrinkwrap.json` / `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` / `bun.lock` (Lockfile) | walk of `node_modules/**/package.json` (incl. `.pnpm`); lockfile parsers (implemented) |
 | cargo | dir containing `Cargo.lock` (workspace root); also `$CARGO_HOME` | `Cargo.lock` (Lockfile); `$CARGO_HOME/.crates2.json`, else `.crates.toml` (Installed bins) | TOML / JSON parse (implemented) |
 | gha | repo root containing `.github/workflows` | each workflow file and local `action.yml` (Manifest) | `uses: owner/repo[/path]@ref`; skip `./local` and `docker://` |
 | vscode | editor profile dir (`~/.vscode`, `~/.vscode-insiders`, `~/.cursor`, `~/.vscode-oss`, …) | its `extensions/` dir (Installed) | `extensions.json`, or each extension's `package.json` (`publisher.name@version`) |
 
-fetter reports **both installed and lockfile** sources and records the `SiteKind`, so reports show where each package came from. For Cargo they come from different origins: projects have only lockfiles, and `$CARGO_HOME` has only installs. For npm, a project can have both (`node_modules` and a lockfile); milestone 7 decides the precedence.
+fetter reports **both installed and lockfile** sources and records the `SiteKind`, so reports show where each package came from. For Cargo they come from different origins: projects have only lockfiles, and `$CARGO_HOME` has only installs. For npm, a project can have both; per the original decision (installed where it exists, else lockfile), `node_modules` takes precedence and the lockfile is read only when nothing is installed.
 
 ## 3. Core data model
 
@@ -341,8 +365,41 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
      - Cargo: 27 origins (26 projects + `~/.cargo`), 1,737 crates. The 2 dependency-free projects correctly yield no packages.
      - The full scan got faster, ≈10.7s → ≈6.1s, from the pruning.
      - `audit` of this repo's lockfile returned real RustSec/GHSA advisories with details (e.g. `ring` 0.17.8 RUSTSEC-2025-0009 via `ureq` → `rustls`).
-7. [ ] **npm scanner**: `.package-lock.json`, `node_modules` walk, package-lock v1–v3, pnpm, yarn classic/berry.
-   Files: `eco/npm.rs`.
+7. [x] **npm scanner**: `node_modules` walk, package-lock v1–v3, pnpm, yarn classic/berry, bun.
+   Files: `eco/npm.rs`, `lock_file.rs` (YAML migration), `table.rs` (fix), `Cargo.toml`, `ci.yml`.
+   Done 2026-11-13.
+   - **Origins**:
+     - A dir with `package.json` and either `node_modules` or a lockfile.
+     - An install dir: a `node_modules` whose parent has no `package.json`. This covers global installs, nvm and volta without hard-coded paths; `/usr/local/lib`, `/usr/lib` and `/opt/homebrew/lib` under `node_modules`, `$NPM_CONFIG_PREFIX`, and `%APPDATA%\npm` come from `default_origins`.
+     - Not origins: anything under an editor `extensions` dir (`.vscode`, `.cursor`, `.windsurf`, …), which is left to milestone 9.
+   - **Sites**: Installed (`node_modules`) takes precedence over Lockfile.
+   - **`node_modules` walk**:
+     - Reads each package root's `package.json` (`name`/`version`), scoped dirs, nested `node_modules`, and pnpm's `.pnpm/*/node_modules`.
+     - **Never follows symlinks**: workspace links, `npm link`, and pnpm's links into its store (which is read directly) would otherwise double-count.
+     - The hidden lockfile `node_modules/.package-lock.json` is **not** used. It is an npm-only cache that can go stale, while the walk is uniform across npm, yarn and pnpm and reflects what is on disk.
+   - **Lockfiles**:
+     - package-lock v2/v3: the `packages` map, keys under `node_modules/`, skipping `link` entries. v1: the nested `dependencies` tree.
+     - pnpm v5 (`/name/1.0.0_peer`), v6 (`/name@1.0.0(peer)`) and v9 (`name@1.0.0`) keys, using explicit `name`/`version` fields when present.
+     - yarn classic (custom format) and berry (YAML, `resolution` protocols).
+     - Excluded: the root, workspace members/importers, and `file:` / `link:` / `portal:` / `workspace:`.
+     - Provenance: the public registry (registry.npmjs.org, registry.yarnpkg.com) has no `direct_url`. Git has a `DirectURL` with a commit; other registries a `DirectURL` with the tarball URL. A URL in place of a version gives an empty version (→ unaudited).
+   - **Walk**: projects skip `node_modules`, `.next`, `.nuxt` and `.svelte-kit` (framework build output contains `package.json` + `node_modules` stubs). An install dir reached by the walk is claimed and pruned.
+   - **Packages are deduplicated per site**; `ScanFS::from_parts` now also dedups sites and origins after sorting.
+   - **YAML**: `serde_yaml` (deprecated, via `unsafe-libyaml`, RUSTSEC-2024-0449) was replaced with **`serde-saphyr` 2.1.1**, parsing into `serde_json::Value`. `lock_file.rs` (pixi) was migrated. `serde-saphyr` requires Rust 1.89, so **MSRV was raised from 1.88 to 1.89** (CI matrix, plus `rust-version` in `Cargo.toml`).
+   - **Bug fixed** (predates v6): `table::optimize_widths` underflowed (`width - reduction`) when the terminal was narrower than the non-ellipsisable columns. Release builds then panicked with "Formatting argument out of range"; long npm names triggered it. Now saturating, with a testable `optimize_widths_for`.
+   - **Bun** (added in a follow-up): `bun.lock` (text, the default since Bun 1.2) is last in lockfile precedence.
+     - The format is JSON with trailing commas, which `serde_json` rejects, so `strip_trailing_commas` removes them first (string- and escape-aware).
+     - Each `packages` entry is an array whose first element is `name@spec`. Keys are resolution paths (e.g. `discord.js/undici` for a nested duplicate; 379 of 404 real entries differ from the name) and are not used.
+     - Registry entries are `["name@1.0.0", registry, info, integrity]`, where an empty registry is the default.
+     - `workspace:`, `file:`, `link:` and `root:` are excluded. `github:`, `git+` and tarball specs keep provenance with an empty version (→ unaudited).
+     - The binary `bun.lockb` (pre-1.2, no published format) is **not** supported. Convert with `bun install --save-text-lockfile`, or rely on the `node_modules` walk.
+     - Verified: the 4 bun-only projects under `~/.claude/plugins` now scan with package counts exactly matching an independent tally of unique `name@version` entries (114/95/99/95), and `audit` returns advisories (e.g. `@modelcontextprotocol/sdk` 1.27.1).
+   - **Verified on the dev machine**:
+     - npm: 36 origins, 5,803 packages.
+     - An independent `os.walk` cross-check found the same 37 project origins; the 2 extra were `.next` build output, since skipped.
+     - Python unchanged; full scan ≈6.1s → ≈4.0s (projects' `node_modules` are no longer walked by the Python scanner).
+     - `scan` output deterministic.
+     - `-E npm audit` over ~91 OSV batches: 372 packages with advisories.
 8. [ ] **GHA scanner**; replace the deprecated `serde_yaml` first. Requires **client-side version matching** (§6): OSV returns nothing for versioned GHA queries. Approach: an ecosystem capability (e.g. `Ecosystem::osv_server_side_versions() -> bool`). For ecosystems without it, query `/v1/query` by name only, then evaluate each advisory's `affected[].ranges` (`ECOSYSTEM`, semver-like with an optional `v` prefix) against the ref. Floating refs (`@v4`) and SHAs cannot be placed in a range without resolving them to a release (GitHub API); report them as `unaudited` until that is implemented.
    Files: `eco/gha.rs`, `osv_query.rs`, `osv_vulns.rs` (parse `affected`), `Cargo.toml`.
 9. [ ] **VS Code scanner.**
@@ -370,13 +427,13 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 ## 9. Open questions
 
 - GHA: should SHA pins and `@v4` major-tag refs be resolved to concrete versions? That needs the GitHub API and a rate-limit/token story. Until then they go in `unaudited` (§6), so this decides how much of a typical workflow is auditable.
-- npm: report transitive dependencies from nested `node_modules` by default? How should table output stay usable with thousands of packages (group by origin? collapse lockfile-only?)
-- YAML parser to replace the deprecated `serde_yaml` (e.g. `serde_yaml_ng`, `saphyr`).
+- Table output at scale: a full home `scan` now has thousands of npm rows. Consider grouping by origin, or a `--summary` view.
+- VS Code extensions' bundled `node_modules` (28 on the dev machine): should milestone 9 report them as npm packages attributed to the extension, or only the extension itself?
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
 - Packages with a `direct_url` (Python VCS/local installs; Cargo git and alternative-registry crates) are queried in OSV by name, as if from the public registry. For forks or private crates that share a public name, this can produce false positives. Should they go in `unaudited` instead? Today's behavior favors not missing advisories.
 - Cargo: `vendor/` directories (from `cargo vendor`) can contain crates that ship their own `Cargo.lock`. These would be detected as projects; consider skipping `vendor` when `.cargo/config.toml` sets `[source.vendored-sources]`.
 - Allow-list file name and format. Should purl `vers:` ranges be supported alongside native range syntax?
-- npm range semantics: use the `node-semver` crate, or implement the subset fetter needs?
+- npm range semantics (for milestone 11 validation): use the `node-semver` crate, or implement the subset fetter needs? Related: milestone 8 needs semver ordering for GHA ranges; choose a crate that can serve both if possible.
 - `Package`'s `Ord` (ecosystem, lowercase name, version) is inconsistent with its derived `Eq`/`Hash` (which include `key` and `direct_url`): distinct packages can compare `Equal`. Reports work around this with tie-breaks. Should `Ord` include `direct_url`, or should identity drop it?
 - Should the old top-level `site-install` / `site-uninstall` remain as hidden aliases for migration? Today they fail with clap's generic "unrecognized subcommand" error.
 
@@ -385,14 +442,19 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - 2026-11-13: The ecosystem is selected with a global `-E/--ecosystem` flag. Python-only commands live under `fetter python …`.
 - 2026-11-13: `--origin` has no short flag (`-o` is associated with output). `-e`/`--exe` are kept as hidden aliases for v5 compatibility.
 - 2026-11-13: Unpack and purge are shared commands in concept; only `site-install` / `site-uninstall` are Python-specific. Generalizing them is milestone 13.
-- 2026-11-13: npm/cargo use both installed artifacts and lockfiles, and record the `SiteKind`.
+- 2026-11-13: npm/cargo use both installed artifacts and lockfiles, and record the `SiteKind`. (Precisely: installed where it exists, else lockfile; see the npm entry.)
 - 2026-11-13: The default scan covers all ecosystems in a single walk.
 - 2026-11-13: `inspect`, `validate`, and `derive` are generalized to all ecosystems (hooks; cross-ecosystem allow list).
 - 2026-11-13: "exe" generalizes to **Origin**; "site" keeps its name, with a `SiteKind`.
+- 2026-11-13: npm sources follow the original choice, "installed where it exists, else lockfile". This corrects the drifted "report both" wording above for npm. Hidden lockfiles are not used.
+- 2026-11-13: npm does not report packages inside editor extension dirs; extensions (and their bundled dependencies) belong to the VS Code scanner (milestone 9).
+- 2026-11-13: Support Bun's text `bun.lock` (the current default); not the binary `bun.lockb`.
+- 2026-11-13: YAML via `serde-saphyr` (pure Rust, maintained), replacing deprecated `serde_yaml`; MSRV raised to 1.89 to allow it.
 - 2026-11-13: OSV supports VS Code extensions under the ecosystem name `VSCode` (https://osv.dev/list?q=&ecosystem=VSCode), so VS Code packages are fully auditable.
 
 ## 11. Breaking changes (for the v6 changelog)
 
+- **MSRV is Rust 1.89** (was 1.88), required by `serde-saphyr`.
 - `-e/--exe` → `--origin` (no short flag; old names kept as hidden aliases).
 - `audit` / `lookup-*` fail (exit 1) when OSV cannot be queried, instead of reporting no vulnerabilities. Audit JSON may include an `unaudited` list.
 - Library API: `AuditReport::from_packages` returns `Result`; `AuditReport` has a new `unaudited` field.

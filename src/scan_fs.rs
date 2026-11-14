@@ -274,12 +274,15 @@ impl ScanFS {
         // NOTE: slice sort returns early for len < 2, so no need to guard here
         for sites in origin_to_sites.values_mut() {
             sites.sort();
+            sites.dedup();
         }
         for sites in package_to_sites.values_mut() {
             sites.sort();
+            sites.dedup();
         }
         for origins in site_to_origins.values_mut() {
             origins.sort();
+            origins.dedup();
         }
         ScanFS {
             origin_to_sites,

@@ -1,6 +1,7 @@
 //! Per-ecosystem scanners. Each ecosystem implements `EcosystemScanner`; the walker (`crate::walk`) dispatches to all enabled scanners during a single filesystem walk.
 
 pub(crate) mod cargo;
+pub(crate) mod npm;
 pub(crate) mod python;
 
 use std::fs::FileType;
@@ -76,13 +77,15 @@ pub(crate) trait EcosystemScanner: Sync {
 //------------------------------------------------------------------------------
 static PYTHON: python::PythonScanner = python::PythonScanner;
 static CARGO: cargo::CargoScanner = cargo::CargoScanner;
+static NPM: npm::NpmScanner = npm::NpmScanner;
 
 /// Return the scanner for an ecosystem, if one is implemented.
 pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn EcosystemScanner> {
     match ecosystem {
         Ecosystem::Python => Some(&PYTHON),
         Ecosystem::Cargo => Some(&CARGO),
-        Ecosystem::Npm | Ecosystem::Gha | Ecosystem::VsCode => None,
+        Ecosystem::Npm => Some(&NPM),
+        Ecosystem::Gha | Ecosystem::VsCode => None,
     }
 }
 
@@ -128,13 +131,13 @@ mod tests {
     #[test]
     fn test_scanner_for_a() {
         assert!(scanner_for(Ecosystem::Python).is_some());
-        assert!(scanner_for(Ecosystem::Npm).is_none());
+        assert!(scanner_for(Ecosystem::Gha).is_none());
     }
 
     #[test]
     fn test_scanners_a() {
-        assert_eq!(scanners(&Ecosystem::ALL).len(), 2);
-        assert_eq!(scanners(&[Ecosystem::Npm]).len(), 0);
+        assert_eq!(scanners(&Ecosystem::ALL).len(), 3);
+        assert_eq!(scanners(&[Ecosystem::Gha]).len(), 0);
     }
 
     #[test]
