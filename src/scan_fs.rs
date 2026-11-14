@@ -12,6 +12,8 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::allow_list::AllowList;
+use crate::allow_list::EcoSection;
 use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
@@ -507,6 +509,8 @@ impl ScanFS {
 
     /// Validate this scan against the provided DepManifest.
     #[allow(clippy::wrong_self_convention)]
+    /// Validate against a Python-only manifest (used by tests).
+    #[cfg(test)]
     pub(crate) fn to_validation_report(
         &mut self,
         dm: DepManifest,
@@ -514,22 +518,69 @@ impl ScanFS {
         ignore: Option<&HashSet<String>>,
         log: FlagLog,
     ) -> ValidationReport {
-        if dm.env_marker_active {
-            self.load_env_marker_state(log);
-        }
-        // NOTE: bound requirements are Python-only until the cross-ecosystem allow list (milestone 11)
-        let mut packages = self.get_packages();
-        packages.retain(|p| p.ecosystem == Ecosystem::Python);
+        self.to_allow_list_validation(&AllowList::from_python(dm), vf, ignore, false, log)
+    }
 
-        ValidationReport::from_components(
-            &packages,
-            &self.package_to_sites,
-            &self.site_to_origins,
-            &self.origin_to_ems,
-            &dm,
-            &vf,
-            ignore,
-        )
+    /// Validate this scan against an allow list. Each enabled ecosystem with a section in the allow list is validated; an ecosystem without one is skipped, unless `strict`, in which case it is validated against an empty section (all its packages are Unrequired, unless `permit_superset`). Python uses its existing semantics (env markers included); other ecosystems use `ValidationReport::records_from_section`.
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_allow_list_validation(
+        &mut self,
+        al: &AllowList,
+        vf: ValidationFlags,
+        ignore: Option<&HashSet<String>>,
+        strict: bool,
+        log: FlagLog,
+    ) -> ValidationReport {
+        let all = self.get_packages();
+        let of = |e: Ecosystem| -> Vec<Package> {
+            all.iter().filter(|p| p.ecosystem == e).cloned().collect()
+        };
+        let mut records = Vec::new();
+        let ecosystems = self.ecosystems().to_vec();
+
+        if ecosystems.contains(&Ecosystem::Python) && (al.python.is_some() || strict) {
+            let empty;
+            let dm = match &al.python {
+                Some(dm) => dm,
+                None => {
+                    empty = DepManifest::try_from_iter(Vec::<String>::new())
+                        .expect("empty manifest");
+                    &empty
+                }
+            };
+            if dm.env_marker_active {
+                self.load_env_marker_state(log);
+            }
+            records.extend(
+                ValidationReport::from_components(
+                    &of(Ecosystem::Python),
+                    &self.package_to_sites,
+                    &self.site_to_origins,
+                    &self.origin_to_ems,
+                    dm,
+                    &vf,
+                    ignore,
+                )
+                .records,
+            );
+        }
+        let empty_section = EcoSection::default();
+        for eco in ecosystems.into_iter().filter(|e| *e != Ecosystem::Python) {
+            let section = match al.section(eco) {
+                Some(s) => s,
+                None if strict => &empty_section,
+                None => continue,
+            };
+            records.extend(ValidationReport::records_from_section(
+                eco,
+                &of(eco),
+                &self.package_to_sites,
+                section,
+                &vf,
+                ignore,
+            ));
+        }
+        ValidationReport { records }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -576,17 +627,9 @@ impl ScanFS {
     }
 
     /// Given an `anchor`, produce a DepManifest based ont the packages observed in this scan.
-    pub(crate) fn to_dep_manifest(
-        &self,
-        anchor: Anchor,
-    ) -> Result<DepManifest, Box<dyn std::error::Error>> {
-        // NOTE: derived requirements are Python-only until the cross-ecosystem allow list (milestone 11)
-        DepManifest::from_packages(
-            self.package_to_sites
-                .keys()
-                .filter(|p| p.ecosystem == Ecosystem::Python),
-            anchor,
-        )
+    /// Given an `anchor`, derive an allow list from all packages observed in this scan.
+    pub(crate) fn to_allow_list(&self, anchor: Anchor) -> ResultDynError<AllowList> {
+        AllowList::from_packages(self.get_packages(), anchor)
     }
 
     pub(crate) fn to_scan_report(&self) -> ScanReport {
@@ -631,11 +674,11 @@ impl ScanFS {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_purge_invalid(
         &mut self,
-        dm: DepManifest,
+        al: &AllowList,
         vf: ValidationFlags,
         log: FlagLog,
     ) -> io::Result<()> {
-        let vr = self.to_validation_report(dm, vf, None, log);
+        let vr = self.to_allow_list_validation(al, vf, None, false, log);
         let packages: Vec<Package> = vr
             .records
             .iter()
@@ -786,8 +829,9 @@ mod tests {
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
         assert_eq!(sfs.package_to_sites.len(), 7);
         // sfs.report();
-        let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
-        assert_eq!(dm.len(), 3);
+        let al = sfs.to_allow_list(Anchor::Lower).unwrap();
+        assert_eq!(al.python.as_ref().unwrap().len(), 3);
+        assert!(al.is_python_only());
     }
 
     //--------------------------------------------------------------------------
@@ -845,7 +889,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"flask-1.1.3","dependency":"flask>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]
@@ -884,7 +928,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"requests-0.7.6","dependency":"requests==0.7.1","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"ecosystem":"python","package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"ecosystem":"python","package":"requests-0.7.6","dependency":"requests==0.7.1","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -913,7 +957,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"flask-1.1.3","dependency":"flask>2,<3","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]},{"ecosystem":"python","package":"numpy-1.19.3","dependency":"numpy>2","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
     #[test]
@@ -971,7 +1015,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+            r#"[{"ecosystem":"python","package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
         );
     }
     #[test]
@@ -997,7 +1041,7 @@ mod tests {
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
 
         let vr2 = sfs.to_validation_report(
@@ -1038,7 +1082,7 @@ mod tests {
         let json = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
+            r#"[{"ecosystem":"python","package":null,"dependency":"flask>1,<2","explain":"Missing","sites":null}]"#
         );
 
         let vr2 = sfs.to_validation_report(
@@ -1127,7 +1171,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -1232,7 +1276,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]},{"package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]},{"ecosystem":"python","package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -1269,7 +1313,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]},{"package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"numpy-2.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]},{"ecosystem":"python","package":"static-frame-2.13.0","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -1376,7 +1420,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"numpy-1.19.3","dependency":"numpy==1.19.1; python_version > '3.0' and python_version < '20'","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"numpy-1.19.3","dependency":"numpy==1.19.1; python_version > '3.0' and python_version < '20'","explain":"Misdefined","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -1414,7 +1458,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":null,"dependency":"numpy==1.19.1; python_version > '3.0' and python_version < '20'","explain":"Missing","sites":null}]"#
+            r#"[{"ecosystem":"python","package":null,"dependency":"numpy==1.19.1; python_version > '3.0' and python_version < '20'","explain":"Missing","sites":null}]"#
         );
     }
 
@@ -1486,7 +1530,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":"numpy-1.19.3","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"numpy-1.19.3","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
     }
 
@@ -1581,7 +1625,7 @@ mod tests {
         let json = serde_json::to_string(&vr.to_validation_digest()).unwrap();
         assert_eq!(
             json,
-            r#"[{"package":null,"dependency":"numpy==1.2","explain":"Missing","sites":null},{"package":null,"dependency":"numpy==2.0","explain":"Missing","sites":null}]"#
+            r#"[{"ecosystem":"python","package":null,"dependency":"numpy==1.2","explain":"Missing","sites":null},{"ecosystem":"python","package":null,"dependency":"numpy==2.0","explain":"Missing","sites":null}]"#
         );
     }
 
@@ -1651,7 +1695,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         // Both dependencies are gated on `sys_platform == "win32"`, so they are
         // required (and Missing) on Windows but excluded on other platforms.
         #[cfg(windows)]
-        let expected = r#"[{"package":null,"dependency":"pathlib2==2.3.7.post1; sys_platform == \"win32\"","explain":"Missing","sites":null},{"package":null,"dependency":"six==1.17.0; python_version != '3.0.*' and python_version != '3.1.*' and python_version != '3.2.*' and python_version >= '2.7' and sys_platform == \"win32\"","explain":"Missing","sites":null}]"#;
+        let expected = r#"[{"ecosystem":"python","package":null,"dependency":"pathlib2==2.3.7.post1; sys_platform == \"win32\"","explain":"Missing","sites":null},{"ecosystem":"python","package":null,"dependency":"six==1.17.0; python_version != '3.0.*' and python_version != '3.1.*' and python_version != '3.2.*' and python_version >= '2.7' and sys_platform == \"win32\"","explain":"Missing","sites":null}]"#;
         #[cfg(not(windows))]
         let expected = r#"[]"#;
         assert_eq!(json, expected);
@@ -1686,7 +1730,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let json1 = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json1,
-            r#"[{"package":"pip-23.1.2","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
+            r#"[{"ecosystem":"python","package":"pip-23.1.2","dependency":null,"explain":"Unrequired","sites":["/usr/lib/python3/site-packages"]}]"#
         );
 
         let mut ignore: HashSet<String> = HashSet::new();
@@ -1733,7 +1777,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let json1 = serde_json::to_string(&vr1.to_validation_digest()).unwrap();
         assert_eq!(
             json1,
-            r#"[{"package":null,"dependency":"pip==23.1.2","explain":"Missing","sites":null}]"#
+            r#"[{"ecosystem":"python","package":null,"dependency":"pip==23.1.2","explain":"Missing","sites":null}]"#
         );
 
         let mut ignore: HashSet<String> = HashSet::new();
@@ -1937,11 +1981,83 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
     }
 
     #[test]
-    fn test_mixed_derive_python_only_a() {
+    fn test_mixed_derive_a() {
         let sfs = mixed_scan();
-        let dm = sfs.to_dep_manifest(Anchor::Lower).unwrap();
-        // the cargo crate is not written into Python requirements
-        assert_eq!(dm.len(), 2);
+        let al = sfs.to_allow_list(Anchor::Lower).unwrap();
+        // Python requirements hold only Python packages; the cargo crate is in its own section
+        assert_eq!(al.python.as_ref().unwrap().len(), 2);
+        assert!(!al.is_python_only());
+        assert!(al
+            .to_toml()
+            .contains("[cargo]\n\"serde\" = \">=1.0.200\"\n"));
+    }
+
+    #[test]
+    fn test_mixed_validate_allow_list_a() {
+        let mut sfs = mixed_scan();
+        let vf = || ValidationFlags {
+            permit_superset: false,
+            permit_subset: false,
+        };
+        // a Python-only bound: cargo is not validated (no section), unless strict
+        let al = AllowList::from_python(
+            DepManifest::try_from_iter(vec!["numpy>=2", "flask>=3"]).unwrap(),
+        );
+        assert!(sfs
+            .to_allow_list_validation(&al, vf(), None, false, FlagLog(false))
+            .is_empty());
+        let vr = sfs.to_allow_list_validation(&al, vf(), None, true, FlagLog(false));
+        assert_eq!(vr.records.len(), 1);
+        assert_eq!(vr.records[0].ecosystem, Ecosystem::Cargo);
+        assert_eq!(vr.records[0].explain().to_string(), "Unrequired");
+
+        // a fetter.toml: misdefined, missing, and a satisfied requirement
+        let al = AllowList::from_fetter_toml(
+            "[python]\nrequirements = [\"numpy>=2\", \"flask>=3\"]\n[cargo]\n\"serde\" = \"2\"\n\"tokio\" = \"1\"\n",
+        )
+        .unwrap();
+        let vr = sfs.to_allow_list_validation(&al, vf(), None, false, FlagLog(false));
+        let explain: Vec<(String, String, String)> = vr
+            .records
+            .iter()
+            .map(|r| {
+                (
+                    r.ecosystem.to_string(),
+                    r.dependency
+                        .as_ref()
+                        .map(|d| d.to_string())
+                        .unwrap_or_default(),
+                    r.explain().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            explain,
+            vec![
+                (
+                    "cargo".to_string(),
+                    "serde 2".to_string(),
+                    "Misdefined".to_string()
+                ),
+                (
+                    "cargo".to_string(),
+                    "tokio 1".to_string(),
+                    "Missing".to_string()
+                ),
+            ]
+        );
+        // subset permits the missing one; superset permits unrequired
+        let vr = sfs.to_allow_list_validation(
+            &al,
+            ValidationFlags {
+                permit_superset: false,
+                permit_subset: true,
+            },
+            None,
+            false,
+            FlagLog(false),
+        );
+        assert_eq!(vr.records.len(), 1);
     }
 
     #[test]

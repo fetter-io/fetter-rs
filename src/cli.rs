@@ -10,7 +10,8 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -18,6 +19,8 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use crate::allow_list::AllowList;
+use crate::audit_report::AuditReport;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
 use crate::eco::scanner_for;
@@ -29,6 +32,7 @@ use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
 use crate::ureq_client::UreqClient;
+use crate::util::get_writer;
 use crate::util::path_normalize;
 use crate::util::CacheConfig;
 use crate::util::FlagLog;
@@ -42,6 +46,15 @@ use crate::EnvMarkerState;
 
 //------------------------------------------------------------------------------
 // utility enums
+
+/// The output format of `derive`.
+#[derive(Copy, Clone, ValueEnum)]
+pub enum DeriveFormat {
+    /// A requirements file (Python packages only).
+    Requirements,
+    /// A fetter.toml allow list (all ecosystems).
+    Toml,
+}
 
 #[derive(Copy, Clone, ValueEnum)]
 pub enum CliAnchor {
@@ -195,11 +208,15 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<CountSubcommand>,
     },
-    /// Derive new requirements from discovered packages.
+    /// Derive an allow list (requirements) from discovered packages.
     Derive {
         // Select the nature of the bound in the derived requirements.
         #[arg(short, long, value_enum)]
         anchor: CliAnchor,
+
+        /// Output format. If not provided, a requirements file is written when all derived packages are Python, and a fetter.toml otherwise. `requirements` includes only Python packages.
+        #[arg(long, value_enum)]
+        format: Option<DeriveFormat>,
 
         #[command(subcommand)]
         subcommands: Option<DeriveSubcommand>,
@@ -225,6 +242,10 @@ enum Commands {
         /// If the superset flag is set, the observed packages can be a superset of the bound requirements.
         #[arg(long)]
         superset: bool,
+
+        /// Validate every scanned ecosystem, treating an ecosystem the bound does not mention as having no allowed packages. By default such ecosystems are not validated.
+        #[arg(long)]
+        strict: bool,
 
         #[command(subcommand)]
         subcommands: Option<ValidateSubcommand>,
@@ -254,9 +275,9 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<AuditSubcommand>,
     },
-    /// Search for security vulnerabilities in a named package (from PyPI) via the OSV DB.
+    /// Search for security vulnerabilities in a named package (versions from the ecosystem's registry) via the OSV DB.
     LookupName {
-        /// Provide a package name or dependency specification.
+        /// A package name with an optional requirement. For Python, a dependency specification (`numpy>=2`); otherwise `name@requirement` in the ecosystem's native syntax (`-E npm lookup-name 'lodash@^4.17'`, `-E cargo lookup-name serde@1`, `-E gha lookup-name actions/checkout@v4`).
         #[arg(value_name = "NAME")]
         name: String,
 
@@ -281,7 +302,7 @@ enum Commands {
     },
     /// Search for security vulnerabilities in packages from a requirements or lock file via the OSV DB.
     LookupBound {
-        /// Directory, file path, URL, or git repository from which to read bound requirements. The provided file can be requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`. If no argument is provided (or a directory is provided), the current directory is searched for a lock file, requirements.txt, or pyproject.toml.
+        /// Directory, file path, URL, or git repository from which to read bound requirements. The provided file can be a fetter.toml, requirements.txt, pyproject.toml or a lock file created by `uv`, `poetry`, `pipenv`, or `pip-tools`. If no argument is provided (or a directory is provided), the directory's fetter.toml is used if present; otherwise it is searched for a lock file, requirements.txt, or pyproject.toml.
         #[arg(value_name = "FILE")]
         bound: Option<PathBuf>,
 
@@ -623,22 +644,58 @@ enum UnpackFilesSubcommand {
 //------------------------------------------------------------------------------
 // Utility constructors specialized for CLI contexts
 
+/// Print to stderr what an audit could not check: packages that could not be queried (e.g. no version, an unresolvable ref) and requirements whose package was not found in its registry (e.g. a private package). These do not change the exit code.
+fn report_unchecked(ar: &AuditReport) {
+    if !ar.unaudited.is_empty() {
+        eprintln!(
+            "fetter: {} package(s) could not be audited: {}",
+            ar.unaudited.len(),
+            ar.unaudited
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if !ar.unresolved.is_empty() {
+        eprintln!(
+            "fetter: {} requirement(s) not found in their registry, so not audited: {}",
+            ar.unresolved.len(),
+            ar.unresolved
+                .iter()
+                .map(|u| format!("{} ({})", u.requirement, u.ecosystem))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+}
+
+/// The Python section of an allow list (empty if there is none), for requirements output.
+fn python_requirements(al: &AllowList) -> ResultDynError<DepManifest> {
+    match &al.python {
+        Some(dm) => Ok(dm.clone()),
+        None => DepManifest::try_from_iter(Vec::<String>::new()),
+    }
+}
+
 /// Determine the ecosystems to scan. Python-only commands require Python; lookup commands currently support only Python. Explicitly requested ecosystems that are not yet implemented are reported and skipped.
 fn resolve_ecosystems(
     requested: &[Ecosystem],
     command: Option<&Commands>,
 ) -> ResultDynError<Vec<Ecosystem>> {
-    let python_only = match command {
-        Some(Commands::Python { .. }) => Some("python"),
-        Some(Commands::LookupName { .. }) => Some("lookup-name"),
-        Some(Commands::LookupBound { .. }) => Some("lookup-bound"),
-        _ => None,
-    };
-    if let Some(name) = python_only {
+    if let Some(Commands::Python { .. }) = command {
         if requested.iter().any(|e| *e != Ecosystem::Python) {
-            return Err(format!("`{name}` supports only the python ecosystem").into());
+            return Err("`python` supports only the python ecosystem".into());
         }
         return Ok(vec![Ecosystem::Python]);
+    }
+    // a name is looked up in exactly one ecosystem; Python if none is given (as before v6)
+    if let Some(Commands::LookupName { .. }) = command {
+        return match requested {
+            [] => Ok(vec![Ecosystem::Python]),
+            [e] => Ok(vec![*e]),
+            _ => Err("`lookup-name` takes exactly one ecosystem (-E)".into()),
+        };
     }
     if requested.is_empty() {
         return Ok(Ecosystem::ALL.to_vec());
@@ -783,44 +840,64 @@ where
         Some(Commands::Derive {
             subcommands,
             anchor,
-        }) => match subcommands {
-            Some(DeriveSubcommand::Write { output }) => {
-                let sfs = get_sfs()?;
-                let dm = sfs.to_dep_manifest((*anchor).into())?;
-                let dmr = dm.to_dep_manifest_report();
-                dmr.to_file(output, ' ')?;
+            format,
+        }) => {
+            let sfs = get_sfs()?;
+            let al = sfs.to_allow_list((*anchor).into())?;
+            let format = format.unwrap_or(if al.is_python_only() {
+                DeriveFormat::Requirements
+            } else {
+                DeriveFormat::Toml
+            });
+            match (format, subcommands) {
+                (
+                    DeriveFormat::Requirements,
+                    Some(DeriveSubcommand::Write { output }),
+                ) => {
+                    python_requirements(&al)?
+                        .to_dep_manifest_report()
+                        .to_file(output, ' ')?;
+                }
+                (DeriveFormat::Requirements, Some(DeriveSubcommand::Display) | None) => {
+                    let _ = python_requirements(&al)?
+                        .to_dep_manifest_report()
+                        .to_writer(stderr);
+                }
+                (DeriveFormat::Toml, Some(DeriveSubcommand::Write { output })) => {
+                    std::fs::write(output, al.to_toml())
+                        .map_err(|e| format!("Cannot write {}: {e}", output.display()))?;
+                }
+                (DeriveFormat::Toml, Some(DeriveSubcommand::Display) | None) => {
+                    let mut writer = get_writer(stderr);
+                    let _ = write!(writer, "{}", al.to_toml());
+                }
             }
-            Some(DeriveSubcommand::Display) | None => {
-                // default
-                let sfs = get_sfs()?;
-                let dm = sfs.to_dep_manifest((*anchor).into())?;
-                let dmr = dm.to_dep_manifest_report();
-                let _ = dmr.to_writer(stderr);
-            }
-        },
+        }
         Some(Commands::Validate {
             bound,
             bound_options,
             ignore,
             subset,
             superset,
+            strict,
             subcommands,
         }) => {
-            // a DepManifest can be specialized for different python versions; if any DepManifest constituents have
             let mut sfs = get_sfs()?;
-            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref(), log)?;
+            // a fetter.toml, or any Python bound source
+            let al = AllowList::from_bound(bound, bound_options.as_ref(), log)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
 
             let u_ignore: HashSet<String> = HashSet::from_iter(ignore.iter().cloned());
 
-            let vr = sfs.to_validation_report(
-                dm,
+            let vr = sfs.to_allow_list_validation(
+                &al,
                 ValidationFlags {
                     permit_superset,
                     permit_subset,
                 },
                 Some(&u_ignore),
+                *strict,
                 log,
             );
             // we only print the banner on failure for now
@@ -886,17 +963,7 @@ where
             }
             // stop the spinner before propagating any error
             let ar = ar?;
-            if !ar.unaudited.is_empty() {
-                eprintln!(
-                    "fetter: {} package(s) could not be audited: {}",
-                    ar.unaudited.len(),
-                    ar.unaudited
-                        .iter()
-                        .map(|p| p.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
+            report_unchecked(&ar);
             match subcommands {
                 Some(AuditSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&ar)?);
@@ -933,25 +1000,41 @@ where
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
-            // NOTE: by convertion to DepSpec, we pare string and reject any invalid characters
-            let ds = DepSpec::from_string(name)?;
-
-            let lr = LookupReport::from_dep_spec(
-                client,
-                &ds,
-                *limit,
-                &cache_config,
-                FlagCacheRefresh(*cache_refresh),
-                log,
-                cvss_filter,
-                FlagRetainPassing(*retain_passing),
-            );
+            let lr = match ecosystems[0] {
+                Ecosystem::Python => {
+                    // NOTE: by conversion to DepSpec, we parse the string and reject any invalid characters
+                    DepSpec::from_string(name).and_then(|ds| {
+                        LookupReport::from_dep_spec(
+                            client,
+                            &ds,
+                            *limit,
+                            &cache_config,
+                            FlagCacheRefresh(*cache_refresh),
+                            log,
+                            cvss_filter,
+                            FlagRetainPassing(*retain_passing),
+                        )
+                    })
+                }
+                eco => LookupReport::from_name_requirement(
+                    client,
+                    eco,
+                    name,
+                    *limit,
+                    &cache_config,
+                    FlagCacheRefresh(*cache_refresh),
+                    log,
+                    cvss_filter,
+                    FlagRetainPassing(*retain_passing),
+                ),
+            };
             if !quiet {
                 active.store(false, Ordering::Relaxed);
                 thread::sleep(Duration::from_millis(100));
             }
             // stop the spinner before propagating any error
             let lr = lr?;
+            report_unchecked(&lr);
             match subcommands {
                 Some(LookupNameSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
@@ -989,34 +1072,48 @@ where
             let cvss_filter = CvssFilter::from_arg(*cvss);
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
 
-            let dm = match bound {
-                Some(b) => {
-                    let path = Path::new(b);
-                    if path.is_dir() {
-                        DepManifest::from_dir(path, bound_options.as_ref(), log)?
+            // a directory (default: the current directory) uses its fetter.toml if present, else the first Python bound found
+            let al = match bound {
+                Some(b) if !b.is_dir() => {
+                    AllowList::from_bound(b, bound_options.as_ref(), log)?
+                }
+                _ => {
+                    let d = match bound {
+                        Some(b) => b.clone(),
+                        None => env::current_dir()?,
+                    };
+                    if d.join("fetter.toml").is_file() {
+                        AllowList::from_bound(
+                            &d.join("fetter.toml"),
+                            bound_options.as_ref(),
+                            log,
+                        )?
                     } else {
-                        DepManifest::from_path_or_url(b, bound_options.as_ref(), log)?
+                        AllowList::from_python(DepManifest::from_dir(
+                            &d,
+                            bound_options.as_ref(),
+                            log,
+                        )?)
                     }
                 }
-                None => DepManifest::from_dir(
-                    &env::current_dir()?,
-                    bound_options.as_ref(),
-                    log,
-                )?,
             };
-            // NOTE: loading EnvMarkerState from the currently active Python if available;
+            // NOTE: loading EnvMarkerState from the currently active Python if available, and only if there are Python requirements;
             // interpreter name varies by platform ("python" first on Windows).
-            let exe = default_python_exe_names()
-                .iter()
-                .find_map(|name| get_absolute_path_from_exe(name));
-            let ems = match exe {
-                Some(exe) => Some(EnvMarkerState::from_exe(exe.as_path())?),
+            let ems = match &al.python {
+                Some(_) => match default_python_exe_names()
+                    .iter()
+                    .find_map(|name| get_absolute_path_from_exe(name))
+                {
+                    Some(exe) => Some(EnvMarkerState::from_exe(exe.as_path())?),
+                    None => None,
+                },
                 None => None,
             };
 
-            let lr = LookupReport::from_dep_manifest(
+            let lr = LookupReport::from_allow_list(
                 client,
-                &dm,
+                &al,
+                &ecosystems,
                 ems.as_ref(),
                 &cache_config,
                 FlagCacheRefresh(*cache_refresh),
@@ -1030,6 +1127,7 @@ where
             }
             // stop the spinner before propagating any error
             let lr = lr?;
+            report_unchecked(&lr);
             match subcommands {
                 Some(LookupBoundSubcommand::Json) => {
                     println!("{}", serde_json::to_string(&lr)?);
@@ -1095,11 +1193,11 @@ where
             superset,
         }) => {
             let mut sfs = get_sfs()?;
-            let dm = DepManifest::from_path_or_url(bound, bound_options.as_ref(), log)?;
+            let al = AllowList::from_bound(bound, bound_options.as_ref(), log)?;
             let permit_superset = *superset;
             let permit_subset = *subset;
             let _ = sfs.to_purge_invalid(
-                dm,
+                &al,
                 ValidationFlags {
                     permit_superset,
                     permit_subset,
@@ -1239,11 +1337,25 @@ mod tests {
         );
         assert!(resolve_ecosystems(&[Ecosystem::Npm], py.as_ref()).is_err());
 
+        // lookup-name: exactly one ecosystem, Python by default
         let lookup = parse(&["fetter", "lookup-name", "numpy"]).command;
         assert_eq!(
-            resolve_ecosystems(&[Ecosystem::Python], lookup.as_ref()).unwrap(),
+            resolve_ecosystems(&[], lookup.as_ref()).unwrap(),
             vec![Ecosystem::Python]
         );
-        assert!(resolve_ecosystems(&[Ecosystem::Cargo], lookup.as_ref()).is_err());
+        assert_eq!(
+            resolve_ecosystems(&[Ecosystem::Cargo], lookup.as_ref()).unwrap(),
+            vec![Ecosystem::Cargo]
+        );
+        assert!(
+            resolve_ecosystems(&[Ecosystem::Cargo, Ecosystem::Npm], lookup.as_ref())
+                .is_err()
+        );
+        // lookup-bound: like other commands (all by default)
+        let bound = parse(&["fetter", "lookup-bound"]).command;
+        assert_eq!(
+            resolve_ecosystems(&[], bound.as_ref()).unwrap(),
+            Ecosystem::ALL.to_vec()
+        );
     }
 }

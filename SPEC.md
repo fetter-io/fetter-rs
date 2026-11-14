@@ -11,25 +11,24 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-14, at the end of milestone 10.*
+*Last updated 2026-11-14, at the end of milestone 12.*
 
 ### Where we are
 
-- **Branch** `207/polye`. Milestones **1–10 are done** (§7). All five ecosystem scanners exist, and `inspect` reports hooks across ecosystems.
-- **Milestone 10 may not be committed yet** (it modifies existing files only; check `git status`).
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 408 passed and 5 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. Milestones **1–12 are done** (§7). All five ecosystem scanners exist; `inspect`, `validate`, `derive`, `audit`, `lookup-name` and `lookup-bound` work across ecosystems.
+- **Milestones 11–12 may not be committed yet**: check `git status` for the untracked `src/allow_list.rs` and `src/registry.rs`. Milestone 11 adds the `semver` and `nodejs-semver` dependencies.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 430 passed and 6 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
   - `test_from_dep_manifest_live`
   - `test_query_client_side_live` (GHA client-side matching against real advisories)
+  - `test_list_versions_live` (npm, crates.io index, `git ls-remote`, Open VSX)
 
   Run them with `cargo test <name> -- --ignored`. `tests/windows_session.rs` runs only on Windows and has not been run since milestone 4 changed `count` output and `--origin`. It was updated by hand; verify it in CI.
 - **Implemented scanners**: all of them: `src/eco/{python,npm,cargo,gha,vscode}.rs`. The "not yet supported" warning in `cli::resolve_ecosystems` is now unreachable; keep it for future ecosystems.
 - **Python-only isolation in shared commands** (remove as each generalizes):
-  - `validate`, `derive`, `purge-invalid` → Python packages only (`scan_fs.rs`, until milestone 11)
   - `unpack-*`, `purge-*` → `supports_artifacts` (Python only, until milestone 13)
-  - `lookup-*` → forced `-E python` (until milestone 12)
 
 ### Code map
 
@@ -42,42 +41,38 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | Client-side OSV matching (`SemverLike`, `RefKind`, range evaluation, by-name queries) | `src/osv_match.rs` |
 | YAML parsing (into `serde_json::Value`) | `serde_saphyr::from_str`; see `eco/npm.rs`, `lock_file.rs` |
 | Table rendering, column fitting | `src/table.rs` (`optimize_widths_for` is the testable core) |
+| Allow list (`fetter.toml` parse/derive/write, `ReqEntry` matching) | `src/allow_list.rs`; validation of non-Python sections in `ValidationReport::records_from_section`; entry point `ScanFS::to_allow_list_validation` |
 | Hooks (`inspect`): `Hook`, `EcosystemScanner::site_to_hooks` | `src/eco/mod.rs`; per-ecosystem in `eco/{python,npm,vscode}.rs`; report in `src/inspect_report.rs` |
 | Single filesystem walk (parallel; prune / skip_children / excludes) | `src/walk.rs` |
 | `ScanFS`: assembly (`from_parts`, the only constructor path), serialization, cache, report entry points | `src/scan_fs.rs` |
 | `ScanConfig` (ecosystems, roots; hashed for the cache) | `src/util.rs` |
 | CLI, `resolve_ecosystems`, `python` namespace | `src/cli.rs` |
 | OSV batch query, pagination, `is_osv_queryable` | `src/osv_query.rs` |
+| Registries (version listing for lookups), `name@requirement` lookups | `src/registry.rs`; `LookupReport::from_name_requirement` / `from_allow_list` in `src/lookup_report.rs` |
 | Which ecosystems match server-side vs. client-side | `Ecosystem::osv_server_side_versions` (`src/ecosystem.rs`) |
 | Audit report (`unaudited`, errors) | `src/audit_report.rs` |
 
-### Next: milestone 11, the cross-ecosystem allow list (`validate` / `derive`)
+### Next: milestone 13, artifacts (`unpack-*` / `purge-*` for other ecosystems)
 
-This is the largest remaining milestone, with several user decisions. Plan:
-1. **Read the existing Python path end to end before designing**:
-   - `dep_manifest.rs` (`DepManifest`: from requirements, pyproject, lock files via `lock_file.rs`, URLs, `from_dir`)
-   - `dep_spec.rs` (PEP 508 parsing, `validate_env_marker`)
-   - `validation_report.rs` (Missing / Unrequired / Misdefined; `--subset` / `--superset`)
-   - `ScanFS::to_validation_report` / `to_dep_manifest`, and `site_customize.rs` (the installed hook runs `validate`)
+Today `unpack-count`, `unpack-files`, `purge-pattern` and `purge-invalid` act only on Python packages (`scan_fs::supports_artifacts`). Python reads a package's installed files from its dist-info `RECORD`. Plan:
+1. **Read `unpack_report.rs`** (`Artifacts::from_package`, the count/files reports, `remove`) and the purge paths in `scan_fs.rs`. Removal is destructive, so understand exactly what Python deletes today (RECORD entries plus the dist-info dir?) before designing.
+2. **Add an `EcosystemScanner` method** that lists a package's installed artifacts at a site; the default is none. Lockfile- and manifest-only packages (Cargo projects, GHA, npm lockfile sites) have none and should be reported as such, not silently omitted.
+   - npm (Installed sites): the package dir (`node_modules/<name>`, including nested and `.pnpm` store paths). Decide whether a package found at several depths is one artifact set or several.
+   - VS Code: the extension dir.
+   - Cargo (`$CARGO_HOME` installs): the `bins` listed in `.crates2.json` under `$CARGO_HOME/bin`.
+3. **Purge is the risky part.** Decide with the user:
+   - whether purge is enabled for non-Python ecosystems at all in v6.0, or `unpack` only;
+   - whether purging npm or VS Code packages should go through their own tools (`npm uninstall`, `code --uninstall-extension`, `cargo uninstall`) rather than deleting files, since direct deletion leaves lockfiles, `extensions.json` and `.crates2.json` inconsistent.
+4. **Remove `supports_artifacts`** once generalized. Test removal only in temp dirs.
+5. **Verify**: Python unpack output unchanged; per-ecosystem fixtures; a real `unpack-count` across the machine compared with an independent count.
 
-   The Python behavior and output must stay identical when validating against a Python bound.
-2. **Decisions to put to the user** (§5a sketches a proposal):
-   - the file name and format (`fetter.toml` with per-ecosystem tables in native range syntax, or something else), and whether purl lists are accepted;
-   - what `derive` writes: requirements.txt for a Python-only scan (today's behavior) vs `fetter.toml` when several ecosystems are present;
-   - `--strict` for ecosystems absent from the file;
-   - range-matching dependencies: the `semver` crate (Cargo's own semantics) and an npm range implementation (`node-semver` crate vs a subset). Check MSRV 1.89 compatibility and probe real ranges from the lockfiles on this machine first.
-3. **Requirements per ecosystem** behind `trait Requirement { fn matches(&self, &Package) -> bool }`:
-   - PEP 440 via the existing `DepSpec`
-   - Cargo semver reqs
-   - npm ranges
-   - GHA: allowed refs, compared exactly as written; consider SHA pins with comments
-   - VS Code: exact version or `*`
-4. **Generalize `ValidationReport`** with an ecosystem per record (and the Ecosystem column), and **remove the Python-only isolation** for `validate`, `derive` and `purge-invalid` ("Where we are" list).
-5. **Verify**: Python validate/derive output unchanged against the previous commit; the site-install hook still works (`--origin` + `validate`); round-trip: `derive` from a real multi-ecosystem scan, then `validate` against it, gives no failures.
+After milestone 13, only milestone 14 (release) remains.
 
 ### Baselines for regression checks (dev machine, release build, warm cache)
 
 - Full home scan, `count`: python 54 origins / 57 sites / 764 packages; npm 40 / 45 / 5,915 (5 sites are VS Code extensions' bundled `node_modules`); cargo 27 / 25 / 1,747; gha 52 / 118 / 110; vscode 1 / 1 / 39; ≈4.0s.
+- `lookup-name` controls (live): `-E npm lodash@4.17.15` 5 advisories; `-E cargo 'time@=0.1.43'` 2; `-E gha 'tj-actions/changed-files@v35'` 2; `-E gha actions/download-artifact` (all tags) flags exactly v4.0.0–v4.1.2; `-E vscode codeinklingon.git-worktree-menu@1.0.9` resolves to `CodeInKlingon.…` and 1 `MAL-` advisory.
+- `fetter derive -a lower` then `fetter validate --bound <that fetter.toml>` (full home): about 4,410 lines (python 302, npm 3,220, cargo 775, gha 68, vscode 32 entries); **0 findings** for both `lower` and `upper`; validate ≈3.8s.
 - `fetter inspect` (full home): 37 python, 60 npm, 4 vscode hook rows; ≈4.4s. Python rows identical to milestone 9 apart from sort order within a site (previously filesystem order).
 - `fetter -E vscode audit` (full home): no extension is flagged; 3 bundled npm deps are (`simple-git` 2.38.0 with 8 advisories and `moment` 2.29.1 with 2, both in `cschlosser.doxdocgen` 1.4.0; `@github/copilot` 1.0.39 in `github.copilot-chat`).
 - `fetter -E gha audit` (full home): 0 advisories (verified by hand against the full OSV GHA dataset: the 4 used repos with advisories are all on unaffected refs), 8 unaudited (SHA pins without version comments), ≈12s uncached. (Cargo was 1,737 before this repo's own `Cargo.lock` gained 12 crates from the `serde-saphyr` swap; `Cargo.lock` is gitignored here.)
@@ -255,9 +250,19 @@ Measured prevalence on the dev machine (2026-11-13):
 
 - Ecosystem column, as implemented in milestone 4: `scan`, `search`, `audit`, `lookup-*` tables gain a leading `Ecosystem` column (blank on continuation rows in a TTY, like `Package`). Their JSON already carries `package.ecosystem`. `inspect` gained it in milestone 10. `validate`, `derive` and `unpack-*` are unchanged until milestones 11 and 13.
 - `count` is now one row per enabled, implemented ecosystem: `Ecosystem,Origins,Sites,Packages`. A final `all` row is added only when there is more than one row. It used to be a vertical `Executables/Sites/Packages` list.
-- `lookup-name` / `lookup-bound` (and every `fetter python …` command) force `-E python`. Passing any other ecosystem is an error until registries exist.
+- `fetter python …` commands force `-E python`. `lookup-name` takes exactly one ecosystem, Python if none is given (milestone 12). `lookup-bound` follows `-E` like other commands (all by default).
 - Python-namespace commands keep their v5 behavior and force `-E python`.
-- `lookup-name` / `lookup-bound` need a per-ecosystem `trait Registry` that lists versions. PyPI exists in `pypi_project.rs`; npm registry, crates.io, and GitHub tags come later. Until an ecosystem has a registry, the command errors clearly for it. `lookup-name` takes the ecosystem from `-E` (exactly one) or from a purl argument.
+- **Registries and lookups** (milestone 12, `src/registry.rs`; all verified live 2026-11-14):
+  - **npm**: `https://registry.npmjs.org/<name>` with the abbreviated metadata format (`Accept: application/vnd.npm.install-v1+json`), 2–4× smaller than the full document. Scoped names are URL-encoded (`@babel%2fcore`).
+  - **Cargo**: the crates.io **sparse index** (`https://index.crates.io/se/rd/serde`), the endpoint cargo uses; it has no User-Agent requirement or API rate limit. Yanked versions are excluded. (The crates.io web API returns 403 without a User-Agent.)
+  - **GitHub Actions**: `git ls-remote --tags --refs https://github.com/<owner>/<repo>`, which takes ≈0.3s and needs no token. The GitHub API allows only 60 unauthenticated requests per hour. Runs with `GIT_TERMINAL_PROMPT=0` and stdin closed, because GitHub asks for credentials for missing or private repos, which would hang. Requires `git`.
+  - **VS Code**: Open VSX (`https://open-vsx.org/api/<publisher>/<name>`, `allVersions`). Chosen over the Marketplace gallery API, which is undocumented, intended for VS Code, and has restrictive terms; the user agreed. Marketplace-only extensions give a clear "not found on Open VSX" error.
+  - Each registry also supplies the **canonical name**, which matters because OSV's VS Code names are case-sensitive (and crates.io names can be capitalized, e.g. `Inflector`).
+  - Versions are cached per name (`registry_<eco>_<hash>.json`). Failures are errors and are not cached.
+  - **`lookup-name`**: Python keeps PEP 508 and PyPI unchanged. Other ecosystems take `name@requirement` (user decision), split at the last `@` that is not the first character, with the requirement in fetter.toml syntax (`allow_list::ReqEntry`). An exact version (npm/vscode bare, cargo `=…`, GHA a single ref) skips version listing; Cargo and VS Code still query the registry for the canonical name. Otherwise the satisfying versions are taken, the most recent `--limit` if given, and audited. For GHA, a subpath reduces to `owner/repo`.
+  - **`lookup-bound`** accepts a `fetter.toml`, and a directory (default: the current one) prefers its `fetter.toml` over Python bound files. It audits the most recent satisfying version of each requirement in the enabled ecosystems. Env-marker state is loaded only when there are Python requirements.
+  - **Not found versus failed** (follow-up): a registry reporting that a package does not exist (HTTP 404/410 from PyPI, npm, the crates.io index or Open VSX; Open VSX's `error` body; or `git ls-remote` finding no repository or asking for credentials) is a typed `registry::NotFound`. In `lookup-bound` such a requirement is **unresolved**: it is listed in `AuditReport.unresolved` (`{ecosystem, requirement}`, serialized only when non-empty), printed to stderr (`fetter: N requirement(s) not found in their registry, so not audited: …`), and the lookup continues. Any other failure is an error. This replaces v5's silent drop of failed PyPI lookups (`.ok()`) and milestone 12's hard error for other ecosystems, which would have broken `lookup-bound` for any bound with an internal package. In `lookup-name`, a missing package is still an error. An exact requirement (e.g. Python `pkg==1.0`, npm `1.2.3`, a GHA ref) skips the registry, so its existence is never checked.
+  - **Registries can delete versions**: Open VSX removed the compromised `checkmarx.ast-results` < 2.58.0, so a *range* lookup cannot see them. An *exact* lookup (`@2.50.0`) still audits and flags MAL-2026-2231.
 - `monitor-scan` posts a JSON array `[tenant, system_tag, scan_or_null, {"secs": u64, "nanos": u32}]`. `scan_or_null` is `null` when the scan is unchanged since the last post. Otherwise it is the ScanFS v6 tuple:
   ```
   [
@@ -284,32 +289,41 @@ fetter python site-install --bound requirements.txt
 
 ### 5a. Cross-ecosystem allow list (`validate` / `derive`)
 
-There is no cross-ecosystem standard, so fetter defines its own format: **`fetter.toml`** (name TBD). It has one table per ecosystem, and each requirement uses that ecosystem's native syntax:
+As implemented in milestone 11 (`src/allow_list.rs`). There is no cross-ecosystem standard, so fetter defines **`fetter.toml`**: one table per ecosystem, each in that ecosystem's native syntax.
 
 ```toml
 [python]
-requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508, parsed by existing DepSpec
+requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508 lines (existing DepSpec, env markers included)
 
 [npm]
-"lodash" = "^4.17.21"          # npm range syntax
+"lodash" = "^4.17.21"                                  # npm range semantics (nodejs-semver): bare 1.2.3 is exact
+"@babel/parser" = [">=7.18.7", "8.0.0-rc.1"]           # an array means any of
 
 [cargo]
-"serde" = "1"                  # cargo semver req
+"serde" = "1"                                          # cargo semantics (semver crate): bare 1 is ^1
 
 [gha]
-"actions/checkout" = ["v4", "11bd71901bbe5b1630ceea73d27597364c9af683"]   # allowed refs
+"actions/checkout" = ["v4", "v4.2.2"]                  # allowed refs as written, or a pinned SHA; "*" for any
 
 [vscode]
-"ms-python.python" = "*"
+"ms-python.python" = "*"                               # npm range semantics
 ```
 
-- Also accepted:
-  - a flat list of purl strings (`pkg:npm/lodash@4.17.21`), for interop with SBOM tooling;
-  - every existing Python bound source (requirements.txt, pyproject.toml, uv/poetry/pipenv/pip-tools locks via `dep_manifest.rs` / `lock_file.rs`), applied to the Python section.
-- `DepManifest` becomes a map `Ecosystem → per-ecosystem manifest`.
-- `ValidationReport` (`validation_report.rs`) keeps its missing / unrequired / misdefined categories and adds an ecosystem to each record.
-- `--subset` / `--superset` apply per ecosystem section. An ecosystem absent from the file is not validated, unless `--strict` is given.
-- `derive` emits `fetter.toml` from a scan. `--anchor lower|upper|both` maps onto each ecosystem's syntax: npm/cargo use `>=x`, `<=x`, or `=x`, and GHA always uses the exact ref.
+- **Recognition**: a `.toml` bound (other than `pyproject.toml`) whose top-level keys are all ecosystem tables. Every existing Python bound source (requirements.txt, pyproject.toml, lockfiles, URLs, git repos) is still accepted, as a Python-only allow list (`AllowList::from_bound`). purl lists are **deferred** (user decision).
+- **Keys** are normalized per ecosystem (`Ecosystem::name_to_key`); names are written with their original case.
+- **Any of**: every non-Python entry may be a string or an array of strings. Ranges exclude pre-releases in both npm and cargo semantics (`>=7.18.7` does not match `8.0.0-rc.1`), and cargo has no `||`, so arrays are how `derive` keeps pre-releases valid. npm users can also write a native `||` in one string.
+- **GHA** entries match the ref as written (`v4` matches only `@v4`, not `@v4.1.0`), or the pinned SHA (`direct_url.vcs_info.commit_id`) of a SHA-pinned ref, which otherwise carries its comment version.
+- **Validation** (`ScanFS::to_allow_list_validation`):
+  - Python uses the existing path unchanged.
+  - Every other enabled ecosystem with a section uses `ValidationReport::records_from_section`, with the same semantics without env markers: a package with an unsatisfied requirement is Misdefined; a package without one is Unrequired unless `--superset`; an unmatched requirement is Missing unless `--subset`. `--ignore` applies to every ecosystem.
+  - An ecosystem with **no section is skipped**; `--strict` treats it as an empty section (user decision).
+  - Records and reports gain an ecosystem (table column; `"ecosystem"` in `validate json`). Requirements display as `name spec[ | spec…]` (e.g. `serde >=99`).
+- **`derive`** (`AllowList::from_packages`):
+  - Python uses `DepManifest::from_packages` unchanged.
+  - npm, cargo and vscode: `--anchor lower` gives `>=min`, `upper` gives `<=max`, ordered by semver. Observed versions the range excludes (pre-releases) are added as exact alternatives (`8.0.0-rc.1`, or `=…` for cargo). Unparseable versions are skipped. `both` is still "Not implemented".
+  - GHA lists every observed ref (the anchor does not apply).
+  - **Output** (user decision): requirements format (as before) when every derived package is Python, otherwise `fetter.toml`; `--format requirements|toml` overrides. `requirements` writes only Python packages.
+- `purge-invalid` accepts a `fetter.toml` too; removal is still limited to Python packages (`supports_artifacts`, milestone 13). `site-install` passes its bound to `validate`, so a `fetter.toml` works there as well.
 
 ## 6. OSV
 
@@ -476,10 +490,24 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
       - `Tableable::delimited_quoting()` (default true) is overridden to false by `DepManifestReport`: `derive write` produces a requirements file, whose header (`# via fetter`) and marker lines contain spaces (the delimiter it uses), so it is written as before.
       - A delimiter of `"`, `\n` or `\r` is rejected (`InvalidInput`) before the file is created or truncated.
       - **Write errors are no longer swallowed**: all 11 `let _ = x.to_file(…)` calls in `cli.rs` became `?`. A bad delimiter or an unwritable path now gives `fetter Error: Cannot write <path>: …` and exit 1 (previously silent, exit 0). Display output (`to_writer`) still ignores errors, so a closed pipe (`| head`) stays quiet.
-11. [ ] **Allow list**: `fetter.toml` + purl parsing, per-ecosystem `Requirement` (semver crates), generalized `validate` and `derive`.
-    Files: `dep_manifest.rs`, `dep_spec.rs`, `validation_report.rs`, new `allow_list.rs`.
-12. [ ] **Registries** for `lookup-name` / `lookup-bound`: npm, crates.io, GitHub tags.
-    Files: `pypi_project.rs` → `registry/`, `lookup_report.rs`.
+11. [x] **Allow list**: `fetter.toml`, per-ecosystem requirements (semver crates), generalized `validate`, `derive` and `purge-invalid` (§5a).
+    Files: new `allow_list.rs`; `validation_report.rs`, `scan_fs.rs`, `cli.rs`, `dep_manifest.rs` (unchanged API), `Cargo.toml` (`semver` 1.0.28, MSRV 1.68; `nodejs-semver` 7.0.0, MSRV 1.85).
+    Done 2026-11-14.
+    - **Survey first**: in `package.json` files on the dev machine, npm ranges were caret 78.5%, exact 11.5%, protocols/aliases 5.9%, `*`/`latest` 3.0%, comparators 0.6% and tilde 0.5%, with no unions, hyphens or x-ranges. The decisive point for using crates was semantics: bare `1.2.3` is exact in npm but `^1.2.3` in cargo.
+    - `ValidationRecord` gained `ecosystem`, and `dep_spec` became `dependency: Option<Dependency>` (`Python(DepSpec)` or `Other(ReqEntry)`). `ValidationRecord::new` still builds Python records. `ScanFS::to_validation_report(dm, …)` remains as a test-only wrapper; `to_dep_manifest` was replaced by `to_allow_list`.
+    - **Verified on the dev machine**:
+      - Python `derive` writes a byte-identical requirements file (104 lines) to milestone 10. `validate json` records are identical apart from the new `ecosystem` field, and the `validate write` CSV is identical apart from the new first column.
+      - Full-system round trip (`derive`, then `validate` against it): 0 findings for `lower` and `upper`. The first attempt found 12 npm pre-releases (`@babel/parser 8.0.0-rc.1` vs `>=7.18.7`), which led to "any of" arrays.
+      - A hand-edited bound produced exactly the expected Misdefined (cargo `serde >=99` × 4 versions), Unrequired (10 `actions/checkout` refs) and Missing (`nobody.not-installed`) records.
+      - `--strict` and `--format` behave as designed.
+12. [x] **Registries** for `lookup-name` / `lookup-bound`: npm, crates.io, GitHub tags, Open VSX (§5).
+    Files: new `registry.rs`; `lookup_report.rs`, `cli.rs`, `ureq_client.rs` (`get_with_accept`, a default trait method so mocks are unchanged), `allow_list.rs` (`ReqEntry::new` is now `pub(crate)`). `pypi_project.rs` was kept as is rather than folded into a `Registry` trait: Python's lookup path is unchanged.
+    Done 2026-11-14.
+    - `LookupReport::from_dep_manifest` now delegates to the shared `dep_manifest_to_packages`, with unchanged behavior.
+    - **Verified live**: controls in every ecosystem (see baselines); `lookup-bound` on a 4-ecosystem `fetter.toml` and on its directory with `-E npm`.
+    - Errors: more than one `-E` for `lookup-name`; an unknown npm package (404); a missing GitHub repo, which fails with "terminal prompts disabled" instead of hanging.
+    - **Follow-up: not found versus failed** (§5): `registry::NotFound` plus `http_error` classification, also used by `pypi_project.rs`. `LookupReport` resolves each requirement to Found, Unresolved or Failed (strings, so outcomes can cross rayon threads), via the shared `from_resolutions` and `dep_manifest_resolutions`. `cli::report_unchecked` prints both unaudited and unresolved notes for `audit` and both lookups. `UreqClientMock` now answers a GET with no mock response with HTTP 404, as a server would.
+      - Verified live: a requirements.txt with `jinja2<2.5` plus an internal package audits jinja2 (18 advisories) and reports the other as unresolved (exit 0 with `json`). A fetter.toml with a missing package in Python, npm, Cargo and VS Code reports all four and completes. `lookup-name` on a missing package is still exit 1.
 13. [ ] **Artifacts**: generalize `unpack-count`, `unpack-files`, `purge-pattern` and `purge-invalid`. Add an `EcosystemScanner` method that lists a package's installed artifacts (files/dirs). Python uses dist-info `RECORD`; npm and VS Code use the package/extension dir; cargo uses `.crates2.json` bins. Remove `supports_artifacts`. Lockfile/manifest-only packages have no artifacts and are reported as such.
     Files: `unpack_report.rs`, `scan_fs.rs`, `eco/*`.
 14. [ ] **Release**: README/docs, crate description and keywords, version 6.0.0, changelog from section 11.
@@ -496,14 +524,15 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 9. Open questions
 
-- GHA: resolve the remaining unaudited refs (SHA pins without a version comment, about 3% of refs here) via `git ls-remote --tags https://github.com/owner/repo` (no API token) or the GitHub API? The same mechanism could verify floating and comment-based interpretations, e.g. that a pin's comment matches its SHA's tag.
+- GHA: resolve the remaining unaudited refs (SHA pins without a version comment, about 3% of refs here) via `git ls-remote --tags --refs https://github.com/owner/repo` (no API token; implemented for lookups in milestone 12, `registry::git_ls_remote_tags`). The user deferred using it in `audit` to a follow-up. The same mechanism could verify floating and comment-based interpretations, e.g. that a pin's comment matches its SHA's tag.
 - GHA `GIT`-type ranges (commit-bounded, 10 in OSV) are skipped. Evaluating them for SHA pins needs the repository's commit graph.
 - Table output at scale: a full home `scan` now has thousands of npm rows. Consider grouping by origin, or a `--summary` view.
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
 - Packages with a `direct_url` (Python VCS/local installs; Cargo git and alternative-registry crates) are queried in OSV by name, as if from the public registry. For forks or private crates that share a public name, this can produce false positives. Should they go in `unaudited` instead? Today's behavior favors not missing advisories.
 - Cargo: `vendor/` directories (from `cargo vendor`) can contain crates that ship their own `Cargo.lock`. These would be detected as projects; consider skipping `vendor` when `.cargo/config.toml` sets `[source.vendored-sources]`.
-- Allow-list file name and format. Should purl `vers:` ranges be supported alongside native range syntax?
-- npm range semantics (for milestone 11 validation): use the `node-semver` crate, or implement the subset fetter needs? (Milestone 8 used a small dedicated `SemverLike` instead of a crate.)
+- purl support in `fetter.toml` (deferred in milestone 11): a `purls = [...]` list for SBOM interop, and possibly purl `vers:` ranges.
+- `derive --anchor both` is still "Not implemented" (as in v5) for every ecosystem.
+- GHA allow-list semantics: should `"v4"` in a bound also allow `@v4.x.y` refs, or SHA pins whose comment is in v4? Today matching is exact as written.
 - `Package`'s `Ord` (ecosystem, lowercase name, version) is inconsistent with its derived `Eq`/`Hash` (which include `key` and `direct_url`): distinct packages can compare `Equal`. Reports work around this with tie-breaks. Should `Ord` include `direct_url`, or should identity drop it?
 - Should the old top-level `site-install` / `site-uninstall` remain as hidden aliases for migration? Today they fail with clap's generic "unrecognized subcommand" error.
 
@@ -518,6 +547,14 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - 2026-11-13: "exe" generalizes to **Origin**; "site" keeps its name, with a `SiteKind`.
 - 2026-11-13: npm sources follow the original choice, "installed where it exists, else lockfile". This corrects the drifted "report both" wording above for npm. Hidden lockfiles are not used.
 - 2026-11-13: npm does not report packages inside editor extension dirs; extensions (and their bundled dependencies) belong to the VS Code scanner (milestone 9).
+- 2026-11-14: In `lookup-bound`, a requirement whose package is not in its registry is reported as unresolved (it was silently dropped for Python); other failures are errors. `lookup-name` on a missing package remains an error.
+- 2026-11-14: `lookup-name` outside Python takes `name@requirement` in native syntax; without -E it is Python.
+- 2026-11-14: VS Code versions come from Open VSX (not the Marketplace gallery API).
+- 2026-11-14: Resolving GHA SHA pins / floating tags in `audit` via `git ls-remote` is deferred to a follow-up.
+- 2026-11-14: Allow list is `fetter.toml` with per-ecosystem tables in native syntax; purl lists deferred.
+- 2026-11-14: `derive` writes requirements when all derived packages are Python, else `fetter.toml`; `--format` overrides.
+- 2026-11-14: Ecosystems absent from a bound are not validated; `--strict` opts in.
+- 2026-11-14: Ranges use the `semver` crate (cargo) and `nodejs-semver` (npm, vscode).
 - 2026-11-13: VS Code extensions' bundled `node_modules` are reported as npm packages, via an npm-ecosystem site under the VS Code origin.
 - 2026-11-13: GHA refs are interpreted by convention for auditing: exact tags, SHA pins with full version comments, floating tags as "newest in line", branches as "at or past newest". Only unresolvable SHAs are unaudited. The alternatives ("exact and comments only", "exact only") would audit 29% or 1.3% of refs.
 - 2026-11-13: GHA origins are repo roots only (`.github/workflows` beside `.git`).
@@ -534,6 +571,12 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - `count` output is a per-ecosystem table (`Ecosystem,Origins,Sites,Packages`), not `Executables/Sites/Packages` rows.
 - `scan`, `search`, `audit` and `lookup-*` tables have a new leading `Ecosystem` column.
 - `--root` replaces, rather than adds to, the default discovery locations.
+- `lookup-bound` reports requirements whose package is not found (e.g. private packages) on stderr and in an `unresolved` JSON list (previously silently omitted for Python), and fails on other registry errors (previously silently omitted).
+- `lookup-bound` validates all ecosystems in its bound by default (it was Python-only), and a directory bound uses its `fetter.toml` first.
+- `lookup-name` accepts `-E <one ecosystem>`; more than one is an error.
+- `validate` output gains an `Ecosystem` column and an `"ecosystem"` field in `validate json`.
+- `derive` (without `--format`) writes a `fetter.toml`, not a requirements file, when the scan includes non-Python packages, e.g. a full-system `fetter derive` without `--origin`.
+- Library API: `ValidationRecord.dep_spec` is now `dependency: Option<Dependency>`, and `ValidationRecord` has `ecosystem`.
 - Delimited output (`write -d`) quotes fields containing the delimiter, a double quote, or a line break (RFC 4180); delimiters `"`, `\n` and `\r` are rejected. `derive write` is unchanged.
 - `write` subcommands exit 1 with an error when the file cannot be written (previously silently succeeded).
 - `inspect` columns are `Ecosystem, Site, Hook, Content` (was `Site, File, Content`); it reports npm install scripts and VS Code startup extensions as well as Python startup files; Python files within a site are sorted.

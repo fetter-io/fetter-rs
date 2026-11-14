@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::cli::CvssFilter;
+use crate::ecosystem::Ecosystem;
 use crate::osv_match::query_osv_client_side;
 use crate::osv_query::is_osv_queryable;
 use crate::osv_query::query_osv_batches;
@@ -126,6 +127,16 @@ pub struct AuditReport {
     /// Packages that could not be queried (e.g. without a version); these are not known to be free of vulnerabilities.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unaudited: Vec<Package>,
+    /// Requirements (from `lookup-bound`) whose package was not found in its registry, e.g. an internal package on a private index; these are not known to be free of vulnerabilities.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unresolved: Vec<Unresolved>,
+}
+
+/// A requirement that could not be resolved to packages, because its registry does not have the package.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Unresolved {
+    pub ecosystem: Ecosystem,
+    pub requirement: String,
 }
 
 /// An AuditReport, for all provided packages, looks up package vulnerabilities and details in the OSV DB. There are two types of caching. (1) A cache on the vulnerabilities found for the provided set of packages. This is a time-cache that is invalidated after `duration`. (2) A cache of the details of each vulnerability. As these are unlikely to change often, these are fetched once and only removed if `cache_refresh` is set.
@@ -206,7 +217,11 @@ impl AuditReport {
             }
         }
         Ok(Self::apply_cvss_filter(
-            AuditReport { records, unaudited },
+            AuditReport {
+                records,
+                unaudited,
+                unresolved: Vec::new(),
+            },
             filter_cvss,
         ))
     }

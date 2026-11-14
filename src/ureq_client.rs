@@ -7,6 +7,10 @@ pub trait UreqClient: Send + Sync {
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
     /// A get request
     fn get(&self, url: &str) -> Result<String, ureq::Error>;
+    /// A get request with an `Accept` header (e.g. npm's abbreviated metadata). By default the header is ignored.
+    fn get_with_accept(&self, url: &str, _accept: &str) -> Result<String, ureq::Error> {
+        self.get(url)
+    }
 }
 
 #[derive(Debug)]
@@ -21,6 +25,10 @@ impl UreqClient for UreqClientLive {
     }
     fn get(&self, url: &str) -> Result<String, ureq::Error> {
         let mut response = ureq::get(url).call()?;
+        response.body_mut().read_to_string()
+    }
+    fn get_with_accept(&self, url: &str, accept: &str) -> Result<String, ureq::Error> {
+        let mut response = ureq::get(url).header("Accept", accept).call()?;
         response.body_mut().read_to_string()
     }
 }
@@ -56,12 +64,7 @@ impl UreqClient for UreqClientMock {
         })
     }
     fn get(&self, url: &str) -> Result<String, ureq::Error> {
-        Self::find_response(&self.mock_get, url).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("No mock response for GET {}", url),
-            )
-            .into()
-        })
+        // like a server without the resource
+        Self::find_response(&self.mock_get, url).ok_or(ureq::Error::StatusCode(404))
     }
 }

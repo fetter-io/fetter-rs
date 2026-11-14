@@ -1,4 +1,5 @@
 use crate::dep_spec::DepSpec;
+use crate::registry::http_error;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::name_to_key;
@@ -134,7 +135,7 @@ pub fn query_pypi_project(
     // Fetch from API
     let body_str = client
         .get(&format!("https://pypi.org/pypi/{project}/json"))
-        .map_err(|e| format!("{e}: {project} not found on PyPI"))?;
+        .map_err(|e| http_error("PyPI", project, e))?;
     let pypi_project: PyPIProject = serde_json::from_str(&body_str)
         .map_err(|e| format!("Failed to parse PyPI response for {project}: {e}"))?;
 

@@ -1,3 +1,4 @@
+mod allow_list;
 mod audit_report;
 mod cli;
 mod count_report;
@@ -20,6 +21,7 @@ mod package_match;
 mod path_shared;
 mod pypi_project;
 mod pyproject;
+mod registry;
 mod scan_fs;
 mod scan_report;
 mod site_customize;
