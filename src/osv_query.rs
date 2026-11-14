@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // use crate::package::Package;
+use crate::osv_match::is_client_side_queryable;
 use crate::util::{
     hash_string, logger, path_within_duration, CacheConfig, FlagLog, ResultDynError,
 };
@@ -153,9 +154,12 @@ fn query_osv_batch(
         .collect())
 }
 
-/// Return true if OSV can meaningfully be queried for this package. An empty version is excluded: OSV treats a missing version as "all versions", which would report every advisory ever published for the package.
+/// Return true if OSV can meaningfully be queried for this package. An empty version is excluded: OSV treats a missing version as "all versions", which would report every advisory ever published for the package. For client-side-matched ecosystems, the version (ref) must be interpretable (see `osv_match::RefKind`).
 pub(crate) fn is_osv_queryable(package: &Package) -> bool {
-    !package.version.to_string().trim().is_empty()
+    if package.version.to_string().trim().is_empty() {
+        return false;
+    }
+    package.ecosystem.osv_server_side_versions() || is_client_side_queryable(package)
 }
 
 /// Given a slice of Packages, get all vulnerabilities known for each package. Packages may be from mixed ecosystems. All packages must be queryable (see `is_osv_queryable`). Results are cached only if all batches succeed.

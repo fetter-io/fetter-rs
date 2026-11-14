@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::cli::CvssFilter;
+use crate::osv_match::query_osv_client_side;
 use crate::osv_query::is_osv_queryable;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
@@ -145,7 +146,7 @@ impl AuditReport {
             logger!(
                 log,
                 module_path!(),
-                "Not auditable (no version): {:?}",
+                "Not auditable (no version, or an unresolvable ref): {:?}",
                 unaudited
             );
         }
@@ -155,9 +156,28 @@ impl AuditReport {
         } else {
             cache_config.clone()
         };
-        let vulns: Vec<Option<Vec<String>>> =
-            query_osv_batches(client.clone(), &packages, &cache_config, log)?;
-        logger!(log, module_path!(), "Completed query_osv_batch");
+        // Ecosystems with server-side version matching use the batch API; others (GitHub Actions) are matched client-side. Results are merged back in package order.
+        let (server_idx, client_idx): (Vec<usize>, Vec<usize>) = (0..packages.len())
+            .partition(|i| packages[*i].ecosystem.osv_server_side_versions());
+        let select = |idx: &[usize]| -> Vec<Package> {
+            idx.iter().map(|i| packages[*i].clone()).collect()
+        };
+        let server_vulns =
+            query_osv_batches(client.clone(), &select(&server_idx), &cache_config, log)?;
+        let client_vulns = query_osv_client_side(
+            client.clone(),
+            &select(&client_idx),
+            &cache_config,
+            log,
+        )?;
+        let mut vulns: Vec<Option<Vec<String>>> = vec![None; packages.len()];
+        for (i, v) in server_idx.into_iter().zip(server_vulns) {
+            vulns[i] = v;
+        }
+        for (i, v) in client_idx.into_iter().zip(client_vulns) {
+            vulns[i] = v;
+        }
+        logger!(log, module_path!(), "Completed OSV queries");
 
         let mut records = Vec::new();
         for (package, vuln_ids) in packages.iter().zip(vulns.iter()) {

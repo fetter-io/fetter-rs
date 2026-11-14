@@ -61,6 +61,11 @@ impl Ecosystem {
         }
     }
 
+    /// True if the OSV API matches versions for this ecosystem server-side. GitHub Actions advisories carry only `ECOSYSTEM` ranges that OSV does not evaluate (verified live 2026-11-13), so its versions are matched client-side (`osv_match`).
+    pub fn osv_server_side_versions(&self) -> bool {
+        !matches!(self, Ecosystem::Gha)
+    }
+
     /// Normalize a package name to a key used for identity comparisons within this ecosystem.
     pub fn name_to_key(&self, name: &str) -> String {
         match self {

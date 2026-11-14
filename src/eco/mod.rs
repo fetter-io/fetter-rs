@@ -1,8 +1,10 @@
 //! Per-ecosystem scanners. Each ecosystem implements `EcosystemScanner`; the walker (`crate::walk`) dispatches to all enabled scanners during a single filesystem walk.
 
 pub(crate) mod cargo;
+pub(crate) mod gha;
 pub(crate) mod npm;
 pub(crate) mod python;
+pub(crate) mod vscode;
 
 use std::fs::FileType;
 use std::path::Path;
@@ -15,6 +17,19 @@ use crate::package::Package;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
+
+//------------------------------------------------------------------------------
+/// Editor data directories (VS Code and forks). An editor directory is one of these that contains an `extensions` directory; its extensions belong to the VS Code scanner, and the npm scanner never treats them as projects.
+pub(crate) const EDITOR_DIRS: [&str; 8] = [
+    ".vscode",
+    ".vscode-insiders",
+    ".vscode-oss",
+    ".vscode-server",
+    ".cursor",
+    ".cursor-server",
+    ".windsurf",
+    ".positron",
+];
 
 //------------------------------------------------------------------------------
 /// One entry of a directory being walked. The `file_type` is from the directory read and does not follow symlinks, so a symlink to a directory has `is_dir() == false`.
@@ -78,6 +93,8 @@ pub(crate) trait EcosystemScanner: Sync {
 static PYTHON: python::PythonScanner = python::PythonScanner;
 static CARGO: cargo::CargoScanner = cargo::CargoScanner;
 static NPM: npm::NpmScanner = npm::NpmScanner;
+static GHA: gha::GhaScanner = gha::GhaScanner;
+static VSCODE: vscode::VsCodeScanner = vscode::VsCodeScanner;
 
 /// Return the scanner for an ecosystem, if one is implemented.
 pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn EcosystemScanner> {
@@ -85,7 +102,8 @@ pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn Ecosystem
         Ecosystem::Python => Some(&PYTHON),
         Ecosystem::Cargo => Some(&CARGO),
         Ecosystem::Npm => Some(&NPM),
-        Ecosystem::Gha | Ecosystem::VsCode => None,
+        Ecosystem::Gha => Some(&GHA),
+        Ecosystem::VsCode => Some(&VSCODE),
     }
 }
 
@@ -130,14 +148,16 @@ mod tests {
 
     #[test]
     fn test_scanner_for_a() {
-        assert!(scanner_for(Ecosystem::Python).is_some());
-        assert!(scanner_for(Ecosystem::Gha).is_none());
+        // every ecosystem has a scanner
+        for e in Ecosystem::ALL {
+            assert!(scanner_for(e).is_some(), "{e}");
+        }
     }
 
     #[test]
     fn test_scanners_a() {
-        assert_eq!(scanners(&Ecosystem::ALL).len(), 3);
-        assert_eq!(scanners(&[Ecosystem::Gha]).len(), 0);
+        assert_eq!(scanners(&Ecosystem::ALL).len(), Ecosystem::ALL.len());
+        assert_eq!(scanners(&[Ecosystem::VsCode]).len(), 1);
     }
 
     #[test]

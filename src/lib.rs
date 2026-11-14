@@ -11,6 +11,7 @@ mod lock_file;
 mod lookup_report;
 mod monitor;
 mod origin_site;
+mod osv_match;
 mod osv_query;
 mod osv_vulns;
 mod package;

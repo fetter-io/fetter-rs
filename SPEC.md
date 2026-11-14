@@ -11,20 +11,21 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-13, at the end of milestone 7.*
+*Last updated 2026-11-13, at the end of milestone 9.*
 
 ### Where we are
 
-- **Branch** `207/polye`. Milestones **1–7 are done** (§7): spec, core types, scanner trait + walker, CLI rework, OSV multi-ecosystem (including pagination and error handling), and the Cargo and npm scanners.
-- **Milestone 7 (npm) may not be committed yet.** Check `git status`; if `src/eco/npm.rs` is untracked, review and commit it before starting milestone 8. That change also raises the MSRV to 1.89 (`Cargo.toml`, `.github/workflows/ci.yml`) and replaces `serde_yaml` with `serde-saphyr`.
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 378 passed and 4 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. Milestones **1–9 are done** (§7). **All five ecosystem scanners exist**: Python, npm (incl. bun), Cargo, GitHub Actions, VS Code.
+- **Milestones 8–9 may not be committed yet.** Check `git status`: `src/eco/gha.rs`, `src/osv_match.rs` and `src/eco/vscode.rs` are new.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 402 passed and 5 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
   - `test_from_dep_manifest_live`
+  - `test_query_client_side_live` (GHA client-side matching against real advisories)
 
   Run them with `cargo test <name> -- --ignored`. `tests/windows_session.rs` runs only on Windows and has not been run since milestone 4 changed `count` output and `--origin`. It was updated by hand; verify it in CI.
-- **Implemented scanners**: Python (`src/eco/python.rs`), Cargo (`src/eco/cargo.rs`), and npm (`src/eco/npm.rs`). `-E gha|vscode` prints a "not yet supported" warning and is skipped.
+- **Implemented scanners**: all of them: `src/eco/{python,npm,cargo,gha,vscode}.rs`. The "not yet supported" warning in `cli::resolve_ecosystems` is now unreachable; keep it for future ecosystems.
 - **Python-only isolation in shared commands** (remove as each generalizes):
   - `validate`, `derive`, `purge-invalid` → Python packages only (`scan_fs.rs`, until milestone 11)
   - `unpack-*`, `purge-*` → `supports_artifacts` (Python only, until milestone 13)
@@ -38,7 +39,8 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | Ecosystem enum, OSV names, key normalization | `src/ecosystem.rs` |
 | `Origin`, `Site`, `SiteKind` | `src/origin_site.rs` |
 | Scanner trait, `Detect`, `DirItem`, registry, `infer_origins` | `src/eco/mod.rs` |
-| Per-ecosystem scanners | `src/eco/{python,cargo,npm}.rs` |
+| Per-ecosystem scanners | `src/eco/{python,cargo,npm,gha,vscode}.rs`; the shared editor dir list is `eco::EDITOR_DIRS` |
+| Client-side OSV matching (`SemverLike`, `RefKind`, range evaluation, by-name queries) | `src/osv_match.rs` |
 | YAML parsing (into `serde_json::Value`) | `serde_saphyr::from_str`; see `eco/npm.rs`, `lock_file.rs` |
 | Table rendering, column fitting | `src/table.rs` (`optimize_widths_for` is the testable core) |
 | Single filesystem walk (parallel; prune / skip_children / excludes) | `src/walk.rs` |
@@ -46,41 +48,27 @@ Status: **draft**. This is the working spec for the v6 major release. It is mean
 | `ScanConfig` (ecosystems, roots; hashed for the cache) | `src/util.rs` |
 | CLI, `resolve_ecosystems`, `python` namespace | `src/cli.rs` |
 | OSV batch query, pagination, `is_osv_queryable` | `src/osv_query.rs` |
+| Which ecosystems match server-side vs. client-side | `Ecosystem::osv_server_side_versions` (`src/ecosystem.rs`) |
 | Audit report (`unaudited`, errors) | `src/audit_report.rs` |
 
-### Next: milestone 8, the GitHub Actions scanner
+### Next: milestone 10, hooks (generalized `inspect`)
 
-The plan:
-1. **Survey real data first**: workflow files (`find ~ -path '*/.github/workflows/*' \( -name '*.yml' -o -name '*.yaml' \)`) and local `action.yml`/`action.yaml` files. Tally the `uses:` forms in use:
-   - semver tags (`@v4.1.0`)
-   - floating major tags (`@v4`)
-   - SHA pins (`@11bd719…`)
-   - branches (`@main`)
-   - subpath actions (`github/codeql-action/init@v3`)
-   - reusable workflows (`owner/repo/.github/workflows/x.yml@ref`)
-   - local (`./.github/actions/x`) and `docker://`, both skipped
-
-   Also check whether any `.github` directories sit somewhere non-projects live, the way `Cargo.lock` files sat in `~/.cargo/registry`.
-2. **Probe OSV for package naming before writing code**: for subpath actions, is the OSV package `github/codeql-action` or `github/codeql-action/init`? Query both live and record the answer in §6.
-3. **Origins and sites**:
-   - The origin is the repo root (a directory containing `.github/workflows`).
-   - Each workflow file is a site (`SiteKind::Manifest`), as are local composite `action.yml` files.
-   - The walker visits `.github` (only `.git` is skipped).
-   - `--origin` accepts a repo dir, a `.github/workflows` dir, or a single workflow file.
-4. **Packages**:
-   - Each `uses: owner/repo[/path]@ref` gives the name `owner/repo` (lowercase key) and `ref` as the version.
-   - YAML is parsed with `serde-saphyr` into `serde_json::Value`. Walk `jobs.*.steps[*].uses` and `jobs.*.uses` (reusable workflows), plus `runs.steps[*].uses` in composite `action.yml`.
-5. **Auditing requires client-side version matching** (§6: OSV does no server-side matching for GHA):
-   - Add an ecosystem capability, e.g. `Ecosystem::osv_server_side_versions()`.
-   - For GHA, query `/v1/query` by package name only and parse `affected[].ranges` (type `ECOSYSTEM`, events `introduced`/`fixed`/`last_affected`) in `osv_vulns.rs`, where `affected` is currently commented out.
-   - Compare the ref's version locally. That needs semver-like ordering with an optional `v` prefix; this is the first real need for `PackageVersion`/range matching (§3). Decide between the `semver` crate and extending `VersionSpec`.
-   - Floating major tags and SHAs cannot be placed in a range without resolving them (GitHub API; open question §9), so they go in `AuditReport.unaudited`.
-   - Keep the batch path for the other ecosystems and merge the results.
-6. **Verify** as before: other ecosystems unchanged (baselines below), deterministic `scan`, timing, and a live `audit` against a known-affected control. `actions/download-artifact@v4.0.0` falls in GHSA-cxww-7g56-2vh6 (`introduced 4.0.0`, `fixed 4.1.3`), and `tj-actions/changed-files@v35.0.0` in GHSA-mrrh-fwg8-r2c3.
+All scanners exist, so the remaining milestones generalize commands. Milestone 10 is first because it is self-contained and builds directly on the scanners. Plan:
+1. **Read `inspect_report.rs` and `site_customize.rs`** to see exactly what Python `inspect` reports today: `.pth` files with executable lines, `sitecustomize`/`usercustomize`. Keep its output byte-identical for Python (verify against the previous commit as in milestones 3–4).
+2. **Add `EcosystemScanner::site_to_hooks(&Site) -> Vec<Hook>`** (default empty) and a `Hook { ecosystem, package: Option<Package>, kind, path, detail }` type. Port Python first, then generalize `InspectReport` to take hooks from every site, not just Python sites. Remove the Python-only filter (`Picking this up`: isolation list).
+3. **Per ecosystem** (§4 Hooks table; survey real data first, as for every scanner):
+   - **npm** (do first: 0.4% prevalence, highest signal): `preinstall` / `install` / `postinstall` scripts in installed packages' `package.json`; not `prepare`. These are the classic supply-chain vector. For lockfile-only sites use `hasInstallScript` (package-lock v2/v3) where available. Report the script text as the detail, like `.pth` content.
+   - **vscode**: extensions whose `activationEvents` include `*` or `onStartupFinished` (they run on every editor start), plus the `main` entry.
+   - **cargo**: low priority. At 13% (`build.rs`) and 6% (proc-macro) prevalence, presence alone is weak signal, and detection needs per-crate lookups in `$CARGO_HOME/registry/src` (which the walker prunes). Skip, or make it opt-in, unless the user asks otherwise.
+   - **gha**: local composite actions only (remote `runs.using` would need fetching); possibly omit.
+4. **CLI/report**: `inspect` gains the `Ecosystem` column. Decide whether hook output needs `json` (today: display/write only).
+5. **Verify**: Python `inspect` unchanged; per-ecosystem fixtures; a real-data cross-check of npm install scripts.
 
 ### Baselines for regression checks (dev machine, release build, warm cache)
 
-- Full home scan, `count`: python 54 origins / 57 sites / 764 packages; npm 40 / 40 / 5,840 (36 / 36 / 5,803 before `bun.lock` support); cargo 27 / 25 / 1,747; ≈4.0s. (Cargo was 1,737 before this repo's own `Cargo.lock` gained 12 crates from the `serde-saphyr` swap; `Cargo.lock` is gitignored here.)
+- Full home scan, `count`: python 54 origins / 57 sites / 764 packages; npm 40 / 45 / 5,915 (5 sites are VS Code extensions' bundled `node_modules`); cargo 27 / 25 / 1,747; gha 52 / 118 / 110; vscode 1 / 1 / 39; ≈4.0s.
+- `fetter -E vscode audit` (full home): no extension is flagged; 3 bundled npm deps are (`simple-git` 2.38.0 with 8 advisories and `moment` 2.29.1 with 2, both in `cschlosser.doxdocgen` 1.4.0; `@github/copilot` 1.0.39 in `github.copilot-chat`).
+- `fetter -E gha audit` (full home): 0 advisories (verified by hand against the full OSV GHA dataset: the 4 used repos with advisories are all on unaffected refs), 8 unaudited (SHA pins without version comments), ≈12s uncached. (Cargo was 1,737 before this repo's own `Cargo.lock` gained 12 crates from the `serde-saphyr` swap; `Cargo.lock` is gitignored here.)
 - Full home `scan`: byte-identical across runs.
 - `fetter -E npm audit` (full home): 372 npm packages with advisories, ≈68s uncached (mostly per-advisory detail fetches).
 
@@ -88,6 +76,7 @@ The plan:
 
 - **Survey the real filesystem before writing a scanner**: the 680 non-project `Cargo.lock` files were found this way. For npm, the survey found 65 lockfiles shipped inside `node_modules` packages, 28 VS Code extensions with bundled `node_modules`, and that hidden lockfiles are unreliable.
 - **Cross-check found vs. expected with an independent script.** For npm, a Python `os.walk` reimplementing the origin rule found exactly the scanner's 37 project origins. The 2 that had no packages turned out to be Next.js `.next` build output.
+- **When an audit finds nothing, prove the detector can find something.** For GHA, a scratch repo with known-affected refs of every kind (exact, floating, SHA + comment, subpath) confirmed that 0 findings across the real workflows was a true negative.
 - **Run the release binary's table output, not just `write` and tests.** The milestone 7 `optimize_widths` underflow appeared only when rendering a table with long npm names on a narrow terminal.
 - **Probe the live API before trusting docs or assumptions.** This is how we learned that GHA has no server-side version matching, that empty versions match everything, that one bad query fails a whole batch, and that pagination can return empty pages carrying tokens.
 - **Diff against the previous commit**, built in a scratch `git worktree`, after any change to discovery.
@@ -132,8 +121,8 @@ v5 is built around *exe → site-packages → packages*. That model doesn't carr
 | python | interpreter exe | site-packages dirs (Installed) | `*.dist-info` (existing logic) |
 | npm | dir with `package.json` and `node_modules` or a lockfile; or an install dir (a `node_modules` with no sibling `package.json`, e.g. global) | `node_modules` (Installed), else the first of `npm-shrinkwrap.json` / `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` / `bun.lock` (Lockfile) | walk of `node_modules/**/package.json` (incl. `.pnpm`); lockfile parsers (implemented) |
 | cargo | dir containing `Cargo.lock` (workspace root); also `$CARGO_HOME` | `Cargo.lock` (Lockfile); `$CARGO_HOME/.crates2.json`, else `.crates.toml` (Installed bins) | TOML / JSON parse (implemented) |
-| gha | repo root containing `.github/workflows` | each workflow file and local `action.yml` (Manifest) | `uses: owner/repo[/path]@ref`; skip `./local` and `docker://` |
-| vscode | editor profile dir (`~/.vscode`, `~/.vscode-insiders`, `~/.cursor`, `~/.vscode-oss`, …) | its `extensions/` dir (Installed) | `extensions.json`, or each extension's `package.json` (`publisher.name@version`) |
+| gha | repo root: a dir with `.github/workflows` and `.git` (dir or file) | each top-level workflow file and each local `action.yml` under `.github` (Manifest) | `uses: owner/repo[/path]@ref` → name `owner/repo`; skip `./local`, `docker://`, expressions (implemented) |
+| vscode | editor data dir (`~/.vscode`, `~/.cursor`, …; `eco::EDITOR_DIRS`) containing an `extensions/` *dir* | its `extensions/` dir (Installed), plus an **npm** site per installed extension's bundled `node_modules` | installed set from `extensions.json` (else dirs not in `.obsolete`); identity `publisher.name@version` from each `package.json` (implemented) |
 
 fetter reports **both installed and lockfile** sources and records the `SiteKind`, so reports show where each package came from. For Cargo they come from different origins: projects have only lockfiles, and `$CARGO_HOME` has only installs. For npm, a project can have both; per the original decision (installed where it exists, else lockfile), `node_modules` takes precedence and the lockfile is read only when nothing is installed.
 
@@ -149,7 +138,7 @@ fetter reports **both installed and lockfile** sources and records the `SiteKind
     - cargo: fold `-`/`_`
     - gha: lowercase `owner/repo`
     - vscode: lowercase `publisher.name`
-- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`. *Still deferred*: the Cargo scanner did not need it. `VersionSpec` splits on `.` with numeric/text parts, so it orders and displays semver strings and refs well enough for scanning, but it is not sufficient for range matching. It will be needed for GHA client-side range checks (milestone 8) and for allow-list validation (milestone 11).
+- Version: `enum PackageVersion { Pep440(VersionSpec), Semver(..), GitRef(String) }`. *Still deferred*: the Cargo scanner did not need it. `VersionSpec` splits on `.` with numeric/text parts, so it orders and displays semver strings and refs well enough for scanning, but it is not sufficient for range matching. Milestone 8 met its GHA need with a small dedicated `osv_match::SemverLike` (`MAJOR[.MINOR[.PATCH]][-PRE]`, optional `v`), since every GHA advisory event in OSV is plain numeric. `PackageVersion` and a general range-matching crate are deferred to allow-list validation (milestone 11).
   - Ordering and display work for every variant.
   - `validate` needs range matching per ecosystem. Each ecosystem gets its own requirement type behind `trait Requirement { fn matches(&self, &Package) -> bool }`:
     - PEP 440: existing `VersionSpec`/`DepSpec`
@@ -211,18 +200,26 @@ trait EcosystemScanner: Sync {
   2. `origin_to_sites` (rayon)
   3. `site_to_packages` (rayon)
   4. build the three index maps (sorted)
-- **Layout**: `src/eco/mod.rs` plus one file per ecosystem: `src/eco/{python,npm,cargo,gha,vscode}.rs` (python and cargo exist).
+- **Layout**: `src/eco/mod.rs` plus one file per ecosystem: `src/eco/{python,npm,cargo,gha,vscode}.rs` (all but vscode exist).
   - Python's `get_site_package_dirs`, `get_packages`, `get_origins_bin`, and venv detection are in `eco/python.rs`. Env-marker loading stays in `ScanFS::load_env_marker_state` (filtered to Python origins), because it mutates `ScanFS` state. `is_python_exe` and related helpers stay in `util.rs`, where `exe_path_normalize` also uses them.
 
 ### Hooks (generalized `inspect`)
 
 `Hook { ecosystem, package: Option<Package>, kind, path, detail }` describes code that runs without being explicitly invoked.
 
+**Principle** (user, 2026-11-13): Python's `.pth` check is valuable because it is cheap (the first line tells you, e.g. an `import`) and the hook is rare, so its mere presence is a signal. Recording that a package has a hook is only of (minimal) use when most packages do not. Prefer hooks that are cheap to detect and rare; treat common ones as low priority or opt-in.
+
+Measured prevalence on the dev machine (2026-11-13):
+- npm install-time scripts (`preinstall`/`install`/`postinstall`): **0.4%** (44 of 10,903 installed top-level packages, e.g. `esbuild`, `sharp`, `unrs-resolver`). This is the clearest analogue of `.pth`.
+- VS Code extensions activating on every start (`*`, `onStartupFinished`): 10% (4 of 39).
+- Cargo crates with `build.rs`: 13% (93 of 734 registry sources); `proc-macro`: 6%. These are common, and detection needs per-crate lookups in `$CARGO_HOME/registry/src`.
+- npm `prepare`: 5%. **Excluded**: it does not run when a package is installed from the registry (only for git deps and a package's own development install), so it is noise.
+
 | Ecosystem | Hooks |
 |---|---|
 | python | `.pth` files with executable lines; `sitecustomize`/`usercustomize` (existing `inspect_report.rs` logic) |
-| npm | `preinstall`/`install`/`postinstall`/`prepare` scripts in installed packages' `package.json`; `hasInstallScript` in lockfiles |
-| cargo | crates with `build.rs` or proc-macros, visible in `$CARGO_HOME/registry/src`; from `Cargo.lock` alone this is unknowable, so it is reported as unknown |
+| npm | `preinstall`/`install`/`postinstall` scripts in installed packages' `package.json` (not `prepare`; see above); `hasInstallScript` in lockfiles |
+| cargo | low priority (13% / 6% prevalence): crates with `build.rs` or proc-macros, visible only in `$CARGO_HOME/registry/src`; from `Cargo.lock` alone this is unknowable |
 | gha | local composite actions only in v6.0 (remote `runs.using` would need fetching) |
 | vscode | `activationEvents` containing `*` or `onStartupFinished`; `main` entry |
 
@@ -316,7 +313,22 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508, parsed by exis
 - **An empty `version` matches every advisory for the package**: OSV treats it as "any version". That is why `is_osv_queryable` excludes it.
 - PyPI, npm and crates.io do server-side version matching (`jinja2@2.4.1`, `lodash@4.17.15`, `time@0.1.43` all return advisories).
 - **GitHub Actions has no server-side version matching.** GHA advisories carry only `ECOSYSTEM` ranges (e.g. `introduced 0, fixed 46.0.1`) with no `versions` list, and OSV does not evaluate them for this ecosystem. A versioned query always returns nothing, even for versions inside an affected range (e.g. `actions/download-artifact@4.0.0` against `introduced 4.0.0, fixed 4.1.3`), with or without a `v` prefix. GHA auditing therefore needs client-side matching: query by package name without a version (which returns all advisories), fetch each advisory's `affected` ranges, and compare the ref's version locally. See milestone 8.
-- VS Code: the name is accepted; whether advisories carry `versions` lists or need client-side matching is unverified (milestone 9).
+- **GHA client-side matching** (milestone 8, `src/osv_match.rs`):
+  - `Ecosystem::osv_server_side_versions()` is false for `Gha`. `AuditReport::from_packages` sends those packages through `query_osv_client_side` (one `/v1/query` per distinct name, without a version, with pagination and a per-name cache, `osv_package_*.json`; failures are errors and are not cached), and merges the results back in package order. Advisory details still come from the normal `/v1/vulns` path.
+  - Ranges: `ECOSYSTEM` and `SEMVER` events (`introduced`, `fixed`/`limit`, `last_affected`) become intervals. `GIT` (commit) ranges are skipped. An interval left open is bounded by GHSA's `database_specific.last_known_affected_version_range` (`< X` / `<= X`) if present: GHSA-vqf5's open v2 range (`introduced 2.26.11`) otherwise covers all of v3. Explicit `versions` lists match exact refs.
+  - **Ref interpretation** (`RefKind`, by convention; the user chose this over "exact only"):
+    - **Exact** (`@v4.1.0`, or a SHA pin with a full version comment `# v4.1.1`): within an interval or listed.
+    - **Floating** (`@v4` = `[4.0.0, 5.0.0)`, `@v4.1` = `[4.1.0, 4.2.0)`): affected iff an interval overlaps the line and is not fixed within it, since a moving tag points at the newest release of its line. A `last_affected` within the line counts as unfixed.
+    - **Branch** (`@main`, `@release/v1`, any other non-SHA, non-numeric ref): affected only by an unbounded (unfixed) interval.
+    - **Unresolvable** (a SHA without a full version comment): goes to `unaudited`.
+  - The package version is the ref as written (`actions/checkout-v4`), so reports show what was inferred. SHA pins keep the SHA in `direct_url.vcs_info.commit_id` and the comment in `revision`.
+  - Survey of 1,113 real `uses:` on the dev machine: floating major 53%, SHA pin 30.5% (91% of them with a full version comment), branch 7.5%, local 6.8%, exact 1.3%. With these interpretations about 97% of non-local refs are auditable, against 1.3% without them.
+  - OSV names actions by repository: `github/codeql-action/init` returns nothing, while `github/codeql-action` has the advisory. Reusable workflows (`owner/repo/.github/workflows/x.yml@ref`) are likewise `owner/repo`.
+  - Full OSV GHA dataset (2026-11-13): 64 advisories; ranges: 78 `ECOSYSTEM`, 2 `SEMVER`, 10 `GIT`; 2 open ranges (both with `last_known_affected_version_range`); 19 entries with `versions` lists; no `v`-prefixed events.
+- **VS Code** (verified live 2026-11-13):
+  - **Server-side matching works**: an open `introduced: 0` range matches an unlisted version (9.9.9), so `VsCode` uses the batch path (`osv_server_side_versions` true).
+  - **Package names are case-sensitive**: `CodeInKlingon.git-worktree-menu` matches but `codeinklingon.git-worktree-menu` does not. `extensions.json` IDs are lowercased, so names come from `package.json` (`publisher` + `name`). Keys stay lowercase for identity.
+  - Full dataset: 21 advisories across 20 extensions, nearly all `MAL-` (OpenSSF malicious-packages), mostly `introduced: 0` open ranges plus `versions` lists, 2 with fixes, and 4 entries with `versions` only (no ranges). Notable compromises of legitimate extensions: `nrwl.angular-console` 18.95.0, `checkmarx.ast-results` < 2.58.0, `checkmarx.cx-dev-assist` < 1.12.0, `aquasecurityofficial.trivy-vulnerability-scanner` 1.8.12–1.8.13.
 
 ## 7. Milestones
 
@@ -400,10 +412,35 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
      - Python unchanged; full scan ≈6.1s → ≈4.0s (projects' `node_modules` are no longer walked by the Python scanner).
      - `scan` output deterministic.
      - `-E npm audit` over ~91 OSV batches: 372 packages with advisories.
-8. [ ] **GHA scanner**; replace the deprecated `serde_yaml` first. Requires **client-side version matching** (§6): OSV returns nothing for versioned GHA queries. Approach: an ecosystem capability (e.g. `Ecosystem::osv_server_side_versions() -> bool`). For ecosystems without it, query `/v1/query` by name only, then evaluate each advisory's `affected[].ranges` (`ECOSYSTEM`, semver-like with an optional `v` prefix) against the ref. Floating refs (`@v4`) and SHAs cannot be placed in a range without resolving them to a release (GitHub API); report them as `unaudited` until that is implemented.
-   Files: `eco/gha.rs`, `osv_query.rs`, `osv_vulns.rs` (parse `affected`), `Cargo.toml`.
-9. [ ] **VS Code scanner.**
-   Files: `eco/vscode.rs`.
+8. [x] **GHA scanner** with **client-side version matching** (§6).
+   Files: `eco/gha.rs`, new `osv_match.rs`, `osv_query.rs`, `audit_report.rs`, `ecosystem.rs`. (`serde_yaml` was already replaced in milestone 7.)
+   Done 2026-11-13.
+   - **Origins**: repo roots only, i.e. `.github/workflows` plus `.git`, where a `.git` file (worktree, submodule) counts, since GitHub only runs workflows at a repo root. On the dev machine this excluded 16 non-running copies: 6 editor extensions, 7 build copies under Cargo `target/`, 2 vendored subprojects, and 1 ambiguous dir. An explicit `--origin` does not require `.git`, and accepts the repo dir, `.github`, `workflows`, or a workflow file.
+   - **Sites**: top-level `*.yml`/`*.yaml` in `.github/workflows` (GitHub does not read subdirectories), plus `action.yml`/`action.yaml` anywhere under `.github` (local composite actions).
+   - **Packages**: `uses:` values come from the parsed YAML (`jobs.*.steps[*]`, `jobs.*` reusable workflows, `runs.steps[*]`), so text in `run:` scripts is ignored. Comments (version hints) come from raw lines, because YAML drops them. If a file does not parse as YAML, a line-based fallback is used. Packages are deduplicated per site.
+   - **Verified on the dev machine**:
+     - 52 origins, 118 sites, 110 packages. An independent script found the same 52 repo roots (including a nested org `.github` repo, `disclude-io/.github`) and the same 109 `name-version`s; 110 because one `name-version` appears with two different SHAs.
+     - Other ecosystems unchanged; `scan` deterministic.
+     - The live audit found 0 advisories, confirmed as a true negative by hand against the full dataset.
+     - A scratch control repo produced exactly the expected findings for every ref kind.
+9. [x] **VS Code scanner.**
+   Files: new `eco/vscode.rs`; `eco/mod.rs` (`EDITOR_DIRS` moved here from `npm.rs`).
+   Done 2026-11-13.
+   - **Origins**:
+     - An editor data dir named in `EDITOR_DIRS` that contains an `extensions` **directory**. A project's `.vscode` settings folder (which may hold an `extensions.json` *file* of recommendations) is never one.
+     - Claimed and **pruned** by `detect`; also found by `default_origins` (home editor dirs; `VSCODE_EXTENSIONS` as `<editor>/extensions`).
+     - `--origin` accepts the editor dir or its `extensions` dir.
+   - **Installed extensions**: `extensions.json` is authoritative. On the dev machine it listed exactly 39 of 94 dirs, and all 55 others were in `.obsolete`, with no overlap. Without it, all dirs not marked obsolete are used. Entries whose dir is missing are skipped.
+   - **Packages**: `publisher.name@version` from each installed extension's `package.json`, case preserved.
+   - **Bundled dependencies** (user decision): an installed extension's `node_modules` becomes an extra site of the **npm** ecosystem under the VS Code origin, and the npm scanner reads it (`site_to_packages` dispatches on the site's ecosystem). Paths name the extension, so findings are traceable. Obsolete versions' `node_modules` are not included.
+     - Consequence: `-E vscode` reports these npm-ecosystem packages too; `-E npm` alone does not, because npm skips editor extension dirs.
+     - Package-like dirs without a `package.json` (bundled build output, e.g. `vue.volar`'s plugin packs, `rust-analyzer`'s `d3`) have no identity and yield nothing.
+   - **Verified on the dev machine**:
+     - 1 origin, 39 extensions; identities match an independent read of `extensions.json` + `package.json` exactly.
+     - 7 extensions bundle `node_modules` and 5 yield packages (+75 unique npm packages); the other 2 hold only bundled build output.
+     - Other ecosystems unchanged; ≈4.0s; deterministic.
+     - The live audit flagged no extension but 3 bundled deps (see baselines).
+     - A control `.cursor` dir (fork, no `extensions.json`) flagged exactly the compromised versions and not their fixed versions, including the case-sensitive name.
 10. [ ] **Hooks**: generalize `inspect` via `site_to_hooks`. Port Python first, then npm, vscode, and cargo.
     Files: `inspect_report.rs`, `site_customize.rs`, `eco/*`.
 11. [ ] **Allow list**: `fetter.toml` + purl parsing, per-ecosystem `Requirement` (semver crates), generalized `validate` and `derive`.
@@ -426,14 +463,14 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 9. Open questions
 
-- GHA: should SHA pins and `@v4` major-tag refs be resolved to concrete versions? That needs the GitHub API and a rate-limit/token story. Until then they go in `unaudited` (§6), so this decides how much of a typical workflow is auditable.
+- GHA: resolve the remaining unaudited refs (SHA pins without a version comment, about 3% of refs here) via `git ls-remote --tags https://github.com/owner/repo` (no API token) or the GitHub API? The same mechanism could verify floating and comment-based interpretations, e.g. that a pin's comment matches its SHA's tag.
+- GHA `GIT`-type ranges (commit-bounded, 10 in OSV) are skipped. Evaluating them for SHA pins needs the repository's commit graph.
 - Table output at scale: a full home `scan` now has thousands of npm rows. Consider grouping by origin, or a `--summary` view.
-- VS Code extensions' bundled `node_modules` (28 on the dev machine): should milestone 9 report them as npm packages attributed to the extension, or only the extension itself?
 - Should `--root` include `/` under `--all-users`, or stay with home dirs only?
 - Packages with a `direct_url` (Python VCS/local installs; Cargo git and alternative-registry crates) are queried in OSV by name, as if from the public registry. For forks or private crates that share a public name, this can produce false positives. Should they go in `unaudited` instead? Today's behavior favors not missing advisories.
 - Cargo: `vendor/` directories (from `cargo vendor`) can contain crates that ship their own `Cargo.lock`. These would be detected as projects; consider skipping `vendor` when `.cargo/config.toml` sets `[source.vendored-sources]`.
 - Allow-list file name and format. Should purl `vers:` ranges be supported alongside native range syntax?
-- npm range semantics (for milestone 11 validation): use the `node-semver` crate, or implement the subset fetter needs? Related: milestone 8 needs semver ordering for GHA ranges; choose a crate that can serve both if possible.
+- npm range semantics (for milestone 11 validation): use the `node-semver` crate, or implement the subset fetter needs? (Milestone 8 used a small dedicated `SemverLike` instead of a crate.)
 - `Package`'s `Ord` (ecosystem, lowercase name, version) is inconsistent with its derived `Eq`/`Hash` (which include `key` and `direct_url`): distinct packages can compare `Equal`. Reports work around this with tie-breaks. Should `Ord` include `direct_url`, or should identity drop it?
 - Should the old top-level `site-install` / `site-uninstall` remain as hidden aliases for migration? Today they fail with clap's generic "unrecognized subcommand" error.
 
@@ -448,6 +485,9 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - 2026-11-13: "exe" generalizes to **Origin**; "site" keeps its name, with a `SiteKind`.
 - 2026-11-13: npm sources follow the original choice, "installed where it exists, else lockfile". This corrects the drifted "report both" wording above for npm. Hidden lockfiles are not used.
 - 2026-11-13: npm does not report packages inside editor extension dirs; extensions (and their bundled dependencies) belong to the VS Code scanner (milestone 9).
+- 2026-11-13: VS Code extensions' bundled `node_modules` are reported as npm packages, via an npm-ecosystem site under the VS Code origin.
+- 2026-11-13: GHA refs are interpreted by convention for auditing: exact tags, SHA pins with full version comments, floating tags as "newest in line", branches as "at or past newest". Only unresolvable SHAs are unaudited. The alternatives ("exact and comments only", "exact only") would audit 29% or 1.3% of refs.
+- 2026-11-13: GHA origins are repo roots only (`.github/workflows` beside `.git`).
 - 2026-11-13: Support Bun's text `bun.lock` (the current default); not the binary `bun.lockb`.
 - 2026-11-13: YAML via `serde-saphyr` (pure Rust, maintained), replacing deprecated `serde_yaml`; MSRV raised to 1.89 to allow it.
 - 2026-11-13: OSV supports VS Code extensions under the ecosystem name `VSCode` (https://osv.dev/list?q=&ecosystem=VSCode), so VS Code packages are fully auditable.

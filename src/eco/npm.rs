@@ -15,6 +15,7 @@ use serde_json::Value as JsonValue;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
+use crate::eco::EDITOR_DIRS;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
 use crate::origin_site::Site;
@@ -41,18 +42,6 @@ const BUN_LOCK: &str = "bun.lock";
 const SKIP_CHILDREN: [&str; 4] = [NODE_MODULES, ".next", ".nuxt", ".svelte-kit"];
 /// Lockfiles in order of precedence; `npm-shrinkwrap.json` takes precedence over `package-lock.json` in npm.
 const LOCKFILES: [&str; 5] = [SHRINKWRAP, PACKAGE_LOCK, PNPM_LOCK, YARN_LOCK, BUN_LOCK];
-
-/// Editor data directories (VS Code and forks) whose `extensions` directory holds editor extensions, not npm projects.
-const EDITOR_DIRS: [&str; 8] = [
-    ".vscode",
-    ".vscode-insiders",
-    ".vscode-oss",
-    ".vscode-server",
-    ".cursor",
-    ".cursor-server",
-    ".windsurf",
-    ".positron",
-];
 
 /// Registries whose tarball URLs denote the public npm registry; packages from these have no `direct_url`.
 const NPM_REGISTRIES: [&str; 2] = [

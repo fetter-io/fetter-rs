@@ -128,6 +128,8 @@ mod tests {
         // implemented ecosystems with nothing found still get a row, then totals
         assert_eq!(lines.next().unwrap().unwrap(), "npm,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "cargo,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "gha,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "vscode,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "all,1,1,3");
         assert!(lines.next().is_none());
     }
