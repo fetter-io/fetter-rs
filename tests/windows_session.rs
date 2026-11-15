@@ -214,7 +214,7 @@ fn windows_interactive_session() {
     let unpack = read(&write_file);
     let foo_row = unpack
         .lines()
-        .find(|l| l.starts_with("foo-1.0.0,"))
+        .find(|l| l.split(',').nth(1) == Some("foo-1.0.0"))
         .unwrap_or_else(|| panic!("no foo row in unpack:\n{unpack}"));
     // Trailing fields are Files,Dirs (the Site column contains no comma).
     let fields: Vec<&str> = foo_row.rsplitn(3, ',').collect();
