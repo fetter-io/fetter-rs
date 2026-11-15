@@ -11,13 +11,13 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-14, at the end of milestone 21 (purl).*
+*Last updated 2026-11-14, at the end of milestone 22 (VERS).*
 
 ### Where we are
 
-- **Branch** `207/polye`. **All milestones (1–19) are done** (§7); milestones 15–17 added Go, Ruby and PHP; milestone 18 resolves GHA SHA pins in `audit`; milestone 19 added pre-commit and milestone 20 Swift, for ten ecosystems; milestone 21 added package URLs (purl) and SBOM input. The version is 5.0.0 and the README documents v5. What remains is the release itself, which the maintainer does (see Next), plus the follow-ups in §9.
-- **Milestones 13–19 may not be committed yet**: check `git status` (`src/eco/{go,ruby,php,precommit,swift}.rs`, `src/purl.rs` and `tests/fixtures/purl-spec/` are new).
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 497 passed and 6 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. **All milestones (1–22) are done** (§7); milestones 15–17 added Go, Ruby and PHP; milestone 18 resolves GHA SHA pins in `audit`; milestone 19 added pre-commit and milestone 20 Swift, for ten ecosystems; milestone 21 added package URLs (purl) and SBOM input, and milestone 22 VERS version ranges. The version is 5.0.0 and the README documents v5. What remains is the release itself, which the maintainer does (see Next), plus the follow-ups in §9.
+- **Milestone 22 may not be committed yet**: check `git status` (`src/vers.rs` and `tests/fixtures/vers-spec/` are new); milestones 1–21 are committed.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 509 passed and 6 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
@@ -309,7 +309,7 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]   # PEP 508 lines (existing
 "ms-python.python" = "*"                               # npm range semantics
 ```
 
-- **Recognition**: a `.toml` bound (other than `pyproject.toml`) whose top-level keys are all ecosystem tables. Every existing Python bound source (requirements.txt, pyproject.toml, lockfiles, URLs, git repos) is still accepted, as a Python-only allow list (`AllowList::from_bound`). purl lists are **deferred** (user decision).
+- **Recognition**: a `.toml` bound (other than `pyproject.toml`) whose top-level keys are all ecosystem tables. Every existing Python bound source (requirements.txt, pyproject.toml, lockfiles, URLs, git repos) is still accepted, as a Python-only allow list (`AllowList::from_bound`). Purl lists and SBOMs are also accepted (milestones 21–22).
 - **Keys** are normalized per ecosystem (`Ecosystem::name_to_key`); names are written with their original case.
 - **Any of**: every non-Python entry may be a string or an array of strings. Ranges exclude pre-releases in both npm and cargo semantics (`>=7.18.7` does not match `8.0.0-rc.1`), and cargo has no `||`, so arrays are how `derive` keeps pre-releases valid. npm users can also write a native `||` in one string.
 - **GHA** entries match the ref as written (`v4` matches only `@v4`, not `@v4.1.0`), or the pinned SHA (`direct_url.vcs_info.commit_id`) of a SHA-pinned ref, which otherwise carries its comment version.
@@ -621,7 +621,15 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
       - Bounds (`AllowList::from_bound`, so `validate`, `lookup-bound` and `purge-invalid`): CycloneDX JSON (`components[].purl`, nested, including the metadata component's subcomponents but not the component itself) and SPDX 2.x JSON (`externalRefs` of type `purl`); and text files whose non-comment lines are all purls. SBOM packages without a purl are counted on stderr.
     - **lookup-bound and exact versions**: a requirement is audited at its newest allowed version (what would be installed), but an entry whose specs are all exact versions (as from an SBOM, where each is present) is now audited at every one. Found by the cross-check below: Juice Shop's SBOM lists `ansi-regex` at four versions, and only the newest was audited.
     - **Verified**: full-home `derive --format purls` (8,618 purls) then `validate --bound` gives 0 findings. Real SBOMs from CycloneDX's `bom-examples` (Juice Shop, 840 npm purls; Laravel, 62 composer; Proton Bridge, 201 golang with pseudo-versions) through `lookup-bound` match an independent OSV `querybatch` *by purl* (OSV's own purl parsing) exactly: 89, 13 and 16 vulnerable packages (202, 45 and 136 advisories). SPDX's example 7 Go SBOM has no purls, which the stderr note now reports. `lookup-name` with purls reproduces the baselines (lodash 4.17.15: 5; time 0.1.43: 2; Jinja2 2.4.1: 18; tj-actions v35: 2; Sparkle 2.8.1: 2). A further check of every derived purl with the reference `packageurl-python` was not run (installing it was not permitted in this session).
-    - Deferred: CycloneDX output (`scan` as an SBOM); purl `vers:` ranges; CycloneDX XML, SPDX tag-value and SPDX 3; purl qualifiers (e.g. `vcs_url`, `platform`) are parsed but not used.
+    - Deferred: CycloneDX output (`scan` as an SBOM); CycloneDX XML, SPDX tag-value and SPDX 3; purl qualifiers (e.g. `vcs_url`, `platform`) are parsed but not used. (VERS ranges: milestone 22.)
+22. [x] **VERS version ranges** (at the user's request: a purl list with ranges is a complete alternative to `fetter.toml` except for Python markers, extras and direct URLs). `src/vers.rs`.
+    - **Parsing** (`Vers::parse`, `Display`): strict, as the specification requires; non-canonical input is an error, not normalized: lowercase `vers` scheme and type; no whitespace; no explicit `=`; percent-encoding only of `><=!*|%` and space, uppercase hex; no leading, trailing or doubled `|`; `*` alone; versions sorted by the type's order and unique; ignoring `!=`, a bare version followed only by a bare version or a lower bound; ignoring both, lower and upper bounds alternating.
+    - **Types and order** (`vers::key`): `pypi` (`VersionSpec`), `npm`/`cargo`/`vscode-extension`/`swift`/`semver` (SemVer), `golang` (SemVer of `v`-prefixed), `gem` (`GemVersion`), `composer` (`ComposerVersion`), `github` (unordered), `lexicographic`, and `all`/`none` (`*` only). Other types (e.g. `maven`, `datetime`) are errors. Extensions: an unordered version (all `github` refs, Swift SHAs, composer branches) may be a bare version or `!=` anywhere in the sequence and is matched exactly (SHAs case-insensitively); a range of only `!=` contains all other versions.
+    - **Containment** (`Vers::contains`): the specification's algorithm (equality with a bare, `<=` or `>=` version is in; with `!=`, out; then the intervals), plus single-bound ranges, which the algorithm's pairwise loop misses (`vers:pypi/>0.0.2` must contain `0.0.3`).
+    - **Allow lists**: `ReqEntry` specs starting with `vers:` are VERS alternatives to the native specs (its type must be the ecosystem's purl type, `purl::purl_type`, or `all`/`none`), so they work in `fetter.toml` tables too; GitHub Actions and pre-commit SHA pins also match by SHA. Purl entries (`purl::parse_entry`) are a purl, whitespace, and an optional VERS of the purl's type; a purl with a version cannot also have a range. For Python a range becomes PEP 508 lines (`Vers::to_pep508`), one per exact version or interval, each with the `!=` exclusions, since a `DepManifest` accepts a package satisfying any of several lines for one name. `lookup_report::exact_version` treats a one-version range as exact. CycloneDX 1.7 `versionRange` (external components; it is not in 1.6) on a versionless purl is read as its range.
+    - **Derive**: `derive --format purl-vers` (`purl::purl_ranges`) writes one entry per (ecosystem, key): `>=` lowest, `<=` highest, or both (a bare version if only one), plus every unordered version exactly. Since VERS has no npm/cargo pre-release exclusion, no exact alternatives are needed as in the `fetter.toml` derive.
+    - **Tests**: the VERS test suite, vendored with its MIT license in `tests/fixtures/vers-spec/` (commit 2c387b682dfb): canonical parsing (16 of 20 run; the 4 `datetime` cases are skipped as unsupported), pypi and npm containment (8 of 11 run; 3 ranges are not canonically ordered, e.g. `>=3.0.0|2.0.3`, which the parser must reject), pypi validation (14 canonical inputs round-trip; 5 rejected: 2 unsorted, normalization fetter does not do, and 3 upstream errata expecting duplicated versions or redundant bounds such as `>0.0.0|>=0.0.1` to be valid), and the gem `~>2.0.8` conversion checked against `GemRequirement` on sample versions.
+    - **Verified**: full-home `derive --format purl-vers` (4,473 entries) with each anchor, then `validate --bound`, gives 0 findings; tightening three ranges (cargo, npm, pypi) gives exactly those three Misdefined. `lookup-bound` of a range list audits each interval's newest version (jinja2 `<2.11` → 2.10.3; lodash `<4.17.21` → 4.17.20; nokogiri `<1.13.4` → 1.13.3; requests `2.19.0|>=2.31|<2.32` → 2.19.0 and 2.31.0).
 
 ## 8. Testing strategy
 
@@ -646,6 +654,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 10. Decision log
 
+- 2026-11-14: VERS ranges are supported as a second, interchange syntax beside native requirement syntax (not converted from it, which loses npm pre-release rules and PEP 440 `===`); parsing is strict per the specification; `derive --format purl-vers` is a new format, leaving `--format purls` (exact versions) unchanged.
 - 2026-11-14: Purl input of type `github` applies to both GitHub Actions and pre-commit (the user's choice), as optional entries. An entry of only exact versions is audited at each by `lookup-bound`. CycloneDX export is deferred.
 - 2026-11-14 (small fixes after milestone 20):
   - `resolver = "3"` in `Cargo.toml`: dependency resolution prefers versions whose `rust-version` is at most 1.89 (a fresh `cargo generate-lockfile` stays within it: 153 packages, none newer).

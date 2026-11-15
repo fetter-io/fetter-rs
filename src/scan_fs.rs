@@ -630,6 +630,11 @@ impl ScanFS {
         AllowList::from_packages(self.get_packages(), anchor)
     }
 
+    /// Purl entries with VERS ranges, one per observed package, per `purl::purl_ranges`.
+    pub(crate) fn to_purl_ranges(&self, anchor: Anchor) -> (Vec<String>, usize) {
+        crate::purl::purl_ranges(self.package_to_sites.keys(), anchor)
+    }
+
     /// The purls of all observed packages, sorted and unique, and the number of packages without a purl (a pre-commit hook not on GitHub, a Swift registry identity).
     pub(crate) fn to_purls(&self) -> (Vec<String>, usize) {
         let mut out = Vec::new();

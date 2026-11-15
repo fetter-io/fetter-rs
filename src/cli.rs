@@ -57,6 +57,8 @@ pub enum DeriveFormat {
     Toml,
     /// A list of purls, one per observed package version (all ecosystems; the anchor does not apply).
     Purls,
+    /// A list of purls with VERS ranges, one per observed package (all ecosystems; the anchor applies).
+    PurlVers,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -958,8 +960,11 @@ where
             format,
         }) => {
             let sfs = get_sfs()?;
-            if matches!(format, Some(DeriveFormat::Purls)) {
-                let (purls, without) = sfs.to_purls();
+            if matches!(format, Some(DeriveFormat::Purls | DeriveFormat::PurlVers)) {
+                let (purls, without) = match format {
+                    Some(DeriveFormat::PurlVers) => sfs.to_purl_ranges((*anchor).into()),
+                    _ => sfs.to_purls(),
+                };
                 if without > 0 {
                     eprintln!("fetter: {without} package(s) have no purl type and are not listed");
                 }
@@ -1005,7 +1010,9 @@ where
                     let mut writer = get_writer(stderr);
                     let _ = write!(writer, "{}", al.to_toml());
                 }
-                (DeriveFormat::Purls, _) => unreachable!("handled above"),
+                (DeriveFormat::Purls | DeriveFormat::PurlVers, _) => {
+                    unreachable!("handled above")
+                }
             }
         }
         Some(Commands::Validate {

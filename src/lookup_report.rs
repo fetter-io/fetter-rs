@@ -67,9 +67,15 @@ pub(crate) fn split_name_requirement(arg: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// The exact version a requirement names, if it names exactly one: a bare version (npm, VS Code, Go, Ruby), `=version` (Cargo, Ruby), or a single ref (GitHub Actions).
+/// The exact version a requirement names, if it names exactly one: a bare version (npm, VS Code, Go, Ruby), `=version` (Cargo, Ruby), a single ref (GitHub Actions), or a VERS range of one version.
 fn exact_version(eco: Ecosystem, spec: &str) -> Option<String> {
     let s = spec.trim();
+    if s.starts_with("vers:") {
+        // a VERS range of one version
+        return crate::vers::Vers::parse(s)
+            .ok()
+            .and_then(|v| v.exact().map(str::to_string));
+    }
     match eco {
         Ecosystem::Npm | Ecosystem::VsCode | Ecosystem::Swift => {
             let v = s.strip_prefix('=').unwrap_or(s).trim();

@@ -20,6 +20,10 @@ use std::fmt;
 
 use crate::ecosystem::Ecosystem;
 use crate::package::Package;
+use crate::util::Anchor;
+use crate::vers::Comparator;
+use crate::vers::Constraint;
+use crate::vers::Vers;
 
 //------------------------------------------------------------------------------
 // percent-encoding
@@ -285,6 +289,21 @@ fn split_last(path: &str) -> (Option<&str>, &str) {
     }
 }
 
+/// The purl type of an ecosystem's packages (also its VERS type).
+pub fn purl_type(eco: Ecosystem) -> &'static str {
+    match eco {
+        Ecosystem::Python => "pypi",
+        Ecosystem::Npm => "npm",
+        Ecosystem::Cargo => "cargo",
+        Ecosystem::Go => "golang",
+        Ecosystem::Ruby => "gem",
+        Ecosystem::Php => "composer",
+        Ecosystem::Swift => "swift",
+        Ecosystem::VsCode => "vscode-extension",
+        Ecosystem::Gha | Ecosystem::PreCommit => "github",
+    }
+}
+
 /// The purl of a package, if its ecosystem has a purl type (pre-commit hooks only on GitHub; Swift registry identities have none).
 pub fn package_purl(p: &Package) -> Option<Purl> {
     let version = p.version.to_string();
@@ -327,6 +346,69 @@ pub fn package_purl(p: &Package) -> Option<Purl> {
     }
 }
 
+/// One purl entry with a VERS range per package (by ecosystem and key), from the versions observed: with `Lower`, `>=` the lowest; with `Upper`, `<=` the highest; with `Both`, both (or the one version if there is one). Versions without an order in the type (GitHub refs, Swift revision SHAs, composer branches) are listed exactly. Returns the sorted entries and the number of packages without a purl.
+pub fn purl_ranges<'a, I>(packages: I, anchor: Anchor) -> (Vec<String>, usize)
+where
+    I: IntoIterator<Item = &'a Package>,
+{
+    let mut groups: BTreeMap<(Ecosystem, &str), Vec<&Package>> = BTreeMap::new();
+    for p in packages {
+        groups.entry((p.ecosystem, &p.key)).or_default().push(p);
+    }
+    let mut out = Vec::new();
+    let mut without = 0;
+    for ((eco, _), pkgs) in groups {
+        let Some(mut purl) = package_purl(pkgs[0]) else {
+            without += pkgs.len();
+            continue;
+        };
+        purl.version = None;
+        let ty = purl_type(eco);
+        let mut ordered: Vec<(crate::vers::Key, String)> = Vec::new();
+        let mut unordered: Vec<String> = Vec::new();
+        for p in &pkgs {
+            let v = p.version.to_string();
+            match crate::vers::key(ty, &v) {
+                Some(k) => ordered.push((k, v)),
+                None => unordered.push(v),
+            }
+        }
+        ordered.sort_by(|a, b| a.0.cmp(&b.0));
+        ordered.dedup_by(|a, b| a.0 == b.0);
+        unordered.sort();
+        unordered.dedup();
+        let mut constraints: Vec<Constraint> = Vec::new();
+        if let (Some((_, lo)), Some((_, hi))) = (ordered.first(), ordered.last()) {
+            match anchor {
+                Anchor::Lower => {
+                    constraints.push(Constraint::new(Comparator::Ge, lo, ty))
+                }
+                Anchor::Upper => {
+                    constraints.push(Constraint::new(Comparator::Le, hi, ty))
+                }
+                Anchor::Both if ordered.len() == 1 => {
+                    constraints.push(Constraint::new(Comparator::Eq, lo, ty))
+                }
+                Anchor::Both => {
+                    constraints.push(Constraint::new(Comparator::Ge, lo, ty));
+                    constraints.push(Constraint::new(Comparator::Le, hi, ty));
+                }
+            }
+        }
+        constraints.extend(
+            unordered
+                .iter()
+                .map(|v| Constraint::new(Comparator::Eq, v, ty)),
+        );
+        match Vers::new(ty, constraints) {
+            Ok(vers) => out.push(format!("{purl} {vers}")),
+            Err(_) => without += pkgs.len(),
+        }
+    }
+    out.sort();
+    (out, without)
+}
+
 /// The fetter packages a purl names, as `(ecosystem, name, version)`; empty for a purl type fetter does not map. A `pkg:github` purl names both a GitHub Action and a pre-commit hook repository.
 pub fn purl_targets(purl: &Purl) -> Vec<(Ecosystem, String, Option<String>)> {
     let path = || match &purl.namespace {
@@ -366,6 +448,36 @@ pub fn exact_requirement(eco: Ecosystem, name: &str, version: Option<&str>) -> S
     }
 }
 
+/// Parse a purl entry of an allow list: a purl, optionally followed by whitespace and a VERS range of the purl's type (or `all` / `none`), as `pkg:npm/lodash vers:npm/>=4.17.21|<5.0.0`. A purl with a range has no version.
+pub fn parse_entry(s: &str) -> Result<(Purl, Option<Vers>), String> {
+    let mut parts = s.split_whitespace();
+    let purl_str = parts.next().ok_or("empty purl entry")?;
+    let purl =
+        Purl::parse(purl_str).map_err(|e| format!("Invalid purl {purl_str:?}: {e}"))?;
+    let vers = match parts.next() {
+        None => None,
+        Some(v) => {
+            let vers = Vers::parse(v).map_err(|e| format!("Invalid VERS {v:?}: {e}"))?;
+            if purl.version.is_some() {
+                return Err(format!(
+                    "{purl_str} has a version, so it cannot also have a VERS range"
+                ));
+            }
+            if vers.ty != purl.ty && vers.ty != "all" && vers.ty != "none" {
+                return Err(format!(
+                    "{v} has VERS type {}, but {purl_str} is of purl type {}",
+                    vers.ty, purl.ty
+                ));
+            }
+            Some(vers)
+        }
+    };
+    if let Some(extra) = parts.next() {
+        return Err(format!("Unexpected {extra:?} after a purl entry"));
+    }
+    Ok((purl, vers))
+}
+
 /// True if a text looks like a purl list: every non-empty line that is not a `#` comment starts with `pkg:`, and there is at least one.
 pub fn is_purl_list(content: &str) -> bool {
     let mut lines = content
@@ -376,7 +488,7 @@ pub fn is_purl_list(content: &str) -> bool {
     lines.peek().is_some() && lines.all(|l| l.starts_with("pkg:"))
 }
 
-/// The purls of an SBOM, and the number of its packages without one: CycloneDX JSON (`components[].purl`, nested components included) or SPDX 2.x JSON (`packages[].externalRefs[]` with `referenceType` `purl`). `None` if the JSON is neither.
+/// The purl entries of an SBOM, and the number of its packages without a purl: CycloneDX JSON (`components[].purl`, nested components included, with a CycloneDX 1.7 `versionRange` as a VERS range) or SPDX 2.x JSON (`packages[].externalRefs[]` with `referenceType` `purl`). `None` if the JSON is neither.
 pub fn sbom_purls(json: &serde_json::Value) -> Option<(Vec<String>, usize)> {
     fn components(v: &serde_json::Value, out: &mut Vec<String>, without: &mut usize) {
         for c in v
@@ -386,7 +498,17 @@ pub fn sbom_purls(json: &serde_json::Value) -> Option<(Vec<String>, usize)> {
             .flatten()
         {
             match c.get("purl").and_then(|p| p.as_str()) {
-                Some(p) => out.push(p.to_string()),
+                Some(p) => {
+                    // CycloneDX 1.7: an external component may give a VERS `versionRange` instead of a version
+                    let range = c
+                        .get("versionRange")
+                        .and_then(|r| r.as_str())
+                        .filter(|_| Purl::parse(p).is_ok_and(|u| u.version.is_none()));
+                    out.push(match range {
+                        Some(r) => format!("{p} {r}"),
+                        None => p.to_string(),
+                    })
+                }
                 None => *without += 1,
             }
             components(c, out, without);

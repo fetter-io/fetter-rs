@@ -33,6 +33,7 @@ mod unpack_report;
 mod ureq_client;
 mod util;
 mod validation_report;
+mod vers;
 mod version_spec;
 mod walk;
 mod write_color;

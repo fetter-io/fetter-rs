@@ -28,7 +28,7 @@ Additionally, `fetter` can configure a Python virtual environment to validate pa
 * 🪢 Bound Requirements: Derive an allow list from observed system packages.
 * 🧹 Search and Purge: Find packages and their installed files across environments, and remove Python packages.
 * 🧩 Flexible Output: Display results in terminal or export to delimited files; JSON output carries a package URL (purl) for every package.
-* 📦 SBOM Input: Audit or validate against a CycloneDX or SPDX SBOM, or a list of purls.
+* 📦 SBOM Input: Audit or validate against a CycloneDX or SPDX SBOM, or a list of purls with optional VERS version ranges.
 
 
 ## Articles
@@ -127,6 +127,14 @@ Requirements whose package is not found in its registry (for example, a private 
 
 ```shell
 $ fetter lookup-bound bom.cdx.json
+```
+
+A purl in a list may be followed by a [VERS](https://github.com/package-url/vers-spec) version range of the same type instead of a version, which `lookup-bound` audits at the newest version in each interval (CycloneDX 1.7 components' `versionRange` are read the same way):
+
+```text
+pkg:npm/lodash vers:npm/>=4.17.0|<4.17.21
+pkg:pypi/requests vers:pypi/2.19.0|>=2.31|<2.32
+pkg:github/actions/checkout vers:github/v4|11bd71901bbe5b1630ceea73d27597364c9af683
 ```
 
 The `fetter lookup-name` command finds vulnerabilities for a single package or version, or for every version matching a requirement, with versions listed from the ecosystem's registry (PyPI, npm, crates.io, the Go module proxy, rubygems.org, Packagist, git tags, or Open VSX). Without `-E`, the name is a Python requirement; for other ecosystems, give `name@requirement` in that ecosystem's syntax, or a purl, which names its ecosystem (a `pkg:github` purl is a GitHub Action, or a pre-commit hook with `-E precommit`):
@@ -290,18 +298,26 @@ gha        tj-actions/changed-files-v35  tj-actions/changed-files v46  Misdefine
 
 An ecosystem that the allow list does not mention is not validated; with `--strict`, it is validated as if it allowed no packages.
 
-A `fetter.toml` can also list package URLs, each allowing exactly its version (or any version, without one), as alternatives to the tables' entries. A `pkg:github` purl allows that repository as a GitHub Action or a pre-commit hook, and is not reported missing if neither is found:
+A `fetter.toml` can also list package URLs, each allowing exactly its version, the versions in its VERS range, or any version if it has neither, as alternatives to the tables' entries. A `pkg:github` purl allows that repository as a GitHub Action or a pre-commit hook, and is not reported missing if neither is found:
 
 ```toml
-purls = ["pkg:npm/lodash@4.17.21", "pkg:pypi/django@4.2.1", "pkg:github/actions/checkout@v4"]
+purls = [
+    "pkg:npm/lodash@4.17.21",
+    "pkg:pypi/django vers:pypi/3.2.25|>=4.2|<5",
+    "pkg:github/actions/checkout vers:github/v4|v4.2.2",
+]
 ```
 
-`validate --bound` likewise accepts an SBOM or a purl list, and `derive --format purls` writes the purls of all packages found:
+A VERS range can also be one of a table entry's specs (`"rails" = ["vers:gem/>=7.0|<7.1", "~> 6.1.7"]`). VERS compares versions by order alone, so a pre-release inside an interval is in the range, unlike in npm or Cargo range syntax. Versions with no order (GitHub refs, Swift revision SHAs, Composer `dev-` branches) may be listed exactly.
+
+`validate --bound` likewise accepts an SBOM or a purl list. `derive --format purls` writes the purls of all package versions found, and `derive --format purl-vers` writes one purl per package with a VERS range from the anchor (`>=` the lowest version, `<=` the highest, or both), so a purl list can serve as a complete allow list for every ecosystem:
 
 ```shell
-$ fetter derive -a lower --format purls write -o purls.txt
-$ fetter validate --bound purls.txt
+$ fetter derive -a both --format purl-vers write -o allow.txt
+$ fetter validate --bound allow.txt
 ```
+
+Python environment markers, extras and direct-URL requirements have no purl or VERS form; use a `fetter.toml` or requirements file for those.
 
 
 ### Auditing Packages
@@ -480,7 +496,7 @@ repos:
 - Description: Derive an allow list from discovered packages.
 - Options
   - `--anchor, -a <BOUND>`: Set the nature of the bound in the derived requirements: `lower`, `upper`, or `both` (from the lowest to the highest observed version, or exact if only one).
-  - `--format <FORMAT>`: Write a `requirements` file (Python packages only), a `fetter.toml` (`toml`, all ecosystems), or a list of package URLs (`purls`, every observed package version; the anchor does not apply). If omitted, a requirements file is written when all derived packages are Python, and a `fetter.toml` otherwise.
+  - `--format <FORMAT>`: Write a `requirements` file (Python packages only), a `fetter.toml` (`toml`, all ecosystems), a list of package URLs (`purls`, every observed package version; the anchor does not apply), or a list of purls with VERS ranges (`purl-vers`, one per package; the anchor applies). If omitted, a requirements file is written when all derived packages are Python, and a `fetter.toml` otherwise.
 - Subcommands
   - `display`: Show derived requirements in the terminal.
   - `write`: Save derived requirements to a file.
@@ -639,7 +655,7 @@ New `fetter.toml` allow list for `validate`, `derive`, `lookup-bound`, and `purg
 
 `lookup-name` lists versions from npm, crates.io, the Go module proxy, rubygems.org, Packagist, git tags, and Open VSX, given `-E <ECOSYSTEM>` and `name@requirement`.
 
-Package URLs (purls): `lookup-name` accepts a purl; `lookup-bound`, `validate`, and `purge-invalid` accept CycloneDX and SPDX 2.x JSON SBOMs and purl lists as bounds; a `fetter.toml` can list `purls`; `derive --format purls` writes them; JSON output gives each package's `purl`.
+Package URLs (purls): `lookup-name` accepts a purl; `lookup-bound`, `validate`, and `purge-invalid` accept CycloneDX and SPDX 2.x JSON SBOMs and purl lists as bounds; a `fetter.toml` can list `purls`; `derive --format purls` writes them; JSON output gives each package's `purl`. Purls may carry VERS version ranges in purl lists and `fetter.toml`, and `derive --format purl-vers` writes them.
 
 `inspect` reports npm install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, and VS Code extensions that activate on every editor start, in addition to Python startup files.
 

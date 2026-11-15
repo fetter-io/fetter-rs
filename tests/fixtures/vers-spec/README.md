@@ -1,0 +1,1 @@
+Test data from the VERS specification, https://github.com/package-url/vers-spec (commit 2c387b682dfb, 2026-10-27): `tests/vers_canonical_parse_test.json`, `tests/npm_range_containment_test.json`, `tests/pypi_range_containment_test.json`, `tests/pypi_range_validate_test.json` and `tests/gem_range_from_native_test.json`. MIT licensed; see `LICENSE`. Used by `src/vers.rs` tests.

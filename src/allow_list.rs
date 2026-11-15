@@ -43,6 +43,7 @@ use crate::package::Package;
 use crate::util::Anchor;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
+use crate::vers::Vers;
 
 const ANY: &str = "*";
 
@@ -109,6 +110,8 @@ pub struct ReqEntry {
     /// The specs as written (for display and output).
     pub(crate) specs: Vec<String>,
     req: Requirement,
+    /// `vers:` ranges among the specs, alternatives to the native ones.
+    vers: Vec<Vers>,
     /// An optional entry allows matching packages but is not reported missing when none is found: one created only from a `pkg:github` purl, which names a repository used as a GitHub Action, a pre-commit hook, or neither.
     pub(crate) optional: bool,
 }
@@ -132,6 +135,27 @@ impl ReqEntry {
         let err = |spec: &str, e: &dyn fmt::Display| -> Box<dyn std::error::Error> {
             format!("Invalid {ecosystem} requirement for {name}: {spec:?}: {e}").into()
         };
+        // `vers:` ranges (of the ecosystem's purl type, or `all` / `none`) are alternatives to the native specs
+        let (vers_specs, specs_native): (Vec<String>, Vec<String>) = specs
+            .iter()
+            .cloned()
+            .partition(|s| s.trim_start().starts_with("vers:"));
+        let ty = crate::purl::purl_type(ecosystem);
+        let vers = vers_specs
+            .iter()
+            .map(|s| {
+                let v = Vers::parse(s.trim()).map_err(|e| err(s, &e))?;
+                if v.ty != ty && v.ty != "all" && v.ty != "none" {
+                    return Err(err(
+                        s,
+                        &format!("a {ecosystem} range has VERS type {ty}"),
+                    ));
+                }
+                Ok(v)
+            })
+            .collect::<Result<Vec<Vers>, _>>()?;
+        let specs_all = specs;
+        let specs = specs_native;
         let req = match ecosystem {
             Ecosystem::Npm | Ecosystem::VsCode => Requirement::NpmRange(
                 specs
@@ -191,8 +215,9 @@ impl ReqEntry {
         Ok(ReqEntry {
             ecosystem,
             name: name.to_string(),
-            specs,
+            specs: specs_all,
             req,
+            vers,
             optional: false,
         })
     }
@@ -200,6 +225,20 @@ impl ReqEntry {
     /// Does the package satisfy this requirement (any of its specs)? A version that cannot be parsed in the ecosystem's syntax does not.
     pub(crate) fn matches(&self, package: &Package) -> bool {
         let version = package.version.to_string();
+        // a SHA pin (GitHub Actions, pre-commit) matches by its comment version (the package version) or by the SHA itself
+        let sha = package
+            .direct_url
+            .as_ref()
+            .and_then(|d| d.vcs_info.as_ref())
+            .map(|v| v.commit_id.as_str())
+            .filter(|_| matches!(self.ecosystem, Ecosystem::Gha | Ecosystem::PreCommit));
+        if self
+            .vers
+            .iter()
+            .any(|v| v.contains(&version) || sha.is_some_and(|s| v.contains(s)))
+        {
+            return true;
+        }
         match &self.req {
             Requirement::NpmRange(ranges) => nodejs_semver::Version::parse(&version)
                 .is_ok_and(|v| ranges.iter().any(|r| v.satisfies(r))),
@@ -219,16 +258,9 @@ impl ReqEntry {
                         .is_ok_and(|v| ranges.iter().any(|r| v.satisfies(r)))
             }
             Requirement::GhaRefs(None) => true,
-            Requirement::GhaRefs(Some(refs)) => {
-                // a SHA pin matches by its comment version (the package version) or by the SHA itself
-                let sha = package
-                    .direct_url
-                    .as_ref()
-                    .and_then(|d| d.vcs_info.as_ref())
-                    .map(|v| v.commit_id.as_str());
-                refs.iter()
-                    .any(|r| *r == version || Some(r.as_str()) == sha)
-            }
+            Requirement::GhaRefs(Some(refs)) => refs
+                .iter()
+                .any(|r| *r == version || Some(r.as_str()) == sha),
         }
     }
 }
@@ -280,7 +312,7 @@ fn is_fetter_toml(table: &toml::Table) -> bool {
         })
 }
 
-/// Requirements from purls, by ecosystem: Python requirement lines, and `(ecosystem, name) -> specs` for the others. A purl with a version allows exactly that version; without, any. A `pkg:github` purl applies to both GitHub Actions and pre-commit. Purls of types fetter does not map are returned separately.
+/// Requirements from purl entries (see `purl::parse_entry`), by ecosystem: Python requirement lines, and `(ecosystem, name) -> specs` for the others. A purl with a version allows exactly that version; with a VERS range, the versions in it; with neither, any. A `pkg:github` purl applies to both GitHub Actions and pre-commit. Purls of types fetter does not map are returned separately.
 #[allow(clippy::type_complexity)]
 fn purl_requirements(
     purls: &[String],
@@ -294,17 +326,29 @@ fn purl_requirements(
         BTreeMap::new();
     let mut unsupported = Vec::new();
     for s in purls {
-        let purl = crate::purl::Purl::parse(s)
-            .map_err(|e| format!("Invalid purl {s:?}: {e}"))?;
+        let (purl, vers) = crate::purl::parse_entry(s)?;
         let targets = crate::purl::purl_targets(&purl);
         if targets.is_empty() {
             unsupported.push(s.clone());
         }
         for (eco, name, version) in targets {
-            let req = crate::purl::exact_requirement(eco, &name, version.as_deref());
             if eco == Ecosystem::Python {
-                python.push(req);
+                match &vers {
+                    // a range is one PEP 508 line per exact version or interval
+                    Some(v) => python.extend(v.to_pep508(&name)?),
+                    None => python.push(crate::purl::exact_requirement(
+                        eco,
+                        &name,
+                        version.as_deref(),
+                    )),
+                }
             } else {
+                let req = match &vers {
+                    Some(v) => v.to_string(),
+                    None => {
+                        crate::purl::exact_requirement(eco, &name, version.as_deref())
+                    }
+                };
                 let e = others
                     .entry((eco, eco.name_to_key(&name)))
                     .or_insert_with(|| (name.clone(), Vec::new()));
@@ -1333,6 +1377,180 @@ purls = [
         fs::write(&req, "requests==2.31.0\n").unwrap();
         let al = AllowList::from_bound(&req, None, FlagLog(false)).unwrap();
         assert!(al.is_python_only());
+    }
+
+    #[test]
+    fn test_vers_in_fetter_toml_a() {
+        let sha = "11bd71901bbe5b1630ceea73d27597364c9af683";
+        let toml = format!(
+            r#"
+purls = [
+    "pkg:npm/lodash vers:npm/>=4.17.21|<5.0.0",
+    "pkg:pypi/requests vers:pypi/>=2.31|!=2.32.0|<3",
+    "pkg:pypi/django vers:pypi/3.2.25|>=4.2|<5",
+    "pkg:cargo/serde vers:cargo/>=1.0.200",
+    "pkg:github/actions/checkout vers:github/v4|{sha}",
+    "pkg:golang/golang.org/x/net vers:all/*",
+]
+
+[ruby]
+"rails" = ["vers:gem/>=7.0|<7.1", "~> 6.1.7"]
+"#
+        );
+        let al = AllowList::from_fetter_toml(&toml).unwrap();
+        let npm = al.section(Ecosystem::Npm).unwrap().get("lodash").unwrap();
+        assert!(npm.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.21")));
+        // VERS compares by version order alone, so a pre-release within the interval is in it (npm ranges would exclude it)
+        assert!(npm.matches(&pkg(Ecosystem::Npm, "lodash", "4.18.0-rc.1")));
+        assert!(!npm.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.15")));
+        assert!(!npm.matches(&pkg(Ecosystem::Npm, "lodash", "5.0.0")));
+        let cargo = al.section(Ecosystem::Cargo).unwrap().get("serde").unwrap();
+        assert!(cargo.matches(&pkg(Ecosystem::Cargo, "serde", "2.0.0")));
+        assert!(!cargo.matches(&pkg(Ecosystem::Cargo, "serde", "1.0.199")));
+        let go = al
+            .section(Ecosystem::Go)
+            .unwrap()
+            .get("golang.org/x/net")
+            .unwrap();
+        assert!(go.matches(&pkg(Ecosystem::Go, "golang.org/x/net", "v0.1.0")));
+        // native and VERS specs are alternatives
+        let rails = al.section(Ecosystem::Ruby).unwrap().get("rails").unwrap();
+        for (v, ok) in [
+            ("7.0.8", true),
+            ("6.1.7.3", true),
+            ("7.1.0", false),
+            ("6.0", false),
+        ] {
+            assert_eq!(rails.matches(&pkg(Ecosystem::Ruby, "rails", v)), ok, "{v}");
+        }
+        // github: a ref, or a SHA pin by its SHA
+        let gha = al
+            .section(Ecosystem::Gha)
+            .unwrap()
+            .get("actions/checkout")
+            .unwrap();
+        assert!(gha.optional);
+        assert!(gha.matches(&pkg(Ecosystem::Gha, "actions/checkout", "v4")));
+        assert!(!gha.matches(&pkg(Ecosystem::Gha, "actions/checkout", "v3")));
+        let pinned = Package::new(
+            Ecosystem::Gha,
+            "actions/checkout",
+            VersionSpec::new("v4.1.0"),
+            Some(DirectURL {
+                url: "https://github.com/actions/checkout".to_string(),
+                vcs_info: Some(VcsInfo {
+                    commit_id: sha.to_string(),
+                    vcs: "git".to_string(),
+                    revision: Some("v4.1.0".to_string()),
+                }),
+            }),
+        );
+        assert!(gha.matches(&pinned));
+        // python: one PEP 508 line per exact version or interval
+        let py = al.python.as_ref().unwrap();
+        let valid = |name: &str, v: &str| {
+            py.validate(&pkg(Ecosystem::Python, name, v), false, None).0
+        };
+        assert!(valid("requests", "2.31.0") && valid("requests", "2.32.3"));
+        assert!(!valid("requests", "2.32.0") && !valid("requests", "3.0"));
+        assert!(valid("Django", "3.2.25") && valid("django", "4.2.11"));
+        assert!(!valid("django", "3.2.24") && !valid("django", "5.0"));
+
+        // errors: a version and a range; a range of another type; a non-canonical range
+        for bad in [
+            "purls = [\"pkg:npm/lodash@4.17.21 vers:npm/>=4\"]",
+            "purls = [\"pkg:npm/lodash vers:pypi/>=4\"]",
+            "purls = [\"pkg:npm/lodash vers:npm/<5.0.0|>=4.0.0\"]",
+            "[npm]\n\"lodash\" = \"vers:cargo/>=4.0.0\"",
+        ] {
+            assert!(AllowList::from_fetter_toml(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn test_purl_ranges_round_trip_a() {
+        let sha = "bace59f90bb276f1c6fb613acfda3935ec4a7a90";
+        let packages = vec![
+            pkg(Ecosystem::Python, "Jinja2", "3.1.3"),
+            pkg(Ecosystem::Python, "jinja2", "2.11.3"),
+            pkg(Ecosystem::Python, "requests", "2.32.3"),
+            pkg(Ecosystem::Npm, "lodash", "4.17.21"),
+            pkg(Ecosystem::Npm, "lodash", "4.17.15"),
+            pkg(Ecosystem::Npm, "@babel/core", "7.24.0-beta.1"),
+            pkg(Ecosystem::Cargo, "serde", "1.0.200"),
+            pkg(Ecosystem::Go, "golang.org/x/net", "v0.17.0"),
+            pkg(Ecosystem::Ruby, "nokogiri", "1.16.5"),
+            pkg(Ecosystem::Php, "laravel/framework", "v10.48.4"),
+            pkg(Ecosystem::Php, "laravel/framework", "dev-main"),
+            pkg(Ecosystem::Gha, "actions/checkout", "v4"),
+            pkg(Ecosystem::Gha, "actions/checkout", "v3"),
+            pkg(Ecosystem::Swift, "github.com/steipete/Peekaboo", sha),
+            pkg(Ecosystem::Swift, "github.com/steipete/Peekaboo", "1.0.0"),
+            pkg(Ecosystem::VsCode, "ms-python.python", "2024.2.1"),
+            pkg(Ecosystem::PreCommit, "github.com/psf/black", "24.2.0"),
+            // no purl type
+            pkg(Ecosystem::PreCommit, "gitlab.com/a/b", "v1"),
+        ];
+        for anchor in [Anchor::Lower, Anchor::Upper, Anchor::Both] {
+            let (entries, without) = crate::purl::purl_ranges(&packages, anchor);
+            assert_eq!(without, 1);
+            let al = AllowList::from_purls(&entries).unwrap();
+            for p in packages.iter().filter(|p| !p.name.starts_with("gitlab")) {
+                let ok = match p.ecosystem {
+                    Ecosystem::Python => {
+                        al.python.as_ref().unwrap().validate(p, false, None).0
+                    }
+                    e => al.section(e).unwrap().get(&p.key).unwrap().matches(p),
+                };
+                assert!(ok, "{p} {entries:?}");
+            }
+        }
+        let (entries, _) = crate::purl::purl_ranges(&packages, Anchor::Both);
+        for e in [
+            "pkg:pypi/jinja2 vers:pypi/>=2.11.3|<=3.1.3",
+            "pkg:pypi/requests vers:pypi/2.32.3",
+            "pkg:npm/lodash vers:npm/>=4.17.15|<=4.17.21",
+            "pkg:composer/laravel/framework vers:composer/v10.48.4|dev-main",
+            "pkg:github/actions/checkout vers:github/v3|v4",
+            &format!("pkg:swift/github.com/steipete/Peekaboo vers:swift/1.0.0|{sha}"),
+            "pkg:vscode-extension/ms-python/python vers:vscode-extension/2024.2.1",
+        ] {
+            assert!(entries.iter().any(|x| x == e), "{e} not in {entries:?}");
+        }
+        let (entries, _) = crate::purl::purl_ranges(&packages, Anchor::Lower);
+        assert!(entries.contains(&"pkg:npm/lodash vers:npm/>=4.17.15".to_string()));
+    }
+
+    #[test]
+    fn test_sbom_version_range_a() {
+        let dir = tempfile::tempdir().unwrap();
+        let cdx = dir.path().join("bom.cdx.json");
+        fs::write(
+            &cdx,
+            r#"{"bomFormat": "CycloneDX", "specVersion": "1.7", "components": [
+                {"name": "lodash", "purl": "pkg:npm/lodash", "isExternal": true, "versionRange": "vers:npm/>=4.17.21|<5.0.0"},
+                {"name": "jinja2", "purl": "pkg:pypi/jinja2@3.1.3"}]}"#,
+        )
+        .unwrap();
+        let al = AllowList::from_bound(&cdx, None, FlagLog(false)).unwrap();
+        let lodash = al.section(Ecosystem::Npm).unwrap().get("lodash").unwrap();
+        assert!(lodash.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.21")));
+        assert!(!lodash.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.15")));
+        // a purl list with ranges
+        let list = dir.path().join("purls.txt");
+        fs::write(
+            &list,
+            "pkg:gem/nokogiri vers:gem/>=1.16.5\npkg:npm/lodash@4.17.15\n",
+        )
+        .unwrap();
+        let al = AllowList::from_bound(&list, None, FlagLog(false)).unwrap();
+        let nokogiri = al
+            .section(Ecosystem::Ruby)
+            .unwrap()
+            .get("nokogiri")
+            .unwrap();
+        assert!(nokogiri.matches(&pkg(Ecosystem::Ruby, "nokogiri", "1.18.0")));
+        assert!(!nokogiri.matches(&pkg(Ecosystem::Ruby, "nokogiri", "1.16.4")));
     }
 
     #[test]
