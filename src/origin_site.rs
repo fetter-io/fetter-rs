@@ -72,6 +72,24 @@ pub struct Site {
     pub path: PathShared,
 }
 
+impl SiteKind {
+    /// The name used in serialized output (`installed`, `lockfile`, `manifest`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SiteKind::Installed => "installed",
+            SiteKind::Lockfile => "lockfile",
+            SiteKind::Manifest => "manifest",
+        }
+    }
+
+    /// The kind named by `as_str`, if known.
+    pub fn from_name(name: &str) -> Option<Self> {
+        [SiteKind::Installed, SiteKind::Lockfile, SiteKind::Manifest]
+            .into_iter()
+            .find(|k| k.as_str() == name)
+    }
+}
+
 impl Site {
     pub fn new(ecosystem: Ecosystem, kind: SiteKind, path: PathShared) -> Self {
         Site {

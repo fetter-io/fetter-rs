@@ -301,6 +301,9 @@ pub fn purl_type(eco: Ecosystem) -> &'static str {
         Ecosystem::Swift => "swift",
         Ecosystem::VsCode => "vscode-extension",
         Ecosystem::Gha | Ecosystem::PreCommit => "github",
+        Ecosystem::Chromium => "chrome-extension",
+        // no purl type is registered for Firefox add-ons
+        Ecosystem::Firefox => "",
     }
 }
 
@@ -338,6 +341,10 @@ pub fn package_purl(p: &Package) -> Option<Purl> {
             let (publisher, name) = p.name.split_once('.')?;
             Purl::new("vscode-extension", Some(publisher), name, v, none(), None).ok()
         }
+        Ecosystem::Chromium => {
+            Purl::new("chrome-extension", None, &p.key, v, none(), None).ok()
+        }
+        Ecosystem::Firefox => None,
         Ecosystem::PreCommit => {
             let owner_repo = p.name.strip_prefix("github.com/")?;
             let (ns, n) = split_last(owner_repo);
@@ -424,6 +431,7 @@ pub fn purl_targets(purl: &Purl) -> Vec<(Ecosystem, String, Option<String>)> {
         "gem" => vec![(Ecosystem::Ruby, purl.name.clone(), v)],
         "composer" => vec![(Ecosystem::Php, path(), v)],
         "swift" => vec![(Ecosystem::Swift, path(), v)],
+        "chrome-extension" => vec![(Ecosystem::Chromium, purl.name.to_lowercase(), v)],
         "vscode-extension" => match &purl.namespace {
             Some(ns) => vec![(Ecosystem::VsCode, format!("{ns}.{}", purl.name), v)],
             None => Vec::new(),

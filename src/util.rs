@@ -705,7 +705,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "9903de08c2b5f93425aa2c7a74028163d272f265ffe6ced98f6b679e39455333"
+            "6df57948961e5c343fbfebf8054a2cce997502de56eb066a3ba10b16ec6ec9c2"
         )
     }
 
@@ -716,7 +716,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "51c8cba3a946f4fea6d6d110912eac1a0b0591833293c8cdc54af1803b83af0b"
+            "3c7623a98434e80f609f1c34dcc2dba043db1b76eccd565e5ac8d8823f9a0b93"
         )
     }
 

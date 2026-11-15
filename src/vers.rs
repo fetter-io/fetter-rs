@@ -26,8 +26,9 @@ use crate::osv_match::is_sha;
 use crate::version_spec::VersionSpec;
 
 /// The vers types fetter can compare.
-const TYPES: [&str; 12] = [
+const TYPES: [&str; 13] = [
     "pypi",
+    "chrome-extension",
     "npm",
     "cargo",
     "vscode-extension",
@@ -99,6 +100,9 @@ pub(crate) fn key(ty: &str, v: &str) -> Option<Key> {
         "gem" => GemVersion::parse(v).map(Key::Gem),
         "composer" => ComposerVersion::parse(v).map(Key::Composer),
         "lexicographic" => Some(Key::Lex(v.to_string())),
+        // one to four integers, compared numerically
+        "chrome-extension" => crate::eco::browser_version::is_chromium_version(v)
+            .then(|| Key::Pep440(VersionSpec::new(v))),
         _ => None,
     }
 }
@@ -642,6 +646,17 @@ mod tests {
         assert!(!Vers::parse("vers:none/*").unwrap().contains("x"));
         let v = Vers::parse("vers:golang/>=v0.17.0").unwrap();
         assert!(v.contains("v0.18.0") && !v.contains("0.18.0"));
+    }
+
+    #[test]
+    fn test_vers_chrome_extension_a() {
+        // one to four integers, compared numerically
+        let v = Vers::parse("vers:chrome-extension/>=1.9|<1.10.0.2").unwrap();
+        assert!(v.contains("1.10"));
+        assert!(v.contains("1.10.0.1"));
+        assert!(!v.contains("1.10.0.2"));
+        assert!(!v.contains("1.8.99"));
+        assert!(Vers::parse("vers:chrome-extension/>=1.10|<1.9").is_err());
     }
 
     #[test]

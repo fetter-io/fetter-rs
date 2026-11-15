@@ -1,5 +1,6 @@
 use crate::scan_fs::ScanFS;
 use crate::system_tag::SystemTag;
+use crate::transmit::payload_json;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::FlagLog;
@@ -24,29 +25,49 @@ fn monitor_scan(
     log: FlagLog,
 ) {
     logger!(log, module_path!(), "Calling from_origin_paths().");
-    let sfs = ScanFS::from_origin_paths(&origin_paths, &config, log)
-        .expect("from_origin_paths() failed.");
+    // a failed scan or serialization skips this period; the worker continues
+    let mut sfs = match ScanFS::from_origin_paths(&origin_paths, &config, log) {
+        Ok(sfs) => sfs,
+        Err(e) => {
+            logger!(log, module_path!(), "Scan failed, not posting: {}", e);
+            return;
+        }
+    };
+    sfs.load_hooks();
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
+        .unwrap_or_default();
 
-    let mut sfs_prev = sfs_prev_mutex.lock().unwrap();
+    let Ok(mut sfs_prev) = sfs_prev_mutex.lock() else {
+        logger!(
+            log,
+            module_path!(),
+            "Previous scan unavailable, not posting."
+        );
+        return;
+    };
 
-    let data = if sfs_prev.as_ref() == Some(&sfs) {
+    let scan = if sfs_prev.as_ref() == Some(&sfs) {
         logger!(log, module_path!(), "Scan results unchanged.");
-        (&*tenant, &*system_tag, None, &duration_since_epoch)
+        None
     } else {
         logger!(log, module_path!(), "Scan results new.");
         *sfs_prev = Some(sfs);
-        let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
-        (&*tenant, &*system_tag, Some(sfs_ref), &duration_since_epoch)
+        sfs_prev.as_ref()
     };
 
-    let body = serde_json::to_string(&data).expect("serialization failed.");
+    let body = match payload_json(&tenant, &system_tag, &duration_since_epoch, scan) {
+        Ok(b) => b,
+        Err(e) => {
+            logger!(log, module_path!(), "{}, not posting.", e);
+            // post a full scan next time
+            *sfs_prev = None;
+            return;
+        }
+    };
 
     logger!(log, module_path!(), "Sending {:?} characters.", body.len());
-    // println!("{}", body);
 
     let response: Result<String, ureq::Error> = client.post(&url, &body);
     logger!(log, module_path!(), "Got response: {:?}", response);
@@ -65,7 +86,10 @@ pub(crate) fn monitor_scan_loop(
     let url_arc = Arc::new(url.to_owned());
     let tenant_arc = Arc::new(tenant.to_owned());
 
-    let st = Arc::new(SystemTag::from_system().expect("failed from_system()"));
+    let st = Arc::new(
+        SystemTag::from_system()
+            .map_err(|e| format!("Cannot read system details: {e}"))?,
+    );
     // we hold the owned previous ScanFS
     let sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
 

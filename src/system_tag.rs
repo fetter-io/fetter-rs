@@ -5,7 +5,7 @@ use std::{env, fs};
 #[cfg(test)]
 use crate::util::hash_string;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SystemTag {
     pub username: String,
     pub hostname: String,

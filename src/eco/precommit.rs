@@ -2,6 +2,8 @@
 //!
 //! An origin is a directory with a `.pre-commit-config.yaml`; its site is that file (`SiteKind::Manifest`). Each remote hook repository (`repo:` with a `rev:`) is a package named by its URL without scheme or `.git` (`github.com/psf/black`), with the rev as its version. `local` and `meta` repositories run no third-party code from a repository and are excluded. A SHA rev with a full version comment (`rev: <sha>  # frozen: v1.2.3`, as written by `pre-commit autoupdate --freeze`) takes the comment's version, with the SHA kept in `direct_url`, as for GitHub Actions pins.
 //!
+//! Hooks' pinned `additional_dependencies` (in any repository, `local` included) are packages of their own ecosystems (Python, npm, Go, Ruby): the config is also a `Manifest` site of each such ecosystem, read by `dependency_site_packages` (see `pinned_dependency`).
+//!
 //! OSV has no pre-commit ecosystem. When auditing, a hook repository on GitHub is mapped to the packages it installs (`map_hooks`): its `.pre-commit-hooks.yaml` at the rev gives the hooks' languages, and the language's manifest gives the package (`black` on PyPI at the rev) or, for wrapper repositories (`ruff-pre-commit`, `mirrors-mypy`; a placeholder version `0.0.0`), the tools they pin (`ruff==0.1.13`). Those packages are audited in their own ecosystems.
 
 use std::collections::HashMap;
@@ -143,6 +145,120 @@ fn packages_from_config(content: &str) -> Vec<Package> {
         out.insert(package);
     }
     out.into_iter().collect()
+}
+
+/// The ecosystems whose packages a hook's `additional_dependencies` can name.
+const DEPENDENCY_ECOSYSTEMS: [Ecosystem; 4] = [
+    Ecosystem::Python,
+    Ecosystem::Npm,
+    Ecosystem::Go,
+    Ecosystem::Ruby,
+];
+
+/// A Go `go install` target (`github.com/owner/repo/cmd/x@v1.2.3`) as a module package. On GitHub, GitLab and Bitbucket the module is taken as the first three path segments (and a following major-version segment, `/v2`), the repository root; elsewhere the path is kept as written.
+fn pinned_go(spec: &str) -> Option<Package> {
+    let (path, version) = spec.rsplit_once('@')?;
+    crate::eco::go::semver_of(version)?;
+    let segs: Vec<&str> = path.split('/').collect();
+    let module = if matches!(segs[0], "github.com" | "gitlab.com" | "bitbucket.org")
+        && segs.len() >= 3
+    {
+        let mut n = 3;
+        if segs.get(3).is_some_and(|s| {
+            s.strip_prefix('v')
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
+        }) {
+            n = 4;
+        }
+        segs[..n].join("/")
+    } else {
+        path.to_string()
+    };
+    Some(Package::new(
+        Ecosystem::Go,
+        &module,
+        VersionSpec::new(version),
+        None,
+    ))
+}
+
+/// A RubyGems `name:version` dependency (as `gem install` takes it) pinned to one version.
+fn pinned_gem(spec: &str) -> Option<Package> {
+    let (name, version) = spec.split_once(':')?;
+    let ok = !name.is_empty()
+        && version.starts_with(|c: char| c.is_ascii_digit())
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.');
+    ok.then(|| Package::new(Ecosystem::Ruby, name, VersionSpec::new(version), None))
+}
+
+/// The package an `additional_dependencies` entry pins, given the hook's language if the config states it (always for `local` repositories). Without a language, the form decides: a PEP 508 `==` is Python; `name@version` is npm, or Go if the name is a module path (a first segment with a `.`). Unpinned entries (`types-requests`, `foo>=1`) are not reported, as the version installed is not known; nor are Rust dependencies, whose versions are requirements.
+fn pinned_dependency(language: Option<&str>, spec: &str) -> Option<Package> {
+    let spec = spec.trim();
+    let go_like = |s: &str| {
+        !s.starts_with('@')
+            && s.split('/').next().is_some_and(|h| h.contains('.'))
+            && s.contains('/')
+    };
+    match language {
+        Some("python") => pinned_python(spec),
+        Some("node") => pinned_npm_spec(spec),
+        Some("golang") => pinned_go(spec),
+        Some("ruby") => pinned_gem(spec),
+        Some(_) => None,
+        None if spec.contains("==") => pinned_python(spec),
+        None if spec.contains(char::is_whitespace) => None,
+        None if go_like(spec) => pinned_go(spec),
+        None => pinned_npm_spec(spec),
+    }
+}
+
+/// The pinned `additional_dependencies` of a `.pre-commit-config.yaml`'s hooks (in every repository, `local` included: they are installed into the hook's environment), per `pinned_dependency`.
+fn dependencies_from_config(content: &str) -> Vec<Package> {
+    let Ok(doc) = serde_saphyr::from_str::<JsonValue>(content) else {
+        return Vec::new();
+    };
+    let mut out = HashSet::new();
+    for h in doc
+        .get("repos")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("hooks").and_then(JsonValue::as_array))
+        .flatten()
+    {
+        let language = h.get("language").and_then(JsonValue::as_str);
+        for d in h
+            .get("additional_dependencies")
+            .and_then(JsonValue::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(JsonValue::as_str)
+        {
+            out.extend(pinned_dependency(language, d));
+        }
+    }
+    let mut out: Vec<Package> = out.into_iter().collect();
+    out.sort();
+    out
+}
+
+/// True if a site is a `.pre-commit-config.yaml` read for another ecosystem's packages (its hooks' `additional_dependencies`).
+pub(crate) fn is_dependency_site(site: &Site) -> bool {
+    site.ecosystem != Ecosystem::PreCommit
+        && site.kind == SiteKind::Manifest
+        && site.as_path().file_name().is_some_and(|n| n == CONFIG)
+}
+
+/// The packages of a dependency site (`is_dependency_site`): the config's pinned `additional_dependencies` in the site's ecosystem.
+pub(crate) fn dependency_site_packages(site: &Site) -> Vec<Package> {
+    fs::read_to_string(site.as_path())
+        .map(|c| dependencies_from_config(&c))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.ecosystem == site.ecosystem)
+        .collect()
 }
 
 //------------------------------------------------------------------------------
@@ -629,22 +745,31 @@ impl EcosystemScanner for PreCommitScanner {
         }
     }
 
+    /// The config file, as a pre-commit site for the hook repositories, and as a site of each enabled ecosystem its hooks' pinned `additional_dependencies` name (as VS Code extensions' bundled `node_modules` are npm sites).
     fn origin_to_sites(
         &self,
         origin: &Origin,
-        _config: &ScanConfig,
+        config: &ScanConfig,
         _log: FlagLog,
     ) -> Vec<Site> {
         let fp = origin.as_path().join(CONFIG);
-        if fp.is_file() {
-            vec![Site::new(
-                Ecosystem::PreCommit,
-                SiteKind::Manifest,
-                PathShared::from(fp),
-            )]
-        } else {
-            Vec::new()
+        let Ok(content) = fs::read_to_string(&fp) else {
+            return Vec::new();
+        };
+        let path = PathShared::from(fp);
+        let mut sites = vec![Site::new(
+            Ecosystem::PreCommit,
+            SiteKind::Manifest,
+            path.clone(),
+        )];
+        let deps = dependencies_from_config(&content);
+        for eco in DEPENDENCY_ECOSYSTEMS {
+            if config.ecosystems.contains(&eco) && deps.iter().any(|p| p.ecosystem == eco)
+            {
+                sites.push(Site::new(eco, SiteKind::Manifest, path.clone()));
+            }
         }
+        sites
     }
 
     fn site_to_packages(&self, site: &Site) -> Vec<Package> {
@@ -900,6 +1025,137 @@ mod tests {
                 file_type: e.file_type().unwrap(),
             })
             .collect()
+    }
+
+    const CONFIG_DEPS: &str = r#"repos:
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+    -   id: mypy
+        additional_dependencies: [types-requests, "pydantic==2.5.3", "attrs>=23"]
+-   repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.56.0
+    hooks:
+    -   id: eslint
+        additional_dependencies:
+        -   eslint@8.56.0
+        -   "@typescript-eslint/parser@6.19.0"
+        -   eslint-plugin-react@^7
+-   repo: local
+    hooks:
+    -   id: golangci
+        name: golangci
+        entry: golangci-lint run
+        language: golang
+        additional_dependencies: [github.com/golangci/golangci-lint/cmd/golangci-lint@v1.55.2]
+    -   id: rubocop
+        name: rubocop
+        entry: rubocop
+        language: ruby
+        additional_dependencies: ["rubocop:1.59.0", rubocop-rails]
+    -   id: gofumpt
+        name: gofumpt
+        entry: gofumpt
+        language: golang
+        additional_dependencies: [mvdan.cc/gofumpt@v0.5.0, github.com/foo/bar/v2/cmd/x@v2.1.0]
+    -   id: clippy
+        name: clippy
+        entry: cargo clippy
+        language: rust
+        additional_dependencies: ["cli:cargo-deny:0.14.3"]
+"#;
+
+    #[test]
+    fn test_dependencies_from_config_a() {
+        let deps = dependencies_from_config(CONFIG_DEPS);
+        let got: Vec<String> = deps
+            .iter()
+            .map(|p| format!("{}:{}", p.ecosystem, p))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                "python:pydantic-2.5.3",
+                "npm:@typescript-eslint/parser-6.19.0",
+                "npm:eslint-8.56.0",
+                "go:github.com/foo/bar/v2-v2.1.0",
+                "go:github.com/golangci/golangci-lint-v1.55.2",
+                "go:mvdan.cc/gofumpt-v0.5.0",
+                "ruby:rubocop-1.59.0",
+            ]
+        );
+        // the hook repositories themselves are unchanged
+        assert_eq!(packages_from_config(CONFIG_DEPS).len(), 2);
+    }
+
+    #[test]
+    fn test_pinned_dependency_a() {
+        assert_eq!(
+            pinned_dependency(None, "black==24.1.0").unwrap().ecosystem,
+            Ecosystem::Python
+        );
+        assert!(pinned_dependency(None, "black").is_none());
+        assert!(pinned_dependency(None, "foo @ https://x.org/foo.whl").is_none());
+        assert_eq!(
+            pinned_dependency(None, "prettier@3.1.0").unwrap().ecosystem,
+            Ecosystem::Npm
+        );
+        assert!(pinned_dependency(None, "prettier@^3").is_none());
+        assert_eq!(
+            pinned_dependency(None, "github.com/a/b@v1.0.0")
+                .unwrap()
+                .ecosystem,
+            Ecosystem::Go
+        );
+        assert!(pinned_dependency(None, "github.com/a/b@latest").is_none());
+        assert!(pinned_dependency(Some("ruby"), "rubocop").is_none());
+        assert!(pinned_dependency(Some("ruby"), "rubocop:~> 1.0").is_none());
+        assert!(pinned_dependency(Some("rust"), "serde:1.0.0").is_none());
+        assert!(pinned_dependency(Some("system"), "black==24.1.0").is_none());
+        // an explicit language wins over the form
+        assert!(pinned_dependency(Some("node"), "black==24.1.0").is_none());
+    }
+
+    #[test]
+    fn test_dependency_sites_a() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join(CONFIG), CONFIG_DEPS).unwrap();
+        let o = PreCommitScanner.normalize_origin(dir.path()).unwrap();
+        let sites = PreCommitScanner.origin_to_sites(
+            &o,
+            &ScanConfig::new(false, false),
+            FlagLog(false),
+        );
+        let ecos: Vec<Ecosystem> = sites.iter().map(|s| s.ecosystem).collect();
+        assert_eq!(
+            ecos,
+            [
+                Ecosystem::PreCommit,
+                Ecosystem::Python,
+                Ecosystem::Npm,
+                Ecosystem::Go,
+                Ecosystem::Ruby
+            ]
+        );
+        assert!(!is_dependency_site(&sites[0]));
+        assert!(sites[1..].iter().all(is_dependency_site));
+        assert_eq!(dependency_site_packages(&sites[2]).len(), 2);
+        assert!(dependency_site_packages(&sites[2])
+            .iter()
+            .all(|p| p.ecosystem == Ecosystem::Npm));
+        // only enabled ecosystems get a site
+        let mut config = ScanConfig::new(false, false);
+        config.ecosystems = vec![Ecosystem::PreCommit, Ecosystem::Npm];
+        let sites = PreCommitScanner.origin_to_sites(&o, &config, FlagLog(false));
+        assert_eq!(sites.len(), 2);
+        // a config without additional dependencies has only its own site
+        fs::write(dir.path().join(CONFIG), CONFIG_A).unwrap();
+        let sites = PreCommitScanner.origin_to_sites(
+            &o,
+            &ScanConfig::new(false, false),
+            FlagLog(false),
+        );
+        assert_eq!(sites.len(), 1);
     }
 
     #[test]

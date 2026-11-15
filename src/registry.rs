@@ -122,6 +122,17 @@ fn sort_versions(eco: Ecosystem, versions: Vec<String>) -> Vec<String> {
             v.sort_by(|a, b| a.0.cmp(&b.0));
             v.into_iter().map(|(_, s)| s).collect()
         }
+        Ecosystem::Chromium | Ecosystem::Firefox => {
+            let mut v: Vec<String> = versions
+                .into_iter()
+                .filter(|s| crate::eco::browser_version::compare(eco, s, s).is_some())
+                .collect();
+            v.sort_by(|a, b| {
+                crate::eco::browser_version::compare(eco, a, b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            v
+        }
         Ecosystem::Python => versions,
     }
 }
@@ -428,6 +439,11 @@ fn query(
                 .map_err(|e| http_error("Packagist", name, e))?;
             parse_packagist(&key, &body)
         }
+        // OSV has no browser extension advisories, so there is nothing to look up versions for
+        Ecosystem::Chromium | Ecosystem::Firefox => Err(format!(
+            "{eco} extensions have no vulnerability database in OSV; lookup is not supported"
+        )
+        .into()),
         Ecosystem::Python => Err("Python versions come from PyPI (pypi_project)".into()),
     }
 }

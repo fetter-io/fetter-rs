@@ -59,7 +59,9 @@ fn both_spec(eco: Ecosystem, lo: &str, hi: &str) -> String {
     }
     match eco {
         // comma-separated constraints all hold
-        Ecosystem::Cargo | Ecosystem::Ruby => format!(">={lo}, <={hi}"),
+        Ecosystem::Cargo | Ecosystem::Ruby | Ecosystem::Chromium | Ecosystem::Firefox => {
+            format!(">={lo}, <={hi}")
+        }
         // npm-style (npm, VS Code, Go, Swift) and composer: space-separated constraints all hold
         _ => format!(">={lo} <={hi}"),
     }
@@ -71,6 +73,24 @@ enum VersionKey {
     Semver(semver::Version),
     Gem(GemVersion),
     Composer(ComposerVersion),
+    /// Chromium and Firefox extension versions, by `browser_version::compare`.
+    Browser(BrowserVersion),
+}
+
+/// A browser extension version ordered by its ecosystem.
+#[derive(PartialEq, Eq)]
+struct BrowserVersion(Ecosystem, String);
+
+impl Ord for BrowserVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        crate::eco::browser_version::compare(self.0, &self.1, &other.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+impl PartialOrd for BrowserVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// The version's ordering key: semver for npm, Cargo and VS Code; semver without the `v` for Go; RubyGems order for Ruby.
@@ -79,6 +99,12 @@ fn version_key(eco: Ecosystem, v: &str) -> Option<VersionKey> {
         Ecosystem::Go => go_semver(v).map(VersionKey::Semver),
         Ecosystem::Ruby => GemVersion::parse(v).map(VersionKey::Gem),
         Ecosystem::Php => ComposerVersion::parse(v).map(VersionKey::Composer),
+        Ecosystem::Chromium if !crate::eco::browser_version::is_chromium_version(v) => {
+            None
+        }
+        Ecosystem::Chromium | Ecosystem::Firefox => {
+            Some(VersionKey::Browser(BrowserVersion(eco, v.to_string())))
+        }
         _ => semver::Version::parse(v).ok().map(VersionKey::Semver),
     }
 }
@@ -100,6 +126,8 @@ enum Requirement {
     PhpReq(Vec<ComposerConstraint>),
     /// Swift: npm-style ranges, and revision SHAs (for branch and revision pins) matched exactly; any of them.
     SwiftReq(Vec<nodejs_semver::Range>, Vec<String>),
+    /// Chromium and Firefox extensions: comma-separated comparison clauses (`">=1.2, <2"`), a bare version, or `*`, in the ecosystem's version order; any of them.
+    BrowserReq(Vec<crate::eco::browser_version::BrowserReq>),
 }
 
 /// One requirement for one package of a non-Python ecosystem: one or more specs, satisfied if any is (in a `fetter.toml`, a string or an array of strings). Arrays let any ecosystem express alternatives, e.g. a pre-release outside a range (`[">=7.18.7", "8.0.0-rc.1"]`), which cargo syntax cannot express in one requirement.
@@ -208,6 +236,15 @@ impl ReqEntry {
                     .map(|s| ComposerConstraint::parse(s).map_err(|e| err(s, &e)))
                     .collect::<Result<_, _>>()?,
             ),
+            Ecosystem::Chromium | Ecosystem::Firefox => Requirement::BrowserReq(
+                specs
+                    .iter()
+                    .map(|s| {
+                        crate::eco::browser_version::BrowserReq::parse(ecosystem, s)
+                            .map_err(|e| err(s, &e))
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
             Ecosystem::Python => {
                 return Err("Python requirements are PEP 508 lines".into())
             }
@@ -256,6 +293,9 @@ impl ReqEntry {
                 shas.contains(&version.to_lowercase())
                     || nodejs_semver::Version::parse(&version)
                         .is_ok_and(|v| ranges.iter().any(|r| v.satisfies(r)))
+            }
+            Requirement::BrowserReq(reqs) => {
+                reqs.iter().any(|r| r.matches(self.ecosystem, &version))
             }
             Requirement::GhaRefs(None) => true,
             Requirement::GhaRefs(Some(refs)) => refs

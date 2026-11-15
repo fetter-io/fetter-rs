@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use rayon::prelude::*;
 
-use crate::eco::scanner_for;
 use crate::eco::Hook;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
@@ -14,7 +13,7 @@ use crate::table::RowableContext;
 use crate::table::Tableable;
 use crate::util::ResultDynError;
 
-/// Characters of a hook's detail shown per row.
+/// Characters of a hook's detail shown per row in a terminal; delimited output (`write`) has the full detail.
 const DETAIL_CHARS: usize = 60;
 
 //------------------------------------------------------------------------------
@@ -43,7 +42,11 @@ impl Rowable for InspectRecord {
                     eco,
                     site,
                     name.clone(),
-                    detail.chars().take(DETAIL_CHARS).collect(),
+                    if is_tty {
+                        detail.chars().take(DETAIL_CHARS).collect()
+                    } else {
+                        detail.clone()
+                    },
                 ]
             })
             .collect()
@@ -65,12 +68,10 @@ impl InspectReport {
         let records = sites
             .into_par_iter()
             .filter_map(|site| {
-                let mut hooks = scanner_for(site.ecosystem)?.site_to_hooks(site);
+                let hooks = crate::eco::site_hooks(site);
                 if hooks.is_empty() {
                     return None;
                 }
-                hooks.sort();
-                hooks.dedup();
                 Some(InspectRecord {
                     ecosystem: site.ecosystem,
                     site: site.path.clone(),
@@ -187,8 +188,11 @@ mod tests {
                 detail: "x".repeat(200),
             }],
         };
-        let rows = record.to_rows(&RowableContext::Delimited);
+        let rows = record.to_rows(&RowableContext::Tty);
         assert_eq!(rows[0][3].chars().count(), DETAIL_CHARS);
+        // delimited output is complete
+        let rows = record.to_rows(&RowableContext::Delimited);
+        assert_eq!(rows[0][3].chars().count(), 200);
     }
 
     #[test]

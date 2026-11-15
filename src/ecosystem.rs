@@ -33,11 +33,15 @@ pub enum Ecosystem {
     #[value(name = "precommit")]
     PreCommit,
     Swift,
+    /// Chromium-family browser extensions (Chrome, Edge, Brave, Vivaldi, Opera, Arc, ...).
+    Chromium,
+    /// Firefox-family browser extensions (Firefox, LibreWolf, Waterfox, Zen, ...).
+    Firefox,
 }
 
 impl Ecosystem {
     /// All ecosystems, in canonical order.
-    pub const ALL: [Ecosystem; 10] = [
+    pub const ALL: [Ecosystem; 12] = [
         Ecosystem::Python,
         Ecosystem::Npm,
         Ecosystem::Cargo,
@@ -48,6 +52,8 @@ impl Ecosystem {
         Ecosystem::Php,
         Ecosystem::PreCommit,
         Ecosystem::Swift,
+        Ecosystem::Chromium,
+        Ecosystem::Firefox,
     ];
 
     /// The name used on the command line and in serialized output.
@@ -63,7 +69,14 @@ impl Ecosystem {
             Ecosystem::Php => "php",
             Ecosystem::PreCommit => "precommit",
             Ecosystem::Swift => "swift",
+            Ecosystem::Chromium => "chromium",
+            Ecosystem::Firefox => "firefox",
         }
+    }
+
+    /// The ecosystem named by `cli_name`, if known (a newer fetter may send ecosystems this one does not know).
+    pub fn from_cli_name(name: &str) -> Option<Self> {
+        Ecosystem::ALL.into_iter().find(|e| e.cli_name() == name)
     }
 
     /// The ecosystem name used by OSV; see https://ossf.github.io/osv-schema/#affectedpackage-field. These are case-sensitive.
@@ -80,13 +93,18 @@ impl Ecosystem {
             // not in OSV; see `has_osv`
             Ecosystem::PreCommit => "",
             Ecosystem::Swift => "SwiftURL",
+            // not in OSV
+            Ecosystem::Chromium | Ecosystem::Firefox => "",
         }
     }
 
     /// True if the OSV API matches versions for this ecosystem server-side. GitHub Actions advisories carry only `ECOSYSTEM` ranges that OSV does not evaluate (verified live 2026-11-13), so its versions are matched client-side (`osv_match`).
     /// True if OSV has this ecosystem. pre-commit hooks are audited through the packages they install (`eco::precommit::map_hooks`).
     pub fn has_osv(&self) -> bool {
-        !matches!(self, Ecosystem::PreCommit)
+        !matches!(
+            self,
+            Ecosystem::PreCommit | Ecosystem::Chromium | Ecosystem::Firefox
+        )
     }
 
     pub fn osv_server_side_versions(&self) -> bool {
@@ -104,7 +122,10 @@ impl Ecosystem {
             | Ecosystem::VsCode
             | Ecosystem::Php
             | Ecosystem::PreCommit
-            | Ecosystem::Swift => name.to_lowercase(),
+            | Ecosystem::Swift
+            // Chromium ids are case-insensitive; Firefox ids (emails, GUIDs) are compared case-insensitively
+            | Ecosystem::Chromium
+            | Ecosystem::Firefox => name.to_lowercase(),
             // module paths and gem names are case-sensitive
             Ecosystem::Go | Ecosystem::Ruby => name.to_string(),
         }

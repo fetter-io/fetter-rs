@@ -135,6 +135,8 @@ mod tests {
         assert_eq!(lines.next().unwrap().unwrap(), "php,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "precommit,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "swift,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "chromium,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "firefox,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "all,1,1,3");
         assert!(lines.next().is_none());
     }

@@ -59,6 +59,8 @@ pub enum DeriveFormat {
     Purls,
     /// A list of purls with VERS ranges, one per observed package (all ecosystems; the anchor applies).
     PurlVers,
+    /// A CycloneDX 1.6 JSON SBOM, one component per observed package version, with the sites where it was found (all ecosystems; the anchor does not apply).
+    Cyclonedx,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -960,6 +962,28 @@ where
             format,
         }) => {
             let sfs = get_sfs()?;
+            if matches!(format, Some(DeriveFormat::Cyclonedx)) {
+                let (bom, without) = sfs.to_cyclonedx();
+                if without > 0 {
+                    eprintln!("fetter: {without} package(s) have no purl type and are listed without one");
+                }
+                let text = format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&bom).map_err(|e| e.to_string())?
+                );
+                match subcommands {
+                    Some(DeriveSubcommand::Write { output }) => {
+                        std::fs::write(output, text).map_err(|e| {
+                            format!("Cannot write {}: {e}", output.display())
+                        })?
+                    }
+                    Some(DeriveSubcommand::Display) | None => {
+                        let mut writer = get_writer(stderr);
+                        let _ = write!(writer, "{text}");
+                    }
+                }
+                return Ok(());
+            }
             if matches!(format, Some(DeriveFormat::Purls | DeriveFormat::PurlVers)) {
                 let (purls, without) = match format {
                     Some(DeriveFormat::PurlVers) => sfs.to_purl_ranges((*anchor).into()),
@@ -1010,7 +1034,12 @@ where
                     let mut writer = get_writer(stderr);
                     let _ = write!(writer, "{}", al.to_toml());
                 }
-                (DeriveFormat::Purls | DeriveFormat::PurlVers, _) => {
+                (
+                    DeriveFormat::Purls
+                    | DeriveFormat::PurlVers
+                    | DeriveFormat::Cyclonedx,
+                    _,
+                ) => {
                     unreachable!("handled above")
                 }
             }

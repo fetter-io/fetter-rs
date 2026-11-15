@@ -21,6 +21,7 @@ use crate::dep_manifest::DepManifest;
 use crate::eco::infer_origins;
 use crate::eco::scanner_for;
 use crate::eco::scanners;
+use crate::eco::Hook;
 use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::origin_site::Origin;
@@ -28,6 +29,7 @@ use crate::origin_site::Site;
 use crate::origin_site::SiteKind;
 use crate::package::Package;
 use crate::package_match::match_str;
+#[cfg(test)]
 use crate::path_shared::PathShared;
 use crate::scan_report::ScanReport;
 use crate::site_customize::install_validation;
@@ -67,180 +69,30 @@ pub struct ScanFS {
     pub package_to_sites: HashMap<Package, Vec<Site>>,
     /// A mapping of Site to the Origins that use it; derived from `origin_to_sites`.
     pub site_to_origins: HashMap<Site, Vec<Origin>>,
-    /// Optionally populate EnvMarkerState for all Python Origins, only if env markers are found.
+    /// Optionally populate EnvMarkerState for all Python Origins, only if env markers are found. Local to the installation: not serialized.
     pub origin_to_ems: Option<HashMap<Origin, EnvMarkerState>>,
+    /// Optionally, the hooks of each site (for `inspect`), when collected with `load_hooks` (as `monitor-scan` does) or read from a payload; sites without hooks are absent. Serialized when present.
+    pub site_to_hooks: Option<HashMap<Site, Vec<Hook>>>,
     /// Scan configuration
-    config: ScanConfig,
+    pub(crate) config: ScanConfig,
     /// Store the hash of the un-normalized origin inputs for cache lookup.
-    origins_hash: String,
+    pub(crate) origins_hash: String,
 }
-
-struct PathIndexer {
-    paths: Vec<String>,
-    path_to_index: HashMap<PathShared, usize>,
-}
-
-impl PathIndexer {
-    fn new() -> Self {
-        Self {
-            paths: Vec::new(),
-            path_to_index: HashMap::new(),
-        }
-    }
-
-    fn get_index<S: serde::ser::Error>(&mut self, p: &PathShared) -> Result<usize, S> {
-        if let Some(&idx) = self.path_to_index.get(p) {
-            Ok(idx)
-        } else {
-            let idx = self.paths.len();
-            let s = p
-                .as_path()
-                .to_str()
-                .ok_or_else(|| S::custom("Invalid UTF-8 in path"))?;
-            self.path_to_index.insert(p.clone(), idx);
-            self.paths.push(s.to_string());
-            Ok(idx)
-        }
-    }
-}
-
-/// Flattened data representation used for serialization: a path dictionary, an Origin table and a Site table (both referring to paths by index), and mappings that refer to Origins and Sites by index. `site_to_origins` is not stored, as it is derived from `origin_to_sites`.
-type ScanFSData = (
-    Vec<String>,                       // paths
-    Vec<(Ecosystem, usize)>,           // origins: (ecosystem, path index)
-    Vec<(Ecosystem, SiteKind, usize)>, // sites: (ecosystem, kind, path index)
-    Vec<(usize, Vec<usize>)>,          // origin index to site indices
-    Vec<(Package, Vec<usize>)>,        // package to site indices
-    ScanConfig,                        // config
-    String,                            // origins_hash
-);
 
 impl Serialize for ScanFS {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Assign indices in sorted order for stable output.
-        let mut origins: Vec<&Origin> = self.origin_to_sites.keys().collect();
-        origins.sort();
-        let mut sites: Vec<&Site> = self
-            .origin_to_sites
-            .values()
-            .chain(self.package_to_sites.values())
-            .flatten()
-            .collect();
-        sites.sort();
-        sites.dedup();
-
-        let mut pi = PathIndexer::new();
-        let mut origin_to_index: HashMap<&Origin, usize> = HashMap::new();
-        let mut origin_table = Vec::with_capacity(origins.len());
-        for (i, o) in origins.iter().enumerate() {
-            origin_table.push((o.ecosystem, pi.get_index(&o.path)?));
-            origin_to_index.insert(o, i);
-        }
-        let mut site_to_index: HashMap<&Site, usize> = HashMap::new();
-        let mut site_table = Vec::with_capacity(sites.len());
-        for (i, s) in sites.iter().enumerate() {
-            site_table.push((s.ecosystem, s.kind, pi.get_index(&s.path)?));
-            site_to_index.insert(s, i);
-        }
-
-        // inner Vecs are already sorted by construction
-        let origin_to_sites_idx: Vec<(usize, Vec<usize>)> = origins
-            .iter()
-            .map(|o| {
-                let site_idx = self.origin_to_sites[*o]
-                    .iter()
-                    .map(|s| site_to_index[s])
-                    .collect();
-                (origin_to_index[o], site_idx)
-            })
-            .collect();
-
-        let mut packages: Vec<&Package> = self.package_to_sites.keys().collect();
-        packages.sort();
-        let package_to_sites_idx: Vec<(&Package, Vec<usize>)> = packages
-            .into_iter()
-            .map(|p| {
-                let site_idx = self.package_to_sites[p]
-                    .iter()
-                    .map(|s| site_to_index[s])
-                    .collect();
-                (p, site_idx)
-            })
-            .collect();
-
-        let data = (
-            pi.paths,
-            origin_table,
-            site_table,
-            origin_to_sites_idx,
-            package_to_sites_idx,
-            &self.config,
-            &self.origins_hash,
-        );
-        data.serialize(serializer)
+    /// The schema 1 scan object (see `transmit`).
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        crate::transmit::serialize_scan(self, serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for ScanFS {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let (
-            paths,
-            origin_table,
-            site_table,
-            origin_to_sites_idx,
-            package_to_sites_idx,
-            config,
-            origins_hash,
-        ): ScanFSData = Deserialize::deserialize(deserializer)?;
-
-        let get = |i: usize| -> Result<PathShared, D::Error> {
-            paths
-                .get(i)
-                .map(|p| PathShared::from(p.as_str()))
-                .ok_or_else(|| serde::de::Error::custom("path index out of range"))
-        };
-        let origins: Vec<Origin> = origin_table
-            .into_iter()
-            .map(|(e, i)| Ok(Origin::new(e, get(i)?)))
-            .collect::<Result<_, D::Error>>()?;
-        let sites: Vec<Site> = site_table
-            .into_iter()
-            .map(|(e, k, i)| Ok(Site::new(e, k, get(i)?)))
-            .collect::<Result<_, D::Error>>()?;
-
-        let site_at = |i: usize| -> Result<Site, D::Error> {
-            sites
-                .get(i)
-                .cloned()
-                .ok_or_else(|| serde::de::Error::custom("site index out of range"))
-        };
-        let mut origin_to_sites = HashMap::new();
-        for (oi, sis) in origin_to_sites_idx {
-            let origin = origins
-                .get(oi)
-                .cloned()
-                .ok_or_else(|| serde::de::Error::custom("origin index out of range"))?;
-            let s: Vec<Site> = sis.into_iter().map(site_at).collect::<Result<_, _>>()?;
-            origin_to_sites.insert(origin, s);
-        }
-        let mut package_to_sites = HashMap::new();
-        for (pkg, sis) in package_to_sites_idx {
-            let s: Vec<Site> = sis.into_iter().map(site_at).collect::<Result<_, _>>()?;
-            package_to_sites.insert(pkg, s);
-        }
-
-        Ok(ScanFS::from_parts(
-            origin_to_sites,
-            package_to_sites,
-            config,
-            origins_hash,
-        ))
+    /// From the schema 1 scan object; origins, sites and packages of unknown ecosystems or site kinds are skipped (`MonitorPayload::from_json` reports them).
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let w = crate::transmit::ScanIn::deserialize(deserializer)?;
+        crate::transmit::scan_from_wire(w)
+            .map(|(sfs, _)| sfs)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -249,8 +101,11 @@ fn supports_purge(package: &Package) -> bool {
     package.ecosystem == Ecosystem::Python
 }
 
-/// Collect packages from a Site, dispatching to its ecosystem's scanner.
+/// Collect packages from a Site, dispatching to its ecosystem's scanner; a `.pre-commit-config.yaml` read for another ecosystem gives its hooks' pinned `additional_dependencies`.
 fn site_to_packages(site: &Site) -> Vec<Package> {
+    if crate::eco::precommit::is_dependency_site(site) {
+        return crate::eco::precommit::dependency_site_packages(site);
+    }
     scanner_for(site.ecosystem)
         .map(|s| s.site_to_packages(site))
         .unwrap_or_default()
@@ -258,7 +113,7 @@ fn site_to_packages(site: &Site) -> Vec<Package> {
 
 impl ScanFS {
     /// Final assembly of a ScanFS: derives `site_to_origins` and sorts all inner Vecs so that all downstream output is deterministic. All constructors must end here.
-    fn from_parts(
+    pub(crate) fn from_parts(
         mut origin_to_sites: HashMap<Origin, Vec<Site>>,
         mut package_to_sites: HashMap<Package, Vec<Site>>,
         config: ScanConfig,
@@ -291,6 +146,7 @@ impl ScanFS {
             package_to_sites,
             site_to_origins,
             origin_to_ems: None,
+            site_to_hooks: None,
             config,
             origins_hash,
         }
@@ -356,11 +212,11 @@ impl ScanFS {
         }
     }
 
-    /// Path of the cache file for a given hash; the `v5` marker ensures caches from prior formats are never read.
+    /// Path of the cache file for a given hash; the `v6` marker (the schema 1 scan object) ensures caches from prior formats are never read.
     fn cache_path(cache_config: &CacheConfig, origins_hash: &str) -> PathBuf {
         cache_config
             .directory
-            .join(format!("scan_fs_v5_{origins_hash}"))
+            .join(format!("scan_fs_v6_{origins_hash}"))
             .with_extension("json")
     }
 
@@ -431,6 +287,20 @@ impl ScanFS {
     //--------------------------------------------------------------------------
 
     // If not set, optionally load EnvMarkerState for each Python Origin
+    /// Collect the hooks of every site (as `inspect` reports them), for serialization.
+    pub(crate) fn load_hooks(&mut self) {
+        let mut sites: Vec<&Site> = self.site_to_origins.keys().collect();
+        sites.sort();
+        let found: HashMap<Site, Vec<Hook>> = sites
+            .into_par_iter()
+            .filter_map(|s| {
+                let hooks = crate::eco::site_hooks(s);
+                (!hooks.is_empty()).then(|| (s.clone(), hooks))
+            })
+            .collect();
+        self.site_to_hooks = Some(found);
+    }
+
     pub(crate) fn load_env_marker_state(&mut self, log: FlagLog) {
         logger!(log, module_path!(), "Fetching EnvMarkerState");
 
@@ -635,6 +505,11 @@ impl ScanFS {
         crate::purl::purl_ranges(self.package_to_sites.keys(), anchor)
     }
 
+    /// A CycloneDX 1.6 BOM of all observed packages, and the number of packages without a purl.
+    pub(crate) fn to_cyclonedx(&self) -> (serde_json::Value, usize) {
+        crate::cyclonedx::to_bom(&self.package_to_sites, None)
+    }
+
     /// The purls of all observed packages, sorted and unique, and the number of packages without a purl (a pre-commit hook not on GitHub, a Swift registry identity).
     pub(crate) fn to_purls(&self) -> (Vec<String>, usize) {
         let mut out = Vec::new();
@@ -682,11 +557,22 @@ impl ScanFS {
         // packages.sort();
         let package_to_sites = packages
             .iter()
-            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .map(|p| (p.clone(), self.installed_sites(p)))
             .collect();
 
         let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
         sr.remove(log)
+    }
+
+    /// The sites where a package is installed (not a lockfile or manifest that names it): the only sites `purge-*` removes from.
+    fn installed_sites(&self, package: &Package) -> Vec<Site> {
+        self.package_to_sites
+            .get(package)
+            .into_iter()
+            .flatten()
+            .filter(|s| s.kind == SiteKind::Installed)
+            .cloned()
+            .collect()
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -706,7 +592,7 @@ impl ScanFS {
         // packages.sort();
         let package_to_sites = packages
             .iter()
-            .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
+            .map(|p| (p.clone(), self.installed_sites(p)))
             .collect();
 
         let sr = UnpackReport::from_package_to_sites(false, &package_to_sites);
@@ -1893,7 +1779,10 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null,\"purl\":\"pkg:pypi/flask@1.1.3\"},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null,\"purl\":\"pkg:pypi/numpy@1.19.3\"},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null,\"purl\":\"pkg:pypi/static-frame@2.13.0\"},[0]]],{\"force_usite\":false,\"all_users\":false,\"ecosystems\":[\"python\",\"npm\",\"cargo\",\"gha\",\"vscode\",\"go\",\"ruby\",\"php\",\"precommit\",\"swift\"],\"roots\":[]},\"75c417d511f2eb752d27ccb8702a328398641058662417dbbdbf00d58457f30d\"]");
+        assert_eq!(
+            json,
+            r#"{"paths":["/usr/bin/python3","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0}],"sites":[{"ecosystem":"python","kind":"installed","path":1}],"origin_sites":[{"origin":0,"sites":[0]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"1.1.3","direct_url":null,"purl":"pkg:pypi/flask@1.1.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.19.3","direct_url":null,"purl":"pkg:pypi/numpy@1.19.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"static-frame","key":"static_frame","version":"2.13.0","direct_url":null,"purl":"pkg:pypi/static-frame@2.13.0"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[]},"origins_hash":"6790e82a3e55707db3b1eeca52a49af6ec99195a27db74c790f54f90e2b111da"}"#
+        );
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.origin_to_sites.len(), 1);
@@ -1939,7 +1828,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         );
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null,"purl":"pkg:pypi/flask@2.0.1"},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null,"purl":"pkg:pypi/numpy@1.21.0"},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null,"purl":"pkg:pypi/pandas@1.3.0"},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null,"purl":"pkg:pypi/requests@2.25.1"},[0]]],{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift"],"roots":[]},"hash"]"#;
+        let expected_json = r#"{"paths":["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0},{"ecosystem":"python","path":1}],"sites":[{"ecosystem":"python","kind":"installed","path":2},{"ecosystem":"python","kind":"installed","path":3}],"origin_sites":[{"origin":0,"sites":[0,1]},{"origin":1,"sites":[1]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null,"purl":"pkg:pypi/flask@2.0.1"},"sites":[1]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null,"purl":"pkg:pypi/numpy@1.21.0"},"sites":[0,1]},{"package":{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null,"purl":"pkg:pypi/pandas@1.3.0"},"sites":[0]},{"package":{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null,"purl":"pkg:pypi/requests@2.25.1"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[]},"origins_hash":"hash"}"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1973,7 +1862,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "75c417d511f2eb752d27ccb8702a328398641058662417dbbdbf00d58457f30d"
+            "6790e82a3e55707db3b1eeca52a49af6ec99195a27db74c790f54f90e2b111da"
         );
     }
 
@@ -1989,7 +1878,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "d60e2e2b8e94eb8aaa9dade8908614b1c1db75f9c2d0913ecdd7e7cf5497a7c1"
+            "f6c27bd7e548dee291b0e80f7888acbf587de1b4cbde07711ad056c52a24dab7"
         );
     }
 

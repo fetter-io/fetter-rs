@@ -1,6 +1,10 @@
 //! Per-ecosystem scanners. Each ecosystem implements `EcosystemScanner`; the walker (`crate::walk`) dispatches to all enabled scanners during a single filesystem walk.
 
+pub(crate) mod browser;
+pub(crate) mod browser_version;
 pub(crate) mod cargo;
+pub(crate) mod chromium;
+pub(crate) mod firefox;
 pub(crate) mod gha;
 pub(crate) mod go;
 pub(crate) mod npm;
@@ -52,12 +56,35 @@ impl DirItem {
 }
 
 /// Code that runs without being explicitly invoked: at interpreter startup, at install time, or at editor startup (reported by `inspect`). Only hooks that are cheap to detect and rare are reported, so that their presence is a signal (see SPEC §4).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct Hook {
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub struct Hook {
     /// What has the hook: a file name (Python), or a package and hook kind (npm, VS Code).
-    pub(crate) name: String,
+    pub name: String,
     /// The code or setting that runs, e.g. the first lines of a `.pth` file or an install script.
-    pub(crate) detail: String,
+    pub detail: String,
+}
+
+/// The hooks of one site, sorted and unique, via its ecosystem's scanner. A `.pre-commit-config.yaml` read for another ecosystem's packages has none.
+pub(crate) fn site_hooks(site: &Site) -> Vec<Hook> {
+    if precommit::is_dependency_site(site) {
+        return Vec::new();
+    }
+    let mut hooks = scanner_for(site.ecosystem)
+        .map(|s| s.site_to_hooks(site))
+        .unwrap_or_default();
+    hooks.sort();
+    hooks.dedup();
+    hooks
 }
 
 /// The installed files of one package at one site (for `unpack-*` and `purge-*`). `files` are explicit files, each with whether it exists; `dirs` are directories that belong wholly to the package (removed recursively by `purge-*`).
@@ -192,6 +219,8 @@ static PHP: php::PhpScanner = php::PhpScanner;
 static PRECOMMIT: precommit::PreCommitScanner = precommit::PreCommitScanner;
 static SWIFT: swift::SwiftScanner = swift::SwiftScanner;
 static VSCODE: vscode::VsCodeScanner = vscode::VsCodeScanner;
+static CHROMIUM: chromium::ChromiumScanner = chromium::ChromiumScanner;
+static FIREFOX: firefox::FirefoxScanner = firefox::FirefoxScanner;
 
 /// Return the scanner for an ecosystem, if one is implemented.
 pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn EcosystemScanner> {
@@ -206,6 +235,8 @@ pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn Ecosystem
         Ecosystem::Php => Some(&PHP),
         Ecosystem::PreCommit => Some(&PRECOMMIT),
         Ecosystem::Swift => Some(&SWIFT),
+        Ecosystem::Chromium => Some(&CHROMIUM),
+        Ecosystem::Firefox => Some(&FIREFOX),
     }
 }
 

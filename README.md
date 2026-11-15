@@ -12,13 +12,13 @@
 
 ## System-wide Package Discovery, Validation, and Allow-Listing
 
-The `fetter` command-line tool finds the packages on a system and checks them against an allow list and the Open Source Vulnerabilities (OSV) database. It covers Python environments, npm projects, Rust (Cargo) projects and installed crates, Go modules, Ruby projects and installed gems, PHP (Composer) projects, Swift packages, pre-commit hooks, GitHub Actions workflows, and VS Code extensions, all in a single fast, multi-threaded scan.
+The `fetter` command-line tool finds the packages on a system and checks them against an allow list and the Open Source Vulnerabilities (OSV) database. It covers Python environments, npm projects, Rust (Cargo) projects and installed crates, Go modules, Ruby projects and installed gems, PHP (Composer) projects, Swift packages, pre-commit hooks, GitHub Actions workflows, VS Code extensions, and browser extensions (Chromium and Firefox families), all in a single fast, multi-threaded scan.
 
 As an alternative to `pip-audit`, `fetter` can look up vulnerabilities for packages defined in requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`, and for packages of every supported ecosystem in a `fetter.toml` allow list. Full vulnerability details, including CVSS scores, are provided.
 
 Additionally, `fetter` can configure a Python virtual environment to validate package alignment before every Python run, enforcing a locked and reproducible development environment.
 
-* 🔎 System Scanning: Finds Python, npm, Cargo, Go, Ruby, PHP, Swift, pre-commit, GitHub Actions, and VS Code packages across a system in one pass.
+* 🔎 System Scanning: Finds Python, npm, Cargo, Go, Ruby, PHP, Swift, pre-commit, GitHub Actions, VS Code, and browser extension packages across a system in one pass.
 * 🛡️ Vulnerability Audit: Scans defined or installed packages of every ecosystem for security vulnerabilities in the OSV database.
 * ⚖️ Package Validation: Checks packages against a cross-ecosystem `fetter.toml` allow list, or Python packages against requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`, sourced locally, via URLs, or via `git` repositories.
 * 🪝 Hook Inspection: Reports code that runs without being invoked: Python startup files, npm install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, and VS Code extensions that activate on every editor start.
@@ -28,7 +28,7 @@ Additionally, `fetter` can configure a Python virtual environment to validate pa
 * 🪢 Bound Requirements: Derive an allow list from observed system packages.
 * 🧹 Search and Purge: Find packages and their installed files across environments, and remove Python packages.
 * 🧩 Flexible Output: Display results in terminal or export to delimited files; JSON output carries a package URL (purl) for every package.
-* 📦 SBOM Input: Audit or validate against a CycloneDX or SPDX SBOM, or a list of purls with optional VERS version ranges.
+* 📦 SBOMs: Export a scan of every ecosystem as a CycloneDX SBOM; audit or validate against a CycloneDX or SPDX SBOM, or a list of purls with optional VERS version ranges.
 
 
 ## Articles
@@ -80,9 +80,13 @@ Every command works on all ecosystems unless limited with `-E` / `--ecosystem` (
 | `ruby` | A project directory with a `Gemfile.lock` (or `gems.locked`), or a gem directory (`~/.gem/ruby/3.3.0`, an rbenv or rvm Ruby's gems, `vendor/bundle/ruby/3.3.0`, system gem directories, RubyInstaller on Windows) | The lockfile; for a gem directory, the directory | Locked gems (`GEM`, `GIT`, and plugin sources; local `PATH` gems are excluded); installed `.gemspec` files, including Ruby's default gems |
 | `php` | A project directory with a `composer.json` and a `composer.lock` or an installed vendor directory; or a vendor directory on its own | The vendor directory (`vendor`, or `config.vendor-dir`), if installed; otherwise `composer.lock` | `composer/installed.json`; `composer.lock` (`packages` and `packages-dev`; path packages are excluded). Branch versions (`dev-main`) are not audited |
 | `swift` | A directory with a `Package.resolved` (a SwiftPM package, or an Xcode project's `xcshareddata/swiftpm`) | The `Package.resolved` | Remote pins, named by repository URL as OSV names them (`github.com/apple/swift-nio`; case-sensitive, as written); local pins are excluded; branch and revision pins are resolved to tags where possible |
-| `precommit` | A directory with a `.pre-commit-config.yaml` | The config | Hook repositories (`repo` and `rev`; `local` and `meta` are excluded), named by URL (`github.com/psf/black`). Audited through the packages they install (see below) |
+| `precommit` | A directory with a `.pre-commit-config.yaml` | The config | Hook repositories (`repo` and `rev`; `local` and `meta` are excluded), named by URL (`github.com/psf/black`). Audited through the packages they install (see below). Hooks' pinned `additional_dependencies` are reported in their own ecosystems (see below) |
 | `gha` | A repository root with `.github/workflows` | Each workflow and action file | `uses: owner/repo@ref` steps and jobs |
 | `vscode` | An editor directory (`~/.vscode`, `~/.cursor`, `~/.windsurf`, …) | Its `extensions` directory | Installed extensions, as `publisher.name`; their bundled `node_modules` are reported as npm packages |
+| `chromium` | A browser profile (`Default`, `Profile 1`, …) of Chrome, Edge, Brave, Vivaldi, Opera, Arc, Chromium, or Yandex, on macOS, Linux (including Snap and Flatpak), or Windows | The profile | Extensions from the profile's `Preferences` and `Secure Preferences`, including unpacked (developer mode) ones; built-in component extensions are excluded. Named by extension id (`cjpalhdlnbpafiamejdnhcphjbkeiagm`) |
+| `firefox` | A profile of Firefox, LibreWolf, Waterfox, Zen, Floorp, or Thunderbird | The profile | Extensions from the profile's `extensions.json`; add-ons built into the browser are excluded. Named by add-on id (`uBlock0@raymondhill.net`) |
+
+Browser profiles hold private data. For browser extensions, `fetter` reads only the files that describe extensions (for Chromium, `Preferences` and `Secure Preferences`, of which only the extension settings are used, and each extension's `manifest.json`; for Firefox, `extensions.json`) and keeps nothing but the packages found. OSV has no advisories for browser extensions, so they are not audited; `inspect`, `validate`, and `derive` apply.
 
 By default, `fetter` searches the home directory (and, for Python, executables on the `PATH`). Use `--origin` to name specific origins, or `--root` to search only specific directories:
 
@@ -253,7 +257,7 @@ $ fetter --origin .venv validate --bound requirements.txt --superset --subset
 
 ### Validating All Ecosystems with `fetter.toml`
 
-A `fetter.toml` allow list has one table per ecosystem. Python requirements use PEP 508 syntax; other entries map a package name to a requirement in its ecosystem's native syntax (npm ranges for npm and VS Code, Cargo requirements for Cargo, and refs for GitHub Actions). Go has no range syntax of its own, so Go entries use npm ranges over Go versions, which keep their `v` (`">=v1.2.3 <v2"`). Ruby entries use RubyGems requirements (`"~> 7.1"`, `">= 1.0, < 2"`), PHP entries use Composer constraints (`"^5.4 || ^6.2"`, `"~7.4"`, `"dev-main"`), and Swift entries use npm-style ranges (`">=2.6.4 <3"`, or a revision SHA for a branch pin). Go and Ruby names are case-sensitive, as in their registries. An array means "any of".
+A `fetter.toml` allow list has one table per ecosystem. Python requirements use PEP 508 syntax; other entries map a package name to a requirement in its ecosystem's native syntax (npm ranges for npm and VS Code, Cargo requirements for Cargo, and refs for GitHub Actions). Go has no range syntax of its own, so Go entries use npm ranges over Go versions, which keep their `v` (`">=v1.2.3 <v2"`). Ruby entries use RubyGems requirements (`"~> 7.1"`, `">= 1.0, < 2"`), PHP entries use Composer constraints (`"^5.4 || ^6.2"`, `"~7.4"`, `"dev-main"`), Swift entries use npm-style ranges (`">=2.6.4 <3"`, or a revision SHA for a branch pin), and browser extension entries (`chromium`, `firefox`) use comma-separated comparisons in the browser's version order (`">=1.62, <2"`, an exact version, or `"*"` for any version). Go and Ruby names are case-sensitive, as in their registries. An array means "any of".
 
 The `derive` command writes a `fetter.toml` from the packages found (a requirements file, if all of them are Python packages; use `--format` to choose). The `--anchor` (`-a`) argument sets whether observed versions become lower bounds (`lower`), upper bounds (`upper`), or both (`both`: the range from the lowest to the highest version observed, or an exact version if only one is):
 
@@ -319,6 +323,13 @@ $ fetter validate --bound allow.txt
 
 Python environment markers, extras and direct-URL requirements have no purl or VERS form; use a `fetter.toml` or requirements file for those.
 
+`derive --format cyclonedx` writes a [CycloneDX](https://cyclonedx.org) 1.6 JSON SBOM of every package version found, in all ecosystems, for other SBOM tools or as a bound for `validate` and `lookup-bound`. Each component has its purl, and each site where it was found is an `evidence.occurrences` entry (with its kind, installed, lockfile or manifest, in `additionalContext`); the ecosystem and any VCS commit are `fetter:` properties. The anchor does not apply:
+
+```shell
+$ fetter derive -a lower --format cyclonedx write -o sbom.json
+$ fetter validate --bound sbom.json
+```
+
 
 ### Auditing Packages
 
@@ -355,6 +366,8 @@ GitHub Actions refs are matched to advisories by convention: an exact tag (`@v4.
 
 OSV has no pre-commit ecosystem, so `audit` maps each hook repository on GitHub to the packages it installs, and audits those in their own ecosystems. The repository's `.pre-commit-hooks.yaml` at the configured `rev` gives the hooks' languages; the language's manifest gives the package: `psf/black` at `rev: 23.1.0` is PyPI `black==23.1.0`, and wrapper repositories such as `astral-sh/ruff-pre-commit` or `pre-commit/mirrors-mypy` give the tools they pin (`ruff==0.1.13`, `mypy==1.8.0`). Python, node, Go, and Rust hooks are mapped; others (Docker, system, script) are listed as not audited. Frozen revs (`rev: <sha>  # frozen: v1.2.3`) are checked against their tags as for GitHub Actions pins. This requires network access to GitHub and `git`.
 
+A hook's `additional_dependencies` in the `.pre-commit-config.yaml` itself (in any repository, `local` included) are installed into the hook's environment, so pinned ones are reported as packages of their own ecosystems, with the config as their site: `scan`, `audit`, `validate`, and `derive` see them without network access. The hook's `language`, if the config gives it, decides the ecosystem; otherwise the form does: `name==1.2.3` is Python, `name@1.2.3` npm, and `host.tld/path@v1.2.3` Go (on GitHub, GitLab, and Bitbucket the module is the repository root). With `language: ruby`, `name:1.2.3` is a gem. Unpinned entries (`types-requests`, `attrs>=23`) are not reported, since the version installed is not known; nor are Rust dependencies, whose versions are requirements.
+
 ```shell
 $ fetter -E precommit audit
 $ fetter -E precommit lookup-name "github.com/psf/black@23.1.0"
@@ -362,12 +375,20 @@ $ fetter -E precommit lookup-name "github.com/psf/black@23.1.0"
 
 ### Inspecting Hooks
 
-The `inspect` command reports code that runs without being explicitly invoked: Python `.pth` files with executable lines and `sitecustomize` / `usercustomize` modules, npm packages with install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, and VS Code extensions that activate on every editor start.
+The `inspect` command reports code that runs without being explicitly invoked: Python `.pth` files with executable lines and `sitecustomize` / `usercustomize` modules, npm packages with install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, VS Code extensions that activate on every editor start, and browser extensions (see below).
 
 ```shell
 $ fetter --root ~/demo inspect
 Ecosystem  Site                                       Hook             Content
 python     ~/demo/.venv/lib/python3.12/site-packages  _virtualenv.pth  import _virtualenv
+```
+
+A browser extension is reported if it can read every site (`<all_urls>`, `*://*/*`), holds a strong permission (`debugger`, `management`, `nativeMessaging`, `proxy`), was installed outside the store (unpacked, sideloaded, or loaded temporarily), or is unsigned. Its content gives the extension's name, its access to all sites, notable permissions (such as `cookies` and `webRequest`), how it was installed, and whether it is disabled or uses Manifest V2. In a terminal, content is truncated; `write` saves it in full:
+
+```shell
+$ fetter -E firefox inspect write -o hooks.txt -d '|'
+Ecosystem|Site|Hook|Content
+firefox|~/Library/Application Support/Firefox/Profiles/kokrnh29.default|plugin@okta.com-6.49.0|Okta Browser Plugin; all sites: http://*/, https://*/; permissions: cookies, webNavigation, webRequest, webRequestBlocking; source: addons.mozilla.org
 ```
 
 
@@ -441,7 +462,7 @@ repos:
 
 ### Global Options
 
-- `--ecosystem, -E <ECOSYSTEMS>`: Limit to one or more ecosystems (`python`, `npm`, `cargo`, `go`, `ruby`, `php`, `swift`, `precommit`, `gha`, `vscode`), as a comma-separated list or a repeated flag. If omitted, all ecosystems are used.
+- `--ecosystem, -E <ECOSYSTEMS>`: Limit to one or more ecosystems (`python`, `npm`, `cargo`, `go`, `ruby`, `php`, `swift`, `precommit`, `gha`, `vscode`, `chromium`, `firefox`), as a comma-separated list or a repeated flag. If omitted, all ecosystems are used.
 - `--origin <PATHS>`: Provide zero or more origin paths, such as a Python executable or virtual environment, or a project directory. The ecosystem of each path is inferred; a directory can be an origin for several ecosystems. If omitted, all discoverable origins are used. (`--exe` and `-e` are accepted as aliases.)
 - `--root <DIRECTORIES>`: Search only these directories (recursively) for origins, instead of the home directory and system locations.
 - `--quiet, -q`: Disable terminal animations.
@@ -496,7 +517,7 @@ repos:
 - Description: Derive an allow list from discovered packages.
 - Options
   - `--anchor, -a <BOUND>`: Set the nature of the bound in the derived requirements: `lower`, `upper`, or `both` (from the lowest to the highest observed version, or exact if only one).
-  - `--format <FORMAT>`: Write a `requirements` file (Python packages only), a `fetter.toml` (`toml`, all ecosystems), a list of package URLs (`purls`, every observed package version; the anchor does not apply), or a list of purls with VERS ranges (`purl-vers`, one per package; the anchor applies). If omitted, a requirements file is written when all derived packages are Python, and a `fetter.toml` otherwise.
+  - `--format <FORMAT>`: Write a `requirements` file (Python packages only), a `fetter.toml` (`toml`, all ecosystems), a list of package URLs (`purls`, every observed package version; the anchor does not apply), a list of purls with VERS ranges (`purl-vers`, one per package; the anchor applies), or a CycloneDX 1.6 JSON SBOM (`cyclonedx`, every observed package version with its sites; the anchor does not apply). If omitted, a requirements file is written when all derived packages are Python, and a `fetter.toml` otherwise.
 - Subcommands
   - `display`: Show derived requirements in the terminal.
   - `write`: Save derived requirements to a file.
@@ -636,7 +657,7 @@ repos:
 
 ### Command: `fetter monitor-scan`
 
-- Description: Periodically scan the system and post the JSON scan output to a URL.
+- Description: Periodically scan the system and post the JSON scan output to a URL. The payload is a versioned JSON object (schema 1: the system, the time, and the scan's origins, sites, packages, and the hooks `inspect` reports for each site; the scan is `null` if unchanged since the last post). Readers ignore what they do not know, so newer payloads can be read by older readers; `fetter::MonitorPayload::from_json` also reads posts from fetter 3 and 4, as Python packages.
 - Options
   - `--period, -p <SECONDS>`: Set the period of the scan in seconds.
   - `--url, -u <URL>`: Provide the URL to which to post results.
@@ -647,7 +668,7 @@ repos:
 
 ### 5.0.0
 
-Support for multiple ecosystems: npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, and VS Code extensions, alongside Python. pre-commit hooks are audited through the packages they install. All are found in a single scan; use `-E` / `--ecosystem` to select ecosystems.
+Support for multiple ecosystems: npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, VS Code extensions, and Chromium and Firefox browser extensions, alongside Python. pre-commit hooks are audited through the packages they install, and their pinned `additional_dependencies` are reported in their own ecosystems. All are found in a single scan; use `-E` / `--ecosystem` to select ecosystems.
 
 All commands work across ecosystems: `scan`, `search`, `count`, `inspect`, `audit`, `derive`, `validate`, `lookup-name`, `lookup-bound`, `unpack-count`, and `unpack-files`. `purge-pattern` and `purge-invalid` remove only Python packages.
 
@@ -655,9 +676,9 @@ New `fetter.toml` allow list for `validate`, `derive`, `lookup-bound`, and `purg
 
 `lookup-name` lists versions from npm, crates.io, the Go module proxy, rubygems.org, Packagist, git tags, and Open VSX, given `-E <ECOSYSTEM>` and `name@requirement`.
 
-Package URLs (purls): `lookup-name` accepts a purl; `lookup-bound`, `validate`, and `purge-invalid` accept CycloneDX and SPDX 2.x JSON SBOMs and purl lists as bounds; a `fetter.toml` can list `purls`; `derive --format purls` writes them; JSON output gives each package's `purl`. Purls may carry VERS version ranges in purl lists and `fetter.toml`, and `derive --format purl-vers` writes them.
+Package URLs (purls): `lookup-name` accepts a purl; `lookup-bound`, `validate`, and `purge-invalid` accept CycloneDX and SPDX 2.x JSON SBOMs and purl lists as bounds; a `fetter.toml` can list `purls`; `derive --format purls` writes them; JSON output gives each package's `purl`. Purls may carry VERS version ranges in purl lists and `fetter.toml`, and `derive --format purl-vers` writes them. `derive --format cyclonedx` exports a CycloneDX 1.6 SBOM of all ecosystems.
 
-`inspect` reports npm install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, and VS Code extensions that activate on every editor start, in addition to Python startup files.
+`inspect` reports npm install scripts, Ruby gems with native extensions or RubyGems plugins, Composer plugins, VS Code extensions that activate on every editor start, and browser extensions with access to all sites, strong permissions, or an install outside the store, in addition to Python startup files. `inspect write` saves each hook's content in full.
 
 OSV queries are paginated, and failures to query OSV or a registry are errors rather than reported as no vulnerabilities. In `lookup-bound`, requirements whose package is not in its registry are reported as unresolved.
 
@@ -666,7 +687,7 @@ Breaking changes:
 * `--exe` / `-e` is replaced by `--origin` (with no short flag); the old names remain as hidden aliases. The new `--root` option, when given, replaces the default search locations.
 * `site-install` and `site-uninstall` move to `fetter python site-install` and `fetter python site-uninstall` (the old spellings are still accepted).
 * The default scan includes all ecosystems, not only Python.
-* Tables of `scan`, `search`, `audit`, `lookup-*`, `validate`, and `unpack-*` have a leading `Ecosystem` column; `count` reports origins, sites, and packages per ecosystem; `inspect` columns are `Ecosystem, Site, Hook, Content`. JSON output, including the `monitor-scan` payload, gains `ecosystem` fields.
+* Tables of `scan`, `search`, `audit`, `lookup-*`, `validate`, and `unpack-*` have a leading `Ecosystem` column; `count` reports origins, sites, and packages per ecosystem; `inspect` columns are `Ecosystem, Site, Hook, Content`. JSON output gains `ecosystem` fields. The `monitor-scan` payload is a versioned JSON object (schema 1) with named fields and per-site hooks.
 * `derive`, without `--format`, writes a `fetter.toml` when the scan includes non-Python packages.
 * JSON output gives each package a `purl` field.
 * `audit` and `lookup-*` exit with an error when OSV cannot be queried; audit JSON can include `unaudited` and `unresolved` lists.

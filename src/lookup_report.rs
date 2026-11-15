@@ -88,6 +88,11 @@ fn exact_version(eco: Ecosystem, spec: &str) -> Option<String> {
         Ecosystem::Gha | Ecosystem::PreCommit => {
             (s != "*" && !s.contains(',')).then(|| s.to_string())
         }
+        Ecosystem::Chromium | Ecosystem::Firefox => {
+            crate::eco::browser_version::BrowserReq::parse(eco, s)
+                .ok()
+                .and_then(|r| r.exact().map(str::to_string))
+        }
         Ecosystem::Go => {
             let v = s.strip_prefix('=').unwrap_or(s).trim();
             go_semver(v).map(|_| v.to_string())
