@@ -310,7 +310,10 @@ impl ValidationReport {
         }
         if !vf.permit_subset {
             for (key, entry) in section.iter() {
-                if !matched.contains(key.as_str()) && !ignored(&entry.name) {
+                if !matched.contains(key.as_str())
+                    && !ignored(&entry.name)
+                    && !entry.optional
+                {
                     records.push(ValidationRecord::new_other(
                         ecosystem,
                         None,

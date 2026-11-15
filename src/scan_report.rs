@@ -18,7 +18,7 @@ impl ScanRecord {
         ScanRecord { package, sites }
     }
 
-    /// Display order: by package, then by sites. Distinct packages can compare equal (e.g. the same name and version with different `direct_url`), so the sites tie-break keeps output deterministic.
+    /// Display order: by package (whose ordering distinguishes every distinct package), then by sites.
     fn cmp_display(a: &Self, b: &Self) -> std::cmp::Ordering {
         a.package
             .cmp(&b.package)

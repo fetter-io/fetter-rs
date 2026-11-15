@@ -15,8 +15,18 @@ enum VersionPart {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug, Clone)]
-pub struct VersionSpec(Vec<VersionPart>);
+/// A version as dot-separated parts (numbers or text) for comparison, plus the text as written. Equality, hashing and ordering use the parts (so `2024.01 == 2024.1`); display and serialization use the text, so versions round-trip exactly (e.g. RubyGems' `3.2024.0305`).
+#[derive(Clone)]
+pub struct VersionSpec {
+    parts: Vec<VersionPart>,
+    text: String,
+}
+
+impl fmt::Debug for VersionSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VersionSpec({:?})", self.parts)
+    }
+}
 
 impl Serialize for VersionSpec {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -50,18 +60,34 @@ impl VersionSpec {
                 }
             })
             .collect();
-        VersionSpec(parts)
+        VersionSpec {
+            parts,
+            text: version_str.to_string(),
+        }
+    }
+
+    /// Construct from parts, with the text derived from them (for computed bounds).
+    fn from_parts(parts: Vec<VersionPart>) -> Self {
+        let text = parts
+            .iter()
+            .map(|part| match part {
+                VersionPart::Number(num) => num.to_string(),
+                VersionPart::Text(text) => text.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(".");
+        VersionSpec { parts, text }
     }
     // https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
     pub(crate) fn is_compatible(&self, other: &Self) -> bool {
         if other < self {
             return false;
         }
-        let mut ub = self.0.clone(); // upper bound
+        let mut ub = self.parts.clone(); // upper bound
         let ub_len = ub.len();
         let mut numeric_count = 0;
         let numeric_total = self
-            .0
+            .parts
             .iter()
             .filter(|part| matches!(part, VersionPart::Number(_)))
             .count();
@@ -80,7 +106,7 @@ impl VersionSpec {
                 }
             }
         }
-        other < &VersionSpec(ub)
+        other < &VersionSpec::from_parts(ub)
     }
 
     // https://packaging.python.org/en/latest/specifications/version-specifiers/#arbitrary-equality
@@ -95,7 +121,7 @@ impl VersionSpec {
         if other < self {
             return false;
         }
-        let mut ub = self.0.clone(); // upper bound
+        let mut ub = self.parts.clone(); // upper bound
         let ub_len = ub.len();
         let mut numeric_count = 0;
 
@@ -110,7 +136,7 @@ impl VersionSpec {
                 }
             }
         }
-        other < &VersionSpec(ub)
+        other < &VersionSpec::from_parts(ub)
     }
 
     // https://python-poetry.org/docs/dependency-specification/#tilde-requirements
@@ -121,7 +147,7 @@ impl VersionSpec {
         if other < self {
             return false;
         }
-        let mut ub = self.0.clone(); // upper bound
+        let mut ub = self.parts.clone(); // upper bound
         let ub_len = ub.len();
         let mut numeric_count = 0;
 
@@ -136,12 +162,12 @@ impl VersionSpec {
                 }
             }
         }
-        other < &VersionSpec(ub)
+        other < &VersionSpec::from_parts(ub)
     }
 
     // Return True if this VersionSpec has a woldcard
     pub(crate) fn has_wildcard(&self) -> bool {
-        self.0.iter().rev().any(|part| match part {
+        self.parts.iter().rev().any(|part| match part {
             VersionPart::Number(_) => false,
             VersionPart::Text(text) => text == WILDCARD,
         })
@@ -149,23 +175,14 @@ impl VersionSpec {
 }
 impl fmt::Display for VersionSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let version_string = self
-            .0
-            .iter()
-            .map(|part| match part {
-                VersionPart::Number(num) => num.to_string(),
-                VersionPart::Text(text) => text.clone(),
-            })
-            .collect::<Vec<_>>()
-            .join(".");
-        write!(f, "{version_string}")
+        write!(f, "{}", self.text)
     }
 }
 
 // This hash implementation does not treat wildcards "*" special, which may be an issue as PartialEq does
 impl Hash for VersionSpec {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for part in &self.0 {
+        for part in &self.parts {
             part.hash(state);
         }
     }
@@ -175,11 +192,11 @@ impl Hash for VersionSpec {
 // https://packaging.python.org/en/latest/specifications/version-specifiers/#post-releases
 impl Ord for VersionSpec {
     fn cmp(&self, other: &Self) -> Ordering {
-        let max_len = self.0.len().max(other.0.len());
+        let max_len = self.parts.len().max(other.parts.len());
         for i in 0..max_len {
             // extend to max with zero padding
-            let self_part = self.0.get(i).unwrap_or(&VersionPart::Number(0));
-            let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
+            let self_part = self.parts.get(i).unwrap_or(&VersionPart::Number(0));
+            let other_part = other.parts.get(i).unwrap_or(&VersionPart::Number(0));
 
             let ordering = match (self_part, other_part) {
                 (VersionPart::Number(a), VersionPart::Number(b)) => a.cmp(b),
@@ -209,7 +226,7 @@ impl Ord for VersionSpec {
                 return ordering; // else, continue iteration
             }
         }
-        // self.0.len().cmp(&other.0.len())
+        // self.parts.len().cmp(&other.parts.len())
         Ordering::Equal
     }
 }
@@ -220,11 +237,11 @@ impl PartialOrd for VersionSpec {
 }
 impl PartialEq for VersionSpec {
     fn eq(&self, other: &Self) -> bool {
-        let max_len = self.0.len().max(other.0.len());
+        let max_len = self.parts.len().max(other.parts.len());
         for i in 0..max_len {
             // extend to max with zero padding
-            let self_part = self.0.get(i).unwrap_or(&VersionPart::Number(0));
-            let other_part = other.0.get(i).unwrap_or(&VersionPart::Number(0));
+            let self_part = self.parts.get(i).unwrap_or(&VersionPart::Number(0));
+            let other_part = other.parts.get(i).unwrap_or(&VersionPart::Number(0));
 
             match (self_part, other_part) {
                 // if wildcard "*" both equal
@@ -261,6 +278,18 @@ impl Eq for VersionSpec {}
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn test_text_round_trip_a() {
+        // comparison uses parts; display keeps the text as written
+        let v = VersionSpec::new("3.2024.0305");
+        assert_eq!(v.to_string(), "3.2024.0305");
+        assert_eq!(v, VersionSpec::new("3.2024.305"));
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"3.2024.0305\"");
+        let back: VersionSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.to_string(), "3.2024.0305");
+    }
 
     #[test]
     fn test_version_spec_a() {

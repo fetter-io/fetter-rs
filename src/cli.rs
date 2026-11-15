@@ -31,6 +31,7 @@ use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
 use crate::table::Tableable;
+use crate::unpack_report::UnpackReport;
 use crate::ureq_client::UreqClient;
 use crate::util::get_writer;
 use crate::util::path_normalize;
@@ -54,6 +55,8 @@ pub enum DeriveFormat {
     Requirements,
     /// A fetter.toml allow list (all ecosystems).
     Toml,
+    /// A list of purls, one per observed package version (all ecosystems; the anchor does not apply).
+    Purls,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -159,7 +162,7 @@ struct Cli {
     #[arg(long, short)]
     log: bool,
 
-    /// Force all output to stdout.
+    /// Force all output to stderr.
     #[arg(long)]
     stderr: bool,
 
@@ -171,7 +174,7 @@ struct Cli {
     #[arg(long, required = false)]
     user_site: bool,
 
-    /// When searching for all discoverable executables, include all user directories. Otherwise, include only the users home directory.
+    /// When searching for all discoverable origins, include all user directories. Otherwise, include only the user's home directory.
     #[arg(long, required = false)]
     all_users: bool,
 
@@ -186,7 +189,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<ScanSubcommand>,
     },
-    /// Inspect all sites for code files runnable on interpreter startup.
+    /// Inspect all sites for code that runs without being invoked: Python startup files, npm install scripts, and VS Code extensions activated on every editor start.
     Inspect {
         #[command(subcommand)]
         subcommands: Option<InspectSubcommand>,
@@ -325,7 +328,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<LookupBoundSubcommand>,
     },
-    /// Discover counts of all installed packages artifacts.
+    /// Discover counts of all installed packages artifacts (files and directories); packages known only from lockfiles or manifests have none.
     UnpackCount {
         /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
@@ -338,7 +341,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<UnpackCountSubcommand>,
     },
-    /// Discover file names of all installed package artifacts.
+    /// Discover file names of all installed package artifacts; packages known only from lockfiles or manifests have none.
     UnpackFiles {
         /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
@@ -351,7 +354,7 @@ enum Commands {
         #[command(subcommand)]
         subcommands: Option<UnpackFilesSubcommand>,
     },
-    /// Purge packages that match a search pattern.
+    /// Purge packages that match a search pattern (Python packages only, for now).
     PurgePattern {
         /// Provide a glob-like pattern to select packages.
         #[arg(short, long, default_value = "*")]
@@ -361,7 +364,7 @@ enum Commands {
         #[arg(long)]
         case: bool,
     },
-    /// Purge packages that are invalid based on dependency specification.
+    /// Purge packages that are invalid based on dependency specification (Python packages only, for now).
     PurgeInvalid {
         /// File path or URL from which to read bound requirements.
         #[arg(short, long, value_name = "FILE")]
@@ -646,6 +649,53 @@ enum UnpackFilesSubcommand {
 
 /// Print to stderr what an audit could not check: packages that could not be queried (e.g. no version, an unresolvable ref) and requirements whose package was not found in its registry (e.g. a private package). These do not change the exit code.
 fn report_unchecked(ar: &AuditReport) {
+    if !ar.precommit_hooks.is_empty() {
+        eprintln!(
+            "fetter: {} pre-commit hook repo(s) audited as the packages they install: {}",
+            ar.precommit_hooks.len(),
+            ar.precommit_hooks
+                .iter()
+                .map(|m| format!(
+                    "{}@{} = {}",
+                    m.hook.name,
+                    m.hook.version,
+                    m.packages
+                        .iter()
+                        .map(|p| format!("{} {}", p.ecosystem, p))
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    for m in &ar.pin_mismatches {
+        let short = &m.commit[..m.commit.len().min(12)];
+        let found = if m.tag_exists {
+            format!("tag {} is on another commit", m.comment)
+        } else {
+            format!("no tag {} exists", m.comment)
+        };
+        let audited = match &m.actual {
+            Some(v) => format!("audited as {v}, the tag of its commit"),
+            None => "not audited: its commit has no version tag".to_string(),
+        };
+        eprintln!(
+            "fetter: warning: {}@{short} has the comment {}, but {found}; {audited}",
+            m.name, m.comment
+        );
+    }
+    if !ar.resolved_pins.is_empty() {
+        eprintln!(
+            "fetter: {} SHA pin(s) without a version comment audited as the tag of their commit: {}",
+            ar.resolved_pins.len(),
+            ar.resolved_pins
+                .iter()
+                .map(|r| format!("{}@{} = {}", r.name, &r.commit[..r.commit.len().min(12)], r.version))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     if !ar.unaudited.is_empty() {
         eprintln!(
             "fetter: {} package(s) could not be audited: {}",
@@ -664,6 +714,22 @@ fn report_unchecked(ar: &AuditReport) {
             ar.unresolved
                 .iter()
                 .map(|u| format!("{} ({})", u.requirement, u.ecosystem))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+}
+
+/// Note selected packages that have no installed artifacts, rather than omitting them silently.
+fn report_without_artifacts(ur: &UnpackReport) {
+    if !ur.without_artifacts.is_empty() {
+        let total: usize = ur.without_artifacts.iter().map(|(_, n)| n).sum();
+        eprintln!(
+            "fetter: {} package(s) are known only from lockfiles or manifests and have no installed artifacts: {}",
+            total,
+            ur.without_artifacts
+                .iter()
+                .map(|(e, n)| format!("{e} {n}"))
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -689,7 +755,7 @@ fn resolve_ecosystems(
         }
         return Ok(vec![Ecosystem::Python]);
     }
-    // a name is looked up in exactly one ecosystem; Python if none is given (as before v6)
+    // a name is looked up in exactly one ecosystem; Python if none is given (as before v5)
     if let Some(Commands::LookupName { .. }) = command {
         return match requested {
             [] => Ok(vec![Ecosystem::Python]),
@@ -706,6 +772,33 @@ fn resolve_ecosystems(
         }
     }
     Ok(requested.to_vec())
+}
+
+/// The ecosystem and `lookup-name` argument (`name@requirement`, or a Python requirement) for a purl: `pkg:npm/lodash@4.17.15` is npm `lodash@4.17.15`. A `pkg:github` purl names a GitHub Action unless `-E precommit` is given. An explicit `-E` must agree with the purl.
+fn purl_lookup(
+    arg: &str,
+    requested: &[Ecosystem],
+) -> ResultDynError<(Ecosystem, String)> {
+    let purl = crate::purl::Purl::parse(arg)?;
+    let targets = crate::purl::purl_targets(&purl);
+    let target = match requested {
+        [] => targets.first(),
+        [e] => targets.iter().find(|t| t.0 == *e),
+        _ => return Err("`lookup-name` takes exactly one ecosystem (-E)".into()),
+    };
+    let Some((eco, name, version)) = target else {
+        return Err(if targets.is_empty() {
+            format!("purl type {:?} is not supported", purl.ty).into()
+        } else {
+            format!("{arg} is not a package of the ecosystem given with -E").into()
+        });
+    };
+    let req = crate::purl::exact_requirement(*eco, name, version.as_deref());
+    let arg = match eco {
+        Ecosystem::Python => req,
+        _ => format!("{name}@{req}"),
+    };
+    Ok((*eco, arg))
 }
 
 // Provided `origin_paths` are not normalized.
@@ -744,12 +837,34 @@ fn from_cache_or_scan(
 }
 
 //------------------------------------------------------------------------------
+/// Python-only commands that were top-level before v5.
+const MOVED_TO_PYTHON: [&str; 2] = ["site-install", "site-uninstall"];
+
+/// Accept the v4 spelling of commands that moved under `fetter python` (`fetter --exe python3 site-install ...` is `fetter --exe python3 python site-install ...`), so existing scripts keep working; this mirrors the hidden `--exe`/`-e` aliases of `--origin`. Only the first such argument is rewritten, and only if `python` does not already precede it.
+fn migrate_args(args: Vec<OsString>) -> Vec<OsString> {
+    let Some(i) = args
+        .iter()
+        .skip(1)
+        .position(|a| a.to_str().is_some_and(|s| MOVED_TO_PYTHON.contains(&s)))
+        .map(|i| i + 1)
+    else {
+        return args;
+    };
+    if args[1..i].iter().any(|a| a == "python") {
+        return args;
+    }
+    let mut out = args;
+    out.insert(i, OsString::from("python"));
+    out
+}
+
 pub fn run_cli<I, T>(args: I, client: Arc<dyn UreqClient>) -> ResultDynError<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let cli = Cli::parse_from(args);
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let cli = Cli::parse_from(migrate_args(args));
     if cli.command.is_none() {
         return Err("No command provided. For more information, try '--help'.".into());
     }
@@ -843,6 +958,25 @@ where
             format,
         }) => {
             let sfs = get_sfs()?;
+            if matches!(format, Some(DeriveFormat::Purls)) {
+                let (purls, without) = sfs.to_purls();
+                if without > 0 {
+                    eprintln!("fetter: {without} package(s) have no purl type and are not listed");
+                }
+                let text = format!("# via fetter\n{}\n", purls.join("\n"));
+                match subcommands {
+                    Some(DeriveSubcommand::Write { output }) => {
+                        std::fs::write(output, text).map_err(|e| {
+                            format!("Cannot write {}: {e}", output.display())
+                        })?
+                    }
+                    Some(DeriveSubcommand::Display) | None => {
+                        let mut writer = get_writer(stderr);
+                        let _ = write!(writer, "{text}");
+                    }
+                }
+                return Ok(());
+            }
             let al = sfs.to_allow_list((*anchor).into())?;
             let format = format.unwrap_or(if al.is_python_only() {
                 DeriveFormat::Requirements
@@ -871,6 +1005,7 @@ where
                     let mut writer = get_writer(stderr);
                     let _ = write!(writer, "{}", al.to_toml());
                 }
+                (DeriveFormat::Purls, _) => unreachable!("handled above"),
             }
         }
         Some(Commands::Validate {
@@ -1000,7 +1135,14 @@ where
             }
             let cvss_filter = CvssFilter::from_arg(*cvss);
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
-            let lr = match ecosystems[0] {
+            // a purl names its ecosystem
+            let (eco, name) = if name.starts_with("pkg:") {
+                purl_lookup(name, &cli.ecosystem)?
+            } else {
+                (ecosystems[0], name.clone())
+            };
+            let name = &name;
+            let lr = match eco {
                 Ecosystem::Python => {
                     // NOTE: by conversion to DepSpec, we parse the string and reject any invalid characters
                     DepSpec::from_string(name).and_then(|ds| {
@@ -1154,6 +1296,7 @@ where
             let sfs = get_sfs()?;
             let count = true;
             let ir = sfs.to_unpack_report(pattern, !case, count);
+            report_without_artifacts(&ir);
             match subcommands {
                 Some(UnpackCountSubcommand::Write { output, delimiter }) => {
                     ir.to_file(output, *delimiter)?;
@@ -1172,6 +1315,7 @@ where
             let sfs = get_sfs()?;
             let count = false;
             let ir = sfs.to_unpack_report(pattern, !case, count);
+            report_without_artifacts(&ir);
             match subcommands {
                 Some(UnpackFilesSubcommand::Write { output, delimiter }) => {
                     ir.to_file(output, *delimiter)?;
@@ -1272,7 +1416,34 @@ mod tests {
         assert_eq!(cli.ecosystem, vec![Ecosystem::Python, Ecosystem::Npm]);
         let cli = parse(&["fetter", "-E", "vscode", "--ecosystem", "gha", "scan"]);
         assert_eq!(cli.ecosystem, vec![Ecosystem::VsCode, Ecosystem::Gha]);
-        assert!(Cli::try_parse_from(["fetter", "-E", "ruby", "scan"]).is_err());
+        assert!(Cli::try_parse_from(["fetter", "-E", "perl", "scan"]).is_err());
+        // a purl names its ecosystem; -E must agree; github is an Action unless -E precommit
+        assert_eq!(
+            purl_lookup("pkg:npm/%40babel/core@7.24.0", &[]).unwrap(),
+            (Ecosystem::Npm, "@babel/core@7.24.0".to_string())
+        );
+        assert_eq!(
+            purl_lookup("pkg:pypi/Django_Package@4.2.1", &[]).unwrap(),
+            (Ecosystem::Python, "django-package==4.2.1".to_string())
+        );
+        assert_eq!(
+            purl_lookup("pkg:cargo/time@0.1.43", &[]).unwrap(),
+            (Ecosystem::Cargo, "time@=0.1.43".to_string())
+        );
+        assert_eq!(
+            purl_lookup("pkg:github/psf/black@24.1.0", &[]).unwrap().0,
+            Ecosystem::Gha
+        );
+        assert_eq!(
+            purl_lookup("pkg:github/psf/black@24.1.0", &[Ecosystem::PreCommit]).unwrap(),
+            (
+                Ecosystem::PreCommit,
+                "github.com/psf/black@24.1.0".to_string()
+            )
+        );
+        assert!(purl_lookup("pkg:npm/lodash@4.17.15", &[Ecosystem::Cargo]).is_err());
+        assert!(purl_lookup("pkg:maven/a/b@1", &[]).is_err());
+        assert!(purl_lookup("pkg:npm", &[]).is_err());
     }
 
     #[test]
@@ -1307,8 +1478,57 @@ mod tests {
                 command: PythonCommands::SiteUninstall
             })
         ));
-        // site commands are no longer top-level
+        // site commands are no longer top-level in the parser...
         assert!(Cli::try_parse_from(["fetter", "site-uninstall"]).is_err());
+        // ...but the v4 spelling is migrated before parsing
+        let m = |a: &[&str]| -> Vec<String> {
+            migrate_args(a.iter().map(OsString::from).collect())
+                .iter()
+                .map(|s| s.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(
+            m(&[
+                "fetter",
+                "--exe",
+                "python3",
+                "site-install",
+                "--bound",
+                "r.txt"
+            ]),
+            vec![
+                "fetter",
+                "--exe",
+                "python3",
+                "python",
+                "site-install",
+                "--bound",
+                "r.txt"
+            ]
+        );
+        assert_eq!(
+            m(&["fetter", "site-uninstall"]),
+            vec!["fetter", "python", "site-uninstall"]
+        );
+        // already in v5 form, or not these commands: unchanged
+        assert_eq!(
+            m(&["fetter", "python", "site-install", "-b", "r.txt"]),
+            vec!["fetter", "python", "site-install", "-b", "r.txt"]
+        );
+        assert_eq!(m(&["fetter", "scan"]), vec!["fetter", "scan"]);
+        let cli = Cli::try_parse_from(migrate_args(
+            ["fetter", "-e", "python3", "site-uninstall"]
+                .iter()
+                .map(OsString::from)
+                .collect(),
+        ))
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Python {
+                command: PythonCommands::SiteUninstall
+            })
+        ));
         // unpack and purge commands are shared, top-level commands
         let cli = parse(&["fetter", "unpack-count", "-p", "pip*"]);
         assert!(matches!(cli.command, Some(Commands::UnpackCount { .. })));

@@ -3,6 +3,7 @@
 //! Origins are (1) project directories containing a `Cargo.lock` (a workspace root), and (2) the Cargo home directory (`$CARGO_HOME`, default `~/.cargo`) if it records `cargo install`ed crates. Sites are the `Cargo.lock` file (`SiteKind::Lockfile`) and the install record `.crates2.json` or `.crates.toml` (`SiteKind::Installed`).
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -11,6 +12,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+use crate::eco::Artifacts;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
@@ -63,6 +65,19 @@ fn rustup_home() -> Option<&'static Path> {
     RUSTUP_HOME
         .get_or_init(|| env_or_home("RUSTUP_HOME", ".rustup"))
         .as_deref()
+}
+
+/// The default directory of `cargo vendor`.
+const VENDOR: &str = "vendor";
+
+/// True if `dir` holds crates vendored by `cargo vendor`: each crate directory has a `.cargo-checksum.json`. Only the first few entries are checked.
+fn is_cargo_vendor(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .take(8)
+        .any(|e| e.path().join(".cargo-checksum.json").is_file())
 }
 
 /// Return the install record file in a directory, if present.
@@ -195,10 +210,63 @@ fn packages_from_crates_toml(content: &str) -> ResultDynError<Vec<Package>> {
     Ok(c.v1.keys().filter_map(|k| parse_install_key(k)).collect())
 }
 
+/// Each installed crate in an install record, with the file names of its binaries (which include any platform suffix such as `.exe`).
+fn install_bins(
+    file_name: &str,
+    content: &str,
+) -> ResultDynError<Vec<(Package, Vec<String>)>> {
+    let names = |v: Option<&serde_json::Value>| -> Vec<String> {
+        v.and_then(|b| b.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Ok(match file_name {
+        CRATES2_JSON => {
+            let c: Crates2 = serde_json::from_str(content)?;
+            c.installs
+                .iter()
+                .filter_map(|(k, v)| Some((parse_install_key(k)?, names(v.get("bins")))))
+                .collect()
+        }
+        CRATES_TOML => {
+            let c: CratesToml = toml::from_str(content)?;
+            c.v1.iter()
+                .filter_map(|(k, v)| {
+                    let bins = v
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|n| n.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some((parse_install_key(k)?, bins))
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    })
+}
+
 //------------------------------------------------------------------------------
 pub(crate) struct CargoScanner;
 
 impl EcosystemScanner for CargoScanner {
+    /// Downloaded crate sources and toolchains (hundreds of `Cargo.lock` files, and other ecosystems' files in crate test fixtures).
+    fn cache_dirs(&self) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        if let Some(h) = cargo_home() {
+            out.push(h.join("registry"));
+            out.push(h.join("git"));
+        }
+        out.extend(rustup_home().map(Path::to_path_buf));
+        out
+    }
+
     /// The Cargo home is found without walking, so that a non-default `$CARGO_HOME` is included.
     fn default_origins(&self) -> Vec<Origin> {
         cargo_home()
@@ -228,12 +296,14 @@ impl EcosystemScanner for CargoScanner {
         } else {
             Vec::new()
         };
-        // build output is large and contains no projects
-        let skip_children = if has(CARGO_TOML) {
-            vec!["target"]
-        } else {
-            Vec::new()
-        };
+        // build output is large and contains no projects; vendored crates (`cargo vendor`) ship their own lockfiles
+        let mut skip_children = Vec::new();
+        if has(CARGO_TOML) {
+            skip_children.push("target");
+            if is_cargo_vendor(&dir.join(VENDOR)) {
+                skip_children.push(VENDOR);
+            }
+        }
         Detect {
             origins,
             prune: false,
@@ -313,6 +383,46 @@ impl EcosystemScanner for CargoScanner {
         };
         // a malformed file yields no packages rather than failing the whole scan
         parsed.unwrap_or_default()
+    }
+
+    /// For an install record, the binaries of each installed crate in the install root's `bin` directory; `Cargo.lock` sites have none.
+    fn site_to_artifacts(
+        &self,
+        site: &Site,
+        wanted: &HashSet<&Package>,
+    ) -> Vec<(Package, Artifacts)> {
+        let path = site.as_path();
+        let (Some(file_name), Some(root)) =
+            (path.file_name().and_then(|n| n.to_str()), path.parent())
+        else {
+            return Vec::new();
+        };
+        let Ok(content) = fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        let bin = root.join("bin");
+        install_bins(file_name, &content)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(p, _)| wanted.contains(p))
+            .map(|(p, bins)| {
+                let files = bins
+                    .iter()
+                    .map(|b| {
+                        let fp = bin.join(b);
+                        let exists = fp.exists();
+                        (fp, exists)
+                    })
+                    .collect();
+                (
+                    p,
+                    Artifacts {
+                        files,
+                        dirs: Vec::new(),
+                    },
+                )
+            })
+            .collect()
     }
 }
 
@@ -494,6 +604,19 @@ version = "0.1.0"
         fs::write(member.join(CARGO_TOML), "").unwrap();
         let d = CargoScanner.detect(&member, &items_of(&member));
         assert!(d.origins.is_empty());
+        assert_eq!(d.skip_children, vec!["target"]);
+
+        // `cargo vendor` output is skipped; a `vendor` directory of something else is not
+        let crate_dir = root.join("vendor").join("serde");
+        fs::create_dir_all(&crate_dir).unwrap();
+        fs::write(crate_dir.join(CARGO_LOCK), LOCK_V4).unwrap();
+        fs::write(crate_dir.join(".cargo-checksum.json"), "{}").unwrap();
+        let d = CargoScanner.detect(root, &items_of(root));
+        assert_eq!(d.skip_children, vec!["target", "vendor"]);
+        let other = root.join("other");
+        fs::create_dir_all(other.join("vendor").join("x")).unwrap();
+        fs::write(other.join(CARGO_TOML), "").unwrap();
+        let d = CargoScanner.detect(&other, &items_of(&other));
         assert_eq!(d.skip_children, vec!["target"]);
     }
 

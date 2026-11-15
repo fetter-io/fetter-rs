@@ -43,13 +43,32 @@ fn extract_from_dist_info(file_name: &str) -> Option<(String, String)> {
 
 //------------------------------------------------------------------------------
 // A Package is package artifact, representing a specific version installed on a file system. This differs from a DepSpec, which might refer to a range of acceptable versions without a specific artifact.
-#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Deserialize)]
 pub struct Package {
     pub ecosystem: Ecosystem,
     pub name: String,
     pub key: String,
     pub version: VersionSpec,
     pub direct_url: Option<DirectURL>,
+}
+
+/// Serialized with its fields plus a derived `purl` (omitted if the package has none), so every JSON output can be joined with other tools; deserialization ignores `purl`.
+impl Serialize for Package {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let purl = crate::purl::package_purl(self);
+        let mut st =
+            serializer.serialize_struct("Package", 5 + usize::from(purl.is_some()))?;
+        st.serialize_field("ecosystem", &self.ecosystem)?;
+        st.serialize_field("name", &self.name)?;
+        st.serialize_field("key", &self.key)?;
+        st.serialize_field("version", &self.version)?;
+        st.serialize_field("direct_url", &self.direct_url)?;
+        if let Some(p) = purl {
+            st.serialize_field("purl", &p.to_string())?;
+        }
+        st.end()
+    }
 }
 impl Package {
     /// General constructor for any ecosystem; the key is normalized per the ecosystem's rules.
@@ -146,12 +165,16 @@ impl Package {
 }
 
 // A case insensitive ordering.
+/// Packages order by ecosystem, name (case-insensitively), and version; then, so that only equal packages compare `Equal` (consistent with `Eq`), by exact name, key, and provenance (a registry package before a git fork of the same version).
 impl Ord for Package {
     fn cmp(&self, other: &Self) -> Ordering {
         self.ecosystem
             .cmp(&other.ecosystem)
             .then_with(|| self.name.to_lowercase().cmp(&other.name.to_lowercase()))
             .then_with(|| self.version.cmp(&other.version))
+            .then_with(|| self.name.cmp(&other.name))
+            .then_with(|| self.key.cmp(&other.key))
+            .then_with(|| self.direct_url.cmp(&other.direct_url))
     }
 }
 impl PartialOrd for Package {
@@ -174,6 +197,31 @@ impl fmt::Debug for Package {
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn test_package_ord_consistent_with_eq_a() {
+        use crate::package_durl::DirectURL;
+        let registry =
+            Package::new(Ecosystem::Cargo, "serde", VersionSpec::new("1.0.0"), None);
+        let fork = Package::new(
+            Ecosystem::Cargo,
+            "serde",
+            VersionSpec::new("1.0.0"),
+            Some(DirectURL {
+                url: "https://github.com/fork/serde".to_string(),
+                vcs_info: None,
+            }),
+        );
+        // distinct packages never compare equal, and the registry package sorts first
+        assert_ne!(registry, fork);
+        assert_eq!(registry.cmp(&fork), Ordering::Less);
+        assert_eq!(fork.cmp(&registry), Ordering::Greater);
+        assert_eq!(registry.cmp(&registry.clone()), Ordering::Equal);
+        // case-insensitive order first, then exact name
+        let a = Package::new(Ecosystem::Npm, "Zed", VersionSpec::new("1.0.0"), None);
+        let b = Package::new(Ecosystem::Npm, "alpha", VersionSpec::new("1.0.0"), None);
+        assert_eq!(b.cmp(&a), Ordering::Less);
+    }
 
     #[test]
     fn test_package_a() {
@@ -226,7 +274,7 @@ mod tests {
     fn test_package_json_a() {
         let p1 = Package::from_name_version_durl("numpy", "2.1.2", None);
         let json = serde_json::to_string(&p1).unwrap();
-        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"2.1.2\",\"direct_url\":null}");
+        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"2.1.2\",\"direct_url\":null,\"purl\":\"pkg:pypi/numpy@2.1.2\"}");
     }
     #[test]
     fn test_package_json_b() {
@@ -237,7 +285,7 @@ mod tests {
         let durl: DirectURL = serde_json::from_str(json_str).unwrap();
         let p1 = Package::from_name_version_durl("dill", "0.3.8", Some(durl)).unwrap();
         let json = serde_json::to_string(&p1).unwrap();
-        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"revision\":\"0.3.8\"}}}");
+        assert_eq!(json, "{\"ecosystem\":\"python\",\"name\":\"dill\",\"key\":\"dill\",\"version\":\"0.3.8\",\"direct_url\":{\"url\":\"ssh://git@github.com/uqfoundation/dill.git\",\"vcs_info\":{\"commit_id\":\"a0a8e86976708d0436eec5c8f7d25329da727cb5\",\"vcs\":\"git\",\"revision\":\"0.3.8\"}},\"purl\":\"pkg:pypi/dill@0.3.8\"}");
 
         let p2: Package = serde_json::from_str(&json).unwrap();
         assert_eq!(p2.to_string(), "dill-0.3.8");

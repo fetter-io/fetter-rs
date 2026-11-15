@@ -144,6 +144,196 @@ impl RefKind {
     }
 }
 
+/// The version a commit is released as, from the tags that point to it: the highest full version (`v4.1.1`) if any, else the most specific floating tag (`v4.1` over `v4`). None if no tag names a version.
+pub(crate) fn version_from_tags(tags: &[String]) -> Option<String> {
+    let exact = tags
+        .iter()
+        .filter_map(|t| match RefKind::classify(t) {
+            RefKind::Exact(v) => Some((v, t)),
+            _ => None,
+        })
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)));
+    if let Some((_, t)) = exact {
+        return Some(t.clone());
+    }
+    tags.iter()
+        .filter(|t| matches!(RefKind::classify(t), RefKind::Floating { .. }))
+        .max_by_key(|t| (t.matches('.').count(), SemverLike::parse(t)))
+        .cloned()
+}
+
+/// A SHA pin without a version comment, resolved to the tag that points to its commit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ResolvedPin {
+    pub name: String,
+    pub commit: String,
+    pub version: String,
+}
+
+/// A SHA pin whose version comment does not match its commit: the tag the comment names points to another commit, or does not exist. The comment may be stale (the pin was updated without it) or written to mislead; the SHA is what runs.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PinMismatch {
+    pub name: String,
+    pub commit: String,
+    /// The version the comment names.
+    pub comment: String,
+    /// The version the commit is tagged as, if any; the pin is audited as this version, or is unaudited if none.
+    pub actual: Option<String>,
+    /// True if the tag the comment names exists (on another commit); false if no such tag exists.
+    pub tag_exists: bool,
+}
+
+/// The outcome of checking GitHub Actions SHA pins against their repositories' tags.
+#[derive(Debug, Default)]
+pub(crate) struct PinCheck {
+    /// The packages, with resolved and corrected pins updated.
+    pub(crate) packages: Vec<Package>,
+    pub(crate) resolved: Vec<ResolvedPin>,
+    pub(crate) mismatches: Vec<PinMismatch>,
+}
+
+/// True if `tag` names the same version as a comment, ignoring a leading `v` (`# 4.1.1` names `v4.1.1`).
+fn tag_matches(tag: &str, comment: &str) -> bool {
+    tag == comment
+        || tag.strip_prefix('v').unwrap_or(tag)
+            == comment.strip_prefix('v').unwrap_or(comment)
+}
+
+/// Check GitHub Actions SHA pins against the tags of their repositories, listed with `git ls-remote` (see `registry::tag_commits`; once per repository, in parallel):
+/// - A pin without a version comment (its version is the SHA) is resolved to the most specific tag on its commit (`version_from_tags`) and takes that version, as a pin with that comment would.
+/// - A pin with a version comment is checked: if the tag the comment names is not on the pinned commit, it is a mismatch, and the pin takes the version its commit is actually tagged as, or (with no version tag) the SHA, which leaves it unaudited.
+///
+/// The SHA stays in `direct_url`, with `vcs_info.revision` set to the version used. A repository that cannot be listed leaves its pins unchanged (unresolved pins stay unaudited; commented pins are audited by the comment).
+pub(crate) fn check_sha_pins(
+    client: &Arc<dyn UreqClient>,
+    packages: &[Package],
+    cache_config: &CacheConfig,
+    log: FlagLog,
+) -> PinCheck {
+    // the pinned commit of a GHA or pre-commit package, if it is a SHA pin
+    let pinned = |p: &Package| -> Option<String> {
+        if !matches!(
+            p.ecosystem,
+            Ecosystem::Gha | Ecosystem::PreCommit | Ecosystem::Swift
+        ) {
+            return None;
+        }
+        let v = p.version.to_string();
+        if is_sha(&v) {
+            return Some(v.to_lowercase());
+        }
+        // a versioned Swift pin was resolved by SwiftPM; only revision pins are checked
+        if p.ecosystem == Ecosystem::Swift {
+            return None;
+        }
+        p.direct_url
+            .as_ref()?
+            .vcs_info
+            .as_ref()
+            .map(|c| c.commit_id.to_lowercase())
+            .filter(|c| is_sha(c))
+    };
+    let url_of = |p: &Package| -> String {
+        match p.ecosystem {
+            Ecosystem::PreCommit | Ecosystem::Swift => {
+                crate::eco::precommit::repo_url(&p.name)
+            }
+            _ => format!("https://github.com/{}", p.name),
+        }
+        .to_lowercase()
+    };
+    let mut repos: Vec<String> = packages
+        .iter()
+        .filter(|p| pinned(p).is_some())
+        .map(url_of)
+        .collect();
+    repos.sort();
+    repos.dedup();
+    let commits: HashMap<String, HashMap<String, Vec<String>>> = repos
+        .into_par_iter()
+        .filter_map(|repo| {
+            match crate::registry::tag_commits(client, &repo, cache_config, log) {
+                Ok(m) => Some((repo, m)),
+                Err(e) => {
+                    logger!(
+                        log,
+                        module_path!(),
+                        "Cannot check SHA pins of {}: {}",
+                        repo,
+                        e
+                    );
+                    None
+                }
+            }
+        })
+        .collect();
+    let mut check = PinCheck::default();
+    let with_version = |p: &Package, version: &str| -> Package {
+        let mut direct_url = p.direct_url.clone();
+        if let Some(vcs) = direct_url.as_mut().and_then(|d| d.vcs_info.as_mut()) {
+            vcs.revision = (!is_sha(version)).then(|| version.to_string());
+        }
+        Package::new(
+            p.ecosystem,
+            &p.name,
+            crate::version_spec::VersionSpec::new(version),
+            direct_url,
+        )
+    };
+    for p in packages {
+        let (Some(sha), Some(tags_by_commit)) = (pinned(p), commits.get(&url_of(p)))
+        else {
+            check.packages.push(p.clone());
+            continue;
+        };
+        let tags_here = tags_by_commit.get(&sha).map(Vec::as_slice).unwrap_or(&[]);
+        let actual = version_from_tags(tags_here);
+        let version = p.version.to_string();
+        if is_sha(&version) {
+            // no version comment
+            match actual {
+                Some(v) => {
+                    check.resolved.push(ResolvedPin {
+                        name: p.name.clone(),
+                        commit: sha.clone(),
+                        version: v.clone(),
+                    });
+                    check.packages.push(with_version(p, &v));
+                }
+                None => check.packages.push(p.clone()),
+            }
+            continue;
+        }
+        if tags_here.iter().any(|t| tag_matches(t, &version)) {
+            check.packages.push(p.clone());
+            continue;
+        }
+        let tag_exists = tags_by_commit
+            .values()
+            .flatten()
+            .any(|t| tag_matches(t, &version));
+        check.mismatches.push(PinMismatch {
+            name: p.name.clone(),
+            commit: sha.clone(),
+            comment: version.clone(),
+            actual: actual.clone(),
+            tag_exists,
+        });
+        check
+            .packages
+            .push(with_version(p, actual.as_deref().unwrap_or(&sha)));
+    }
+    check
+        .resolved
+        .sort_by(|a, b| (&a.name, &a.commit).cmp(&(&b.name, &b.commit)));
+    check.resolved.dedup();
+    check.mismatches.sort_by(|a, b| {
+        (&a.name, &a.commit, &a.comment).cmp(&(&b.name, &b.commit, &b.comment))
+    });
+    check.mismatches.dedup();
+    check
+}
+
 /// True if a package of a client-side-matched ecosystem can be evaluated.
 pub(crate) fn is_client_side_queryable(package: &Package) -> bool {
     RefKind::classify(&package.version.to_string()) != RefKind::Unresolvable
@@ -597,6 +787,196 @@ mod tests {
         let r = query_osv_client_side(client, &packages, &cache_config, FlagLog(false))
             .unwrap();
         assert_eq!(r, vec![Some(vec!["GHSA-mrrh".to_string()]), None, None]);
+    }
+
+    #[test]
+    fn test_version_from_tags_a() {
+        let t = |v: &[&str]| {
+            version_from_tags(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        };
+        // a full version over floating tags on the same commit
+        assert_eq!(t(&["v1", "v1.12.0"]), Some("v1.12.0".to_string()));
+        assert_eq!(
+            t(&["v4", "v4.1", "v4.1.1", "latest"]),
+            Some("v4.1.1".to_string())
+        );
+        // only floating tags: the most specific
+        assert_eq!(t(&["v4", "v4.1"]), Some("v4.1".to_string()));
+        assert_eq!(t(&["v14"]), Some("v14".to_string()));
+        // several full versions: the highest
+        assert_eq!(t(&["v2.0.0", "v2.0.1"]), Some("v2.0.1".to_string()));
+        assert_eq!(t(&["latest", "nightly"]), None);
+        assert_eq!(t(&[]), None);
+    }
+
+    /// A GitHub Actions SHA pin (no version comment), as `eco::gha` reads it.
+    fn pin(name: &str, sha: &str) -> Package {
+        Package::new(
+            Ecosystem::Gha,
+            name,
+            VersionSpec::new(sha),
+            Some(crate::package_durl::DirectURL {
+                url: format!("https://github.com/{name}"),
+                vcs_info: Some(crate::package_durl::VcsInfo {
+                    commit_id: sha.to_string(),
+                    vcs: "git".to_string(),
+                    revision: None,
+                }),
+            }),
+        )
+    }
+
+    const SHA_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const SHA_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const SHA_C: &str = "cccccccccccccccccccccccccccccccccccccccc";
+
+    #[test]
+    fn test_resolve_sha_pins_a() {
+        let mut get = HashMap::new();
+        // SHA_A: an annotated v35.0.0 (the peeled line names the commit) and a lightweight v35; SHA_B: not tagged
+        get.insert(
+            "git+https://github.com/tj-actions/changed-files".to_string(),
+            format!(
+                "1111111111111111111111111111111111111111\trefs/tags/v35.0.0\n{SHA_A}\trefs/tags/v35.0.0^{{}}\n{SHA_A}\trefs/tags/v35\n{SHA_C}\trefs/tags/v46.0.1\n"
+            ),
+        );
+        let client: Arc<dyn UreqClient> = Arc::new(UreqClientMock {
+            mock_post: None,
+            mock_get: Some(get),
+        });
+        let packages = vec![
+            pin("tj-actions/changed-files", SHA_A),
+            pin("tj-actions/changed-files", SHA_B),
+            // a repository that cannot be listed
+            pin("acme/missing", SHA_A),
+            // a Swift revision pin on a tagged commit
+            Package::new(
+                Ecosystem::Swift,
+                "github.com/tj-actions/changed-files",
+                VersionSpec::new(SHA_A),
+                None,
+            ),
+            gha("actions/checkout", "v4"),
+        ];
+        let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let check = check_sha_pins(&client, &packages, &cache_config, FlagLog(false));
+        let (out, resolved) = (check.packages, check.resolved);
+        assert!(check.mismatches.is_empty());
+        assert_eq!(out[0].version.to_string(), "v35.0.0");
+        let vcs = out[0]
+            .direct_url
+            .as_ref()
+            .unwrap()
+            .vcs_info
+            .as_ref()
+            .unwrap();
+        assert_eq!(vcs.commit_id, SHA_A);
+        assert_eq!(vcs.revision.as_deref(), Some("v35.0.0"));
+        // unresolved pins and other packages are unchanged
+        assert_eq!(out[1], packages[1]);
+        assert_eq!(out[2], packages[2]);
+        assert_eq!(out[3].version.to_string(), "v35.0.0");
+        assert_eq!(out[3].ecosystem, Ecosystem::Swift);
+        assert_eq!(out[4], packages[4]);
+        let pin_of = |name: &str| ResolvedPin {
+            name: name.to_string(),
+            commit: SHA_A.to_string(),
+            version: "v35.0.0".to_string(),
+        };
+        assert_eq!(
+            resolved,
+            vec![
+                pin_of("github.com/tj-actions/changed-files"),
+                pin_of("tj-actions/changed-files")
+            ]
+        );
+        // the resolved pin is audited as v35.0.0
+        assert!(matches!(
+            RefKind::classify(&out[0].version.to_string()),
+            RefKind::Exact(_)
+        ));
+        assert_eq!(
+            RefKind::classify(&out[1].version.to_string()),
+            RefKind::Unresolvable
+        );
+    }
+
+    /// A SHA pin with a version comment, as `eco::gha` reads it: the comment is the version.
+    fn commented_pin(name: &str, sha: &str, comment: &str) -> Package {
+        let mut p = pin(name, sha);
+        if let Some(v) = p.direct_url.as_mut().and_then(|d| d.vcs_info.as_mut()) {
+            v.revision = Some(comment.to_string());
+        }
+        Package::new(
+            Ecosystem::Gha,
+            name,
+            VersionSpec::new(comment),
+            p.direct_url,
+        )
+    }
+
+    #[test]
+    fn test_check_sha_pins_mismatch_a() {
+        let mut get = HashMap::new();
+        get.insert(
+            "git+https://github.com/tj-actions/changed-files".to_string(),
+            format!("{SHA_A}\trefs/tags/v35.0.0\n{SHA_C}\trefs/tags/v46.0.1\n"),
+        );
+        let client: Arc<dyn UreqClient> = Arc::new(UreqClientMock {
+            mock_post: None,
+            mock_get: Some(get),
+        });
+        let name = "tj-actions/changed-files";
+        let packages = vec![
+            // consistent, ignoring the `v`
+            commented_pin(name, SHA_A, "35.0.0"),
+            // the comment's tag is on another commit; the commit is really v46.0.1
+            commented_pin(name, SHA_C, "v35.0.0"),
+            // no such tag, and the commit is untagged
+            commented_pin(name, SHA_B, "v99.0.0"),
+            // a repository that cannot be listed: audited by the comment, unchecked
+            commented_pin("acme/missing", SHA_A, "v1.0.0"),
+        ];
+        let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let check = check_sha_pins(&client, &packages, &cache_config, FlagLog(false));
+        assert!(check.resolved.is_empty());
+        assert_eq!(check.packages[0], packages[0]);
+        assert_eq!(check.packages[3], packages[3]);
+        // audited as what the commit actually is
+        assert_eq!(check.packages[1].version.to_string(), "v46.0.1");
+        let vcs = check.packages[1]
+            .direct_url
+            .as_ref()
+            .unwrap()
+            .vcs_info
+            .as_ref()
+            .unwrap();
+        assert_eq!(vcs.revision.as_deref(), Some("v46.0.1"));
+        // an untagged commit: unaudited
+        assert_eq!(check.packages[2].version.to_string(), SHA_B);
+        assert_eq!(
+            RefKind::classify(&check.packages[2].version.to_string()),
+            RefKind::Unresolvable
+        );
+        assert_eq!(
+            check.mismatches,
+            vec![
+                PinMismatch {
+                    name: name.to_string(),
+                    commit: SHA_B.to_string(),
+                    comment: "v99.0.0".to_string(),
+                    actual: None,
+                    tag_exists: false,
+                },
+                PinMismatch {
+                    name: name.to_string(),
+                    commit: SHA_C.to_string(),
+                    comment: "v35.0.0".to_string(),
+                    actual: Some("v46.0.1".to_string()),
+                    tag_exists: true,
+                },
+            ]
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@
 //!
 //! An installed extension that bundles `node_modules` contributes that directory as an additional site of the npm ecosystem (read by the npm scanner), so vulnerable dependencies running inside the editor are reported and traceable to their extension by path.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 
 use serde_json::Value as JsonValue;
 
+use crate::eco::Artifacts;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
@@ -240,6 +242,29 @@ impl EcosystemScanner for VsCodeScanner {
         installed_extensions(site.as_path())
             .iter()
             .filter_map(|e| extension_hook(e))
+            .collect()
+    }
+
+    /// Each extension's directory and its files, excluding its bundled `node_modules`, whose packages are npm packages at their own site.
+    fn site_to_artifacts(
+        &self,
+        site: &Site,
+        wanted: &HashSet<&Package>,
+    ) -> Vec<(Package, Artifacts)> {
+        let mut found: HashMap<Package, Vec<PathBuf>> = HashMap::new();
+        for ext in installed_extensions(site.as_path()) {
+            if let Some(p) = extension_package(&ext) {
+                if wanted.contains(&p) {
+                    found.entry(p).or_default().push(ext);
+                }
+            }
+        }
+        found
+            .into_iter()
+            .map(|(p, mut dirs)| {
+                dirs.sort();
+                (p, Artifacts::from_dirs(dirs, &[NODE_MODULES]))
+            })
             .collect()
     }
 

@@ -156,7 +156,19 @@ fn query_osv_batch(
 
 /// Return true if OSV can meaningfully be queried for this package. An empty version is excluded: OSV treats a missing version as "all versions", which would report every advisory ever published for the package. For client-side-matched ecosystems, the version (ref) must be interpretable (see `osv_match::RefKind`).
 pub(crate) fn is_osv_queryable(package: &Package) -> bool {
-    if package.version.to_string().trim().is_empty() {
+    let version = package.version.to_string();
+    if version.trim().is_empty() || !package.ecosystem.has_osv() {
+        return false;
+    }
+    if package.ecosystem == crate::ecosystem::Ecosystem::Swift
+        && !crate::eco::swift::is_queryable(&package.name, &version)
+    {
+        return false;
+    }
+    // a composer branch version names no release; OSV compares it as a string, matching unrelated advisories
+    if package.ecosystem == crate::ecosystem::Ecosystem::Php
+        && crate::eco::php::is_branch_version(&version)
+    {
         return false;
     }
     package.ecosystem.osv_server_side_versions() || is_client_side_queryable(package)
@@ -416,13 +428,14 @@ mod tests {
         let client: Arc<dyn UreqClient> = Arc::new(crate::ureq_client::UreqClientLive);
         let packages: Vec<Package> = Ecosystem::ALL
             .iter()
+            .filter(|e| e.has_osv())
             .map(|e| pkg(*e, "fetter-nonexistent-package", "1.0.0"))
             .collect();
         let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
         let results =
             query_osv_batches(client.clone(), &packages, &cache_config, FlagLog(false))
                 .unwrap();
-        assert_eq!(results.len(), Ecosystem::ALL.len());
+        assert_eq!(results.len(), packages.len());
 
         // known-vulnerable versions are reported for ecosystems with server-side version matching
         let packages = vec![
@@ -583,6 +596,34 @@ mod tests {
     fn test_is_osv_queryable_a() {
         assert!(is_osv_queryable(&pkg(Ecosystem::Python, "jinja2", "2.4.1")));
         assert!(!is_osv_queryable(&pkg(Ecosystem::Python, "jinja2", "")));
+        // a Swift revision pin or registry identity
+        assert!(!is_osv_queryable(&pkg(
+            Ecosystem::Swift,
+            "github.com/steipete/Peekaboo",
+            "bace59f90bb276f1c6fb613acfda3935ec4a7a90"
+        )));
+        assert!(!is_osv_queryable(&pkg(
+            Ecosystem::Swift,
+            "mona.linkedlist",
+            "1.2.0"
+        )));
+        assert!(is_osv_queryable(&pkg(
+            Ecosystem::Swift,
+            "github.com/apple/swift-nio",
+            "2.0.0"
+        )));
+        // composer branch versions name no release
+        assert!(!is_osv_queryable(&pkg(
+            Ecosystem::Php,
+            "lox/xhprof",
+            "dev-master"
+        )));
+        assert!(!is_osv_queryable(&pkg(Ecosystem::Php, "acme/x", "2.x-dev")));
+        assert!(is_osv_queryable(&pkg(
+            Ecosystem::Php,
+            "guzzlehttp/guzzle",
+            "7.4.0"
+        )));
         assert!(!is_osv_queryable(&pkg(
             Ecosystem::Gha,
             "actions/checkout",

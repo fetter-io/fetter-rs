@@ -19,6 +19,7 @@ mod package;
 mod package_durl;
 mod package_match;
 mod path_shared;
+mod purl;
 mod pypi_project;
 mod pyproject;
 mod registry;

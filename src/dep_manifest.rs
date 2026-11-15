@@ -202,7 +202,7 @@ impl DepManifest {
                 Anchor::Upper => {
                     DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
                 }
-                Anchor::Both => return Err("Not implemented".into()),
+                Anchor::Both => DepSpec::from_package_range(pkg_min, pkg_max),
             };
             if let Ok(dep_spec) = ds {
                 dep_specs.push(dep_spec);

@@ -130,6 +130,11 @@ mod tests {
         assert_eq!(lines.next().unwrap().unwrap(), "cargo,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "gha,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "vscode,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "go,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "ruby,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "php,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "precommit,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "swift,0,0,0");
         assert_eq!(lines.next().unwrap().unwrap(), "all,1,1,3");
         assert!(lines.next().is_none());
     }

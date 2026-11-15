@@ -244,8 +244,8 @@ impl<'de> Deserialize<'de> for ScanFS {
     }
 }
 
-/// Return true if installed artifacts of this package can be read (for `unpack-*`) and removed (for `purge-*`). Only Python (via dist-info `RECORD`) is implemented; other ecosystems are excluded until implemented. Generalizing this belongs on `EcosystemScanner`.
-fn supports_artifacts(package: &Package) -> bool {
+/// Return true if this package's installed artifacts may be removed by `purge-*`. Artifacts of all ecosystems can be read (`unpack-*`), but removal is Python-only for now.
+fn supports_purge(package: &Package) -> bool {
     package.ecosystem == Ecosystem::Python
 }
 
@@ -356,11 +356,11 @@ impl ScanFS {
         }
     }
 
-    /// Path of the cache file for a given hash; the `v6` marker ensures caches from prior formats are never read.
+    /// Path of the cache file for a given hash; the `v5` marker ensures caches from prior formats are never read.
     fn cache_path(cache_config: &CacheConfig, origins_hash: &str) -> PathBuf {
         cache_config
             .directory
-            .join(format!("scan_fs_v6_{origins_hash}"))
+            .join(format!("scan_fs_v5_{origins_hash}"))
             .with_extension("json")
     }
 
@@ -615,9 +615,7 @@ impl ScanFS {
         case_insensitive: bool,
         count: bool,
     ) -> UnpackReport {
-        let mut packages = self.search_by_match(pattern, case_insensitive);
-        packages.retain(supports_artifacts);
-        packages.sort();
+        let packages = self.search_by_match(pattern, case_insensitive);
         let package_to_sites = packages
             .iter()
             .map(|p| (p.clone(), self.package_to_sites.get(p).unwrap().clone()))
@@ -630,6 +628,21 @@ impl ScanFS {
     /// Given an `anchor`, derive an allow list from all packages observed in this scan.
     pub(crate) fn to_allow_list(&self, anchor: Anchor) -> ResultDynError<AllowList> {
         AllowList::from_packages(self.get_packages(), anchor)
+    }
+
+    /// The purls of all observed packages, sorted and unique, and the number of packages without a purl (a pre-commit hook not on GitHub, a Swift registry identity).
+    pub(crate) fn to_purls(&self) -> (Vec<String>, usize) {
+        let mut out = Vec::new();
+        let mut without = 0;
+        for p in self.package_to_sites.keys() {
+            match crate::purl::package_purl(p) {
+                Some(u) => out.push(u.to_string()),
+                None => without += 1,
+            }
+        }
+        out.sort();
+        out.dedup();
+        (out, without)
     }
 
     pub(crate) fn to_scan_report(&self) -> ScanReport {
@@ -660,7 +673,7 @@ impl ScanFS {
             Some(p) => self.search_by_match(p, case_insensitive),
             None => self.package_to_sites.keys().cloned().collect(),
         };
-        packages.retain(supports_artifacts);
+        packages.retain(supports_purge);
         // packages.sort();
         let package_to_sites = packages
             .iter()
@@ -683,7 +696,7 @@ impl ScanFS {
             .records
             .iter()
             .filter_map(|r| r.package.as_ref().cloned())
-            .filter(supports_artifacts)
+            .filter(supports_purge)
             .collect();
         // packages.sort();
         let package_to_sites = packages
@@ -832,6 +845,43 @@ mod tests {
         let al = sfs.to_allow_list(Anchor::Lower).unwrap();
         assert_eq!(al.python.as_ref().unwrap().len(), 3);
         assert!(al.is_python_only());
+    }
+
+    #[test]
+    fn test_to_allow_list_both_a() {
+        let exe = PathBuf::from("/usr/bin/python3");
+        let site = PathBuf::from("/usr/lib/python3.8/site-packages");
+        let packages = vec![
+            Package::from_name_version_durl("numpy", "1.19.3", None).unwrap(),
+            Package::from_name_version_durl("numpy", "2.1.1", None).unwrap(),
+            Package::from_name_version_durl("flask", "3.0.3", None).unwrap(),
+        ];
+        let mut sfs = ScanFS::from_exe_site_packages(exe, site, packages).unwrap();
+        let al = sfs.to_allow_list(Anchor::Both).unwrap();
+        let dm = al.python.clone().unwrap();
+        assert_eq!(
+            dm.get_dep_specs("numpy")
+                .unwrap()
+                .next()
+                .unwrap()
+                .to_string(),
+            "numpy>=1.19.3,<=2.1.1"
+        );
+        assert_eq!(
+            dm.get_dep_specs("flask")
+                .unwrap()
+                .next()
+                .unwrap()
+                .to_string(),
+            "flask==3.0.3"
+        );
+        // every observed package validates against its derived bound
+        let vf = ValidationFlags {
+            permit_superset: false,
+            permit_subset: false,
+        };
+        let vr = sfs.to_allow_list_validation(&al, vf, None, false, FlagLog(false));
+        assert_eq!(vr.len(), 0, "{:?}", vr.records);
     }
 
     //--------------------------------------------------------------------------
@@ -1838,7 +1888,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         ];
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         let json = serde_json::to_string(&sfs).unwrap();
-        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null},[0]]],{\"force_usite\":false,\"all_users\":false,\"ecosystems\":[\"python\",\"npm\",\"cargo\",\"gha\",\"vscode\"],\"roots\":[]},\"7b4397190628be171714cdfbc8d6186bc23a6bd846b2d5d7daf1378f27716ae0\"]");
+        assert_eq!(json, "[[\"/usr/bin/python3\",\"/usr/lib/python3/site-packages\"],[[\"python\",0]],[[\"python\",\"installed\",1]],[[0,[0]]],[[{\"ecosystem\":\"python\",\"name\":\"flask\",\"key\":\"flask\",\"version\":\"1.1.3\",\"direct_url\":null,\"purl\":\"pkg:pypi/flask@1.1.3\"},[0]],[{\"ecosystem\":\"python\",\"name\":\"numpy\",\"key\":\"numpy\",\"version\":\"1.19.3\",\"direct_url\":null,\"purl\":\"pkg:pypi/numpy@1.19.3\"},[0]],[{\"ecosystem\":\"python\",\"name\":\"static-frame\",\"key\":\"static_frame\",\"version\":\"2.13.0\",\"direct_url\":null,\"purl\":\"pkg:pypi/static-frame@2.13.0\"},[0]]],{\"force_usite\":false,\"all_users\":false,\"ecosystems\":[\"python\",\"npm\",\"cargo\",\"gha\",\"vscode\",\"go\",\"ruby\",\"php\",\"precommit\",\"swift\"],\"roots\":[]},\"75c417d511f2eb752d27ccb8702a328398641058662417dbbdbf00d58457f30d\"]");
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
         assert_eq!(sfsd.origin_to_sites.len(), 1);
@@ -1884,7 +1934,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         );
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null},[0]]],{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode"],"roots":[]},"hash"]"#;
+        let expected_json = r#"[["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],[["python",0],["python",1]],[["python","installed",2],["python","installed",3]],[[0,[0,1]],[1,[1]]],[[{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null,"purl":"pkg:pypi/flask@2.0.1"},[1]],[{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null,"purl":"pkg:pypi/numpy@1.21.0"},[0,1]],[{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null,"purl":"pkg:pypi/pandas@1.3.0"},[0]],[{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null,"purl":"pkg:pypi/requests@2.25.1"},[0]]],{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift"],"roots":[]},"hash"]"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1918,7 +1968,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "7b4397190628be171714cdfbc8d6186bc23a6bd846b2d5d7daf1378f27716ae0"
+            "75c417d511f2eb752d27ccb8702a328398641058662417dbbdbf00d58457f30d"
         );
     }
 
@@ -1934,7 +1984,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "670052a72cea79d7a207d535ba7568b455b4834c4e17f4d9347cb3666ed81c81"
+            "d60e2e2b8e94eb8aaa9dade8908614b1c1db75f9c2d0913ecdd7e7cf5497a7c1"
         );
     }
 

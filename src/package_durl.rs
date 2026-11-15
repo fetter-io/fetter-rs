@@ -12,7 +12,7 @@ use std::path::PathBuf;
 // dir_info: url is a local directory
 // assume we only need vcs_info for matching rquirements
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone, PartialOrd, Ord)]
 pub struct VcsInfo {
     pub commit_id: String,
     pub vcs: String,
@@ -21,7 +21,7 @@ pub struct VcsInfo {
     pub revision: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Clone, PartialOrd, Ord)]
 pub struct DirectURL {
     pub url: String,
 

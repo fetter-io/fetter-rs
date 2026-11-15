@@ -4,6 +4,7 @@
 //!
 //! Directories inside editor `extensions` directories (VS Code and its forks) are not npm origins; extensions are handled by the VS Code scanner.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 
 use serde_json::Value as JsonValue;
 
+use crate::eco::Artifacts;
 use crate::eco::Detect;
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
@@ -151,11 +153,11 @@ fn split_name_version(s: &str) -> Option<(&str, &str)> {
 //------------------------------------------------------------------------------
 // node_modules
 
-/// Visit the package at `dir` (its parsed `package.json`), then any nested `node_modules`.
-fn visit_package_dir(dir: &Path, visit: &mut dyn FnMut(&JsonValue)) {
+/// Visit the package at `dir` (its directory and parsed `package.json`), then any nested `node_modules`.
+fn visit_package_dir(dir: &Path, visit: &mut dyn FnMut(&Path, &JsonValue)) {
     if let Ok(content) = fs::read_to_string(dir.join(PACKAGE_JSON)) {
         if let Ok(pj) = serde_json::from_str::<JsonValue>(&content) {
-            visit(&pj);
+            visit(dir, &pj);
         }
     }
     let nested = dir.join(NODE_MODULES);
@@ -177,7 +179,7 @@ fn child_dirs(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Visit the `package.json` of every package installed in a `node_modules` directory, including scoped and nested packages and pnpm's `.pnpm` store. Symlinks are never followed: they are workspace links, `npm link`s, or pnpm's links into its store (which is read directly).
-fn visit_node_modules(nm: &Path, visit: &mut dyn FnMut(&JsonValue)) {
+fn visit_node_modules(nm: &Path, visit: &mut dyn FnMut(&Path, &JsonValue)) {
     for child in child_dirs(nm) {
         let Some(name) = child.file_name().and_then(|n| n.to_str()) else {
             continue;
@@ -210,11 +212,34 @@ fn name_version(pj: &JsonValue) -> Option<(&str, &str)> {
 
 /// Collect all packages installed in a `node_modules` directory.
 fn walk_node_modules(nm: &Path, out: &mut Vec<Package>) {
-    visit_node_modules(nm, &mut |pj| {
+    visit_node_modules(nm, &mut |_, pj| {
         if let Some((name, version)) = name_version(pj) {
             out.push(package(name, version, None));
         }
     });
+}
+
+/// Installed artifacts of the `wanted` packages in a `node_modules` directory: each package's directory and the files below it, excluding its nested `node_modules` (which holds other packages). A package installed at several places (nested, or in pnpm's store) has one entry with all its directories.
+fn artifacts_from_node_modules(
+    nm: &Path,
+    wanted: &HashSet<&Package>,
+) -> Vec<(Package, Artifacts)> {
+    let mut found: HashMap<Package, Vec<PathBuf>> = HashMap::new();
+    visit_node_modules(nm, &mut |dir, pj| {
+        if let Some((name, version)) = name_version(pj) {
+            let p = package(name, version, None);
+            if wanted.contains(&p) {
+                found.entry(p).or_default().push(dir.to_path_buf());
+            }
+        }
+    });
+    found
+        .into_iter()
+        .map(|(p, mut dirs)| {
+            dirs.sort();
+            (p, Artifacts::from_dirs(dirs, &[NODE_MODULES]))
+        })
+        .collect()
 }
 
 /// Scripts that npm runs when a package is installed from a registry. `prepare` is excluded: it runs only for git dependencies and a package's own development install.
@@ -230,7 +255,7 @@ fn install_hook(name: &str, version: &str, script: &str, detail: &str) -> Hook {
 /// Install scripts of all packages installed in a `node_modules` directory; the detail is the script command.
 fn hooks_from_node_modules(nm: &Path) -> Vec<Hook> {
     let mut out = Vec::new();
-    visit_node_modules(nm, &mut |pj| {
+    visit_node_modules(nm, &mut |_, pj| {
         let Some((name, version)) = name_version(pj) else {
             return;
         };
@@ -740,6 +765,18 @@ impl EcosystemScanner for NpmScanner {
         // the same name and version can be installed or locked in many places within one site
         let unique: HashSet<Package> = packages.into_iter().collect();
         unique.into_iter().collect()
+    }
+
+    /// Only `node_modules` sites have artifacts; lockfile sites have none.
+    fn site_to_artifacts(
+        &self,
+        site: &Site,
+        wanted: &HashSet<&Package>,
+    ) -> Vec<(Package, Artifacts)> {
+        match site.kind {
+            SiteKind::Installed => artifacts_from_node_modules(site.as_path(), wanted),
+            _ => Vec::new(),
+        }
     }
 }
 

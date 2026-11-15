@@ -3,8 +3,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::cli::CvssFilter;
+use crate::eco::precommit::map_hooks;
+use crate::eco::precommit::MappedHook;
 use crate::ecosystem::Ecosystem;
+use crate::osv_match::check_sha_pins;
 use crate::osv_match::query_osv_client_side;
+use crate::osv_match::PinMismatch;
+use crate::osv_match::ResolvedPin;
 use crate::osv_query::is_osv_queryable;
 use crate::osv_query::query_osv_batches;
 use crate::osv_vulns::query_osv_vulns;
@@ -130,6 +135,15 @@ pub struct AuditReport {
     /// Requirements (from `lookup-bound`) whose package was not found in its registry, e.g. an internal package on a private index; these are not known to be free of vulnerabilities.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unresolved: Vec<Unresolved>,
+    /// GitHub Actions SHA pins without a version comment, audited as the version their commit is tagged as.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resolved_pins: Vec<ResolvedPin>,
+    /// GitHub Actions SHA pins whose version comment does not match their commit; each is audited as its commit's actual tag (or is unaudited).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pin_mismatches: Vec<PinMismatch>,
+    /// pre-commit hook repositories audited through the packages they install.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub precommit_hooks: Vec<MappedHook>,
 }
 
 /// A requirement that could not be resolved to packages, because its registry does not have the package.
@@ -151,8 +165,18 @@ impl AuditReport {
         filter_cvss: CvssFilter,
         retain_passing: FlagRetainPassing,
     ) -> ResultDynError<Self> {
+        // if cache_refresh is true, derive a new cache_config with duration set to 0
+        let cache_config = if bool::from(cache_refresh) {
+            CacheConfig::new(DURATION_0, cache_config.directory.clone())
+        } else {
+            cache_config.clone()
+        };
+        let pins = check_sha_pins(&client, packages, &cache_config, log);
+        let (resolved_pins, pin_mismatches) = (pins.resolved, pins.mismatches);
+        let hooks = map_hooks(&client, &pins.packages, &cache_config, log);
+        let precommit_hooks = hooks.mapped;
         let (packages, unaudited): (Vec<Package>, Vec<Package>) =
-            packages.iter().cloned().partition(is_osv_queryable);
+            hooks.packages.into_iter().partition(is_osv_queryable);
         if !unaudited.is_empty() {
             logger!(
                 log,
@@ -161,12 +185,6 @@ impl AuditReport {
                 unaudited
             );
         }
-        // if cache_refresh is true, derive a new cache_config with duration set to 0
-        let cache_config = if bool::from(cache_refresh) {
-            CacheConfig::new(DURATION_0, cache_config.directory.clone())
-        } else {
-            cache_config.clone()
-        };
         // Ecosystems with server-side version matching use the batch API; others (GitHub Actions) are matched client-side. Results are merged back in package order.
         let (server_idx, client_idx): (Vec<usize>, Vec<usize>) = (0..packages.len())
             .partition(|i| packages[*i].ecosystem.osv_server_side_versions());
@@ -221,6 +239,9 @@ impl AuditReport {
                 records,
                 unaudited,
                 unresolved: Vec::new(),
+                resolved_pins,
+                pin_mismatches,
+                precommit_hooks,
             },
             filter_cvss,
         ))
@@ -415,7 +436,7 @@ mod tests {
         )
         .unwrap();
         let ar_json = serde_json::to_string_pretty(&ar).unwrap();
-        let expected_json = r#"{"records":[{"package":{"ecosystem":"python","name":"gradio","version":"4.0.0","key":"gradio","direct_url":null},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"cvss_details":[{"version":"V3_1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L","score":4.3,"severity":"medium"}]}}}]}"#;
+        let expected_json = r#"{"records":[{"package":{"ecosystem":"python","name":"gradio","version":"4.0.0","key":"gradio","direct_url":null,"purl":"pkg:pypi/gradio@4.0.0"},"vuln_ids":["GHSA-48cq-79qq-6f7x"],"vuln_infos":{"GHSA-48cq-79qq-6f7x":{"id":"GHSA-48cq-79qq-6f7x","summary":"Gradio applications running locally vulnerable to 3rd party websites accessing routes and uploading files","references":[{"type":"WEB","url":"https://github.com/gradio-app/gradio/security/advisories/GHSA-48cq-79qq-6f7x"},{"type":"ADVISORY","url":"https://nvd.nist.gov/vuln/detail/CVE-2024-1727"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/pull/7503"},{"type":"WEB","url":"https://github.com/gradio-app/gradio/commit/84802ee6a4806c25287344dce581f9548a99834a"},{"type":"PACKAGE","url":"https://github.com/gradio-app/gradio"},{"type":"WEB","url":"https://huntr.com/bounties/a94d55fb-0770-4cbe-9b20-97a978a2ffff"}],"cvss_details":[{"version":"V3_1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L","score":4.3,"severity":"medium"}]}}}]}"#;
 
         let expected_json: serde_json::Value =
             serde_json::from_str(expected_json).unwrap();
@@ -424,6 +445,66 @@ mod tests {
         assert_eq!(
             actual_json, expected_json,
             "AuditDigest JSON output mismatch!"
+        );
+    }
+
+    #[test]
+    fn test_audit_report_resolves_sha_pin_a() {
+        use crate::ecosystem::Ecosystem;
+        use crate::package_durl::{DirectURL, VcsInfo};
+        use crate::version_spec::VersionSpec;
+        let sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let mut mock_get = HashMap::new();
+        mock_get.insert(
+            "git+https://github.com/tj-actions/changed-files".to_string(),
+            format!("{sha}\trefs/tags/v35.0.0\n"),
+        );
+        // the advisory, by name; then its details (none, so the record keeps only the ID)
+        let mut mock_post = HashMap::new();
+        mock_post.insert(
+            "https://api.osv.dev/v1/query".to_string(),
+            r#"{"vulns": [{"id": "GHSA-mrrh-fwg8-r2c3", "affected": [{"package": {"name": "tj-actions/changed-files", "ecosystem": "GitHub Actions"}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "46.0.1"}]}]}]}]}"#.to_string(),
+        );
+        let client = Arc::new(UreqClientMock {
+            mock_post: Some(mock_post),
+            mock_get: Some(mock_get),
+        });
+        let packages = vec![Package::new(
+            Ecosystem::Gha,
+            "tj-actions/changed-files",
+            VersionSpec::new(sha),
+            Some(DirectURL {
+                url: "https://github.com/tj-actions/changed-files".to_string(),
+                vcs_info: Some(VcsInfo {
+                    commit_id: sha.to_string(),
+                    vcs: "git".to_string(),
+                    revision: None,
+                }),
+            }),
+        )];
+        let cache_config = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let ar = AuditReport::from_packages(
+            client,
+            &packages,
+            FlagCacheRefresh(false),
+            &cache_config,
+            FlagLog(false),
+            CvssFilter::All,
+            FlagRetainPassing(false),
+        )
+        .unwrap();
+        assert!(ar.unaudited.is_empty());
+        assert_eq!(ar.records.len(), 1);
+        assert_eq!(ar.records[0].package.version.to_string(), "v35.0.0");
+        assert_eq!(
+            ar.records[0].vuln_ids,
+            vec!["GHSA-mrrh-fwg8-r2c3".to_string()]
+        );
+        assert_eq!(ar.resolved_pins.len(), 1);
+        let json = serde_json::to_string(&ar).unwrap();
+        assert!(
+            json.contains(r#""resolved_pins":[{"name":"tj-actions/changed-files""#),
+            "{json}"
         );
     }
 

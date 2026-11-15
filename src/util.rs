@@ -10,6 +10,7 @@ use std::io::Stderr;
 use std::ops::DerefMut;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -402,6 +403,11 @@ pub(crate) fn path_normalize(path: &Path, validate: bool) -> ResultDynError<Path
         let cwd = env::current_dir().map_err(|e| e.to_string())?;
         fp = cwd.join(fp);
     }
+    // drop `.` components (lexically safe, unlike resolving `..`), so `--root .` does not report `dir/./file`
+    fp = fp
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .collect();
     if validate && !fp.exists() {
         return Err(format!("File path does not exist: {}", fp.display()).into());
     }
@@ -548,7 +554,6 @@ pub(crate) fn conda_fn_to_name_version(filename: &str) -> Option<(String, String
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::path::Component;
 
     use tempfile::tempdir;
 
@@ -600,6 +605,16 @@ mod tests {
         let p2 = path_normalize(p1, false).unwrap();
         let home = path_home().unwrap();
         assert!(p2.starts_with(home));
+    }
+
+    #[test]
+    fn test_path_normalize_cur_dir_a() {
+        let cwd = env::current_dir().unwrap();
+        assert_eq!(path_normalize(Path::new("."), false).unwrap(), cwd);
+        assert_eq!(
+            path_normalize(Path::new("./a/./b"), false).unwrap(),
+            cwd.join("a").join("b")
+        );
     }
 
     #[test]
@@ -690,7 +705,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "238b8ea7c04b3f45b6278f344a4877ac9d5e515ed00d3c56500d0794b5e8839e"
+            "9903de08c2b5f93425aa2c7a74028163d272f265ffe6ced98f6b679e39455333"
         )
     }
 
@@ -701,7 +716,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "00ab8a64d2a7ef5313233b0c44ea6f93bd5a00766b878e8b789827461b64aaa4"
+            "51c8cba3a946f4fea6d6d110912eac1a0b0591833293c8cdc54af1803b83af0b"
         )
     }
 

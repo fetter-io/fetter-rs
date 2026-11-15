@@ -1,4 +1,6 @@
-//! A single filesystem walk that dispatches each visited directory to all enabled ecosystem scanners.
+//! A single filesystem walk that dispatches each visited directory to the ecosystem scanners.
+//!
+//! Every scanner's pruning applies, enabled or not, but only enabled scanners contribute Origins. A directory one ecosystem knows holds no projects (Cargo's home, a gem directory, a Python environment) is then skipped whichever ecosystems are enabled, so the Origins found for an ecosystem do not depend on `-E`.
 
 use std::collections::HashSet;
 use std::env;
@@ -10,6 +12,7 @@ use rayon::prelude::*;
 
 use crate::eco::DirItem;
 use crate::eco::EcosystemScanner;
+use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
 use crate::util::path_home;
 use crate::util::path_users;
@@ -25,6 +28,8 @@ fn get_search_exclude_paths(homes: &HashSet<(PathBuf, bool)>) -> HashSet<PathBuf
     for (home, _) in homes {
         paths.insert(home.clone().join(".cache"));
         paths.insert(home.clone().join(".npm"));
+        // Pulumi's own clone of its project templates, provider plugins, and state; no user projects
+        paths.insert(home.clone().join(".pulumi"));
 
         if env::consts::OS == "macos" {
             paths.insert(home.clone().join("Library"));
@@ -81,12 +86,15 @@ fn get_origins_home(all_users: bool) -> HashSet<(PathBuf, bool)> {
 }
 
 //------------------------------------------------------------------------------
+/// A scanner and whether it is enabled (contributes Origins); disabled scanners only prune.
+type WalkScanner<'a> = (&'a dyn EcosystemScanner, bool);
+
 /// Read `dir` once, give its entries to every scanner, and (if `recurse` and no scanner prunes) descend into child directories in parallel. Symlinked directories are never followed.
 fn walk_inner(
     dir: &Path,
     exclude_paths: &HashSet<PathBuf>,
     recurse: bool,
-    scanners: &[&dyn EcosystemScanner],
+    scanners: &[WalkScanner],
 ) -> Vec<Origin> {
     if exclude_paths.contains(dir) {
         return Vec::new();
@@ -109,9 +117,11 @@ fn walk_inner(
     let mut origins = Vec::new();
     let mut prune = false;
     let mut skip: Vec<&'static str> = SKIP_DIR_NAMES.to_vec();
-    for scanner in scanners {
+    for (scanner, enabled) in scanners {
         let detect = scanner.detect(dir, &items);
-        origins.extend(detect.origins);
+        if *enabled {
+            origins.extend(detect.origins);
+        }
         prune |= detect.prune;
         skip.extend(detect.skip_children);
     }
@@ -136,7 +146,7 @@ fn walk_inner(
 fn walk_roots(
     roots: &HashSet<(PathBuf, bool)>,
     exclude_paths: &HashSet<PathBuf>,
-    scanners: &[&dyn EcosystemScanner],
+    scanners: &[WalkScanner],
 ) -> HashSet<Origin> {
     roots
         .par_iter()
@@ -154,18 +164,29 @@ pub(crate) fn discover(
     roots: &[PathBuf],
 ) -> HashSet<Origin> {
     let homes = get_origins_home(all_users);
-    let exclude = get_search_exclude_paths(&homes);
+    let mut exclude = get_search_exclude_paths(&homes);
+    // the enabled scanners, then all others (for pruning only)
+    let mut walkers: Vec<WalkScanner> = scanners.iter().map(|s| (*s, true)).collect();
+    for s in crate::eco::scanners(&Ecosystem::ALL) {
+        if !scanners.iter().any(|e| std::ptr::addr_eq(*e, s)) {
+            walkers.push((s, false));
+        }
+    }
+    // package caches are excluded for every ecosystem, enabled or not, so that results do not depend on `-E`
+    for (scanner, _) in &walkers {
+        exclude.extend(scanner.cache_dirs());
+    }
 
     if !roots.is_empty() {
         let roots: HashSet<(PathBuf, bool)> =
             roots.iter().map(|r| (r.clone(), true)).collect();
-        return walk_roots(&roots, &exclude, scanners);
+        return walk_roots(&roots, &exclude, &walkers);
     }
     let mut roots = homes;
     for scanner in scanners {
         roots.extend(scanner.roots());
     }
-    let mut origins = walk_roots(&roots, &exclude, scanners);
+    let mut origins = walk_roots(&roots, &exclude, &walkers);
     for scanner in scanners {
         origins.extend(scanner.default_origins());
     }
@@ -239,7 +260,7 @@ mod tests {
     fn walk(root: &Path, recurse: bool) -> Vec<PathBuf> {
         let mut roots = HashSet::new();
         roots.insert((root.to_path_buf(), recurse));
-        let scanners: [&dyn EcosystemScanner; 1] = [&MarkerScanner];
+        let scanners: [WalkScanner; 1] = [(&MarkerScanner, true)];
         let mut found: Vec<PathBuf> = walk_roots(&roots, &HashSet::new(), &scanners)
             .into_iter()
             .map(|o| o.as_path().strip_prefix(root).unwrap().to_path_buf())
@@ -293,6 +314,59 @@ mod tests {
         );
     }
 
+    /// Prunes directories containing `wall.txt`, claiming no Origins.
+    struct WallScanner;
+
+    impl EcosystemScanner for WallScanner {
+        fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect {
+            let wall = items.iter().any(|i| i.file_name() == Some("wall.txt"));
+            Detect {
+                origins: vec![Origin::new(
+                    Ecosystem::Go,
+                    PathShared::from(dir.to_path_buf()),
+                )],
+                prune: wall,
+                ..Default::default()
+            }
+        }
+        fn accepts(&self, _path: &Path) -> bool {
+            false
+        }
+        fn normalize_origin(&self, _path: &Path) -> ResultDynError<Origin> {
+            unimplemented!()
+        }
+        fn origin_to_sites(
+            &self,
+            _o: &Origin,
+            _c: &ScanConfig,
+            _l: FlagLog,
+        ) -> Vec<Site> {
+            Vec::new()
+        }
+        fn site_to_packages(&self, _site: &Site) -> Vec<Package> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn test_walk_disabled_scanner_prunes_a() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        touch(root.join("a/wall.txt"));
+        touch(root.join("a/b/marker.txt")); // below a dir pruned by a disabled scanner
+        touch(root.join("c/marker.txt"));
+        let mut roots = HashSet::new();
+        roots.insert((root.to_path_buf(), true));
+        let scanners: [WalkScanner; 2] = [(&MarkerScanner, true), (&WallScanner, false)];
+        let mut found: Vec<PathBuf> = walk_roots(&roots, &HashSet::new(), &scanners)
+            .into_iter()
+            .map(|o| o.as_path().strip_prefix(root).unwrap().to_path_buf())
+            .collect();
+        found.sort();
+        // the disabled scanner's pruning applies, but none of its (every-dir) Origins are reported
+        assert_eq!(found, vec![PathBuf::from("c")]);
+    }
+
     #[test]
     fn test_walk_skip_children_a() {
         let dir = tempdir().unwrap();
@@ -327,7 +401,7 @@ mod tests {
         roots.insert((root.to_path_buf(), true));
         let mut exclude = HashSet::new();
         exclude.insert(root.join("a"));
-        let scanners: [&dyn EcosystemScanner; 1] = [&MarkerScanner];
+        let scanners: [WalkScanner; 1] = [(&MarkerScanner, true)];
         let found = walk_roots(&roots, &exclude, &scanners);
         assert_eq!(found.len(), 1);
         assert!(found.iter().next().unwrap().as_path().ends_with("b"));

@@ -27,16 +27,27 @@ pub enum Ecosystem {
     Gha,
     #[value(name = "vscode")]
     VsCode,
+    Go,
+    Ruby,
+    Php,
+    #[value(name = "precommit")]
+    PreCommit,
+    Swift,
 }
 
 impl Ecosystem {
     /// All ecosystems, in canonical order.
-    pub const ALL: [Ecosystem; 5] = [
+    pub const ALL: [Ecosystem; 10] = [
         Ecosystem::Python,
         Ecosystem::Npm,
         Ecosystem::Cargo,
         Ecosystem::Gha,
         Ecosystem::VsCode,
+        Ecosystem::Go,
+        Ecosystem::Ruby,
+        Ecosystem::Php,
+        Ecosystem::PreCommit,
+        Ecosystem::Swift,
     ];
 
     /// The name used on the command line and in serialized output.
@@ -47,6 +58,11 @@ impl Ecosystem {
             Ecosystem::Cargo => "cargo",
             Ecosystem::Gha => "gha",
             Ecosystem::VsCode => "vscode",
+            Ecosystem::Go => "go",
+            Ecosystem::Ruby => "ruby",
+            Ecosystem::Php => "php",
+            Ecosystem::PreCommit => "precommit",
+            Ecosystem::Swift => "swift",
         }
     }
 
@@ -58,10 +74,21 @@ impl Ecosystem {
             Ecosystem::Cargo => "crates.io",
             Ecosystem::Gha => "GitHub Actions",
             Ecosystem::VsCode => "VSCode",
+            Ecosystem::Go => "Go",
+            Ecosystem::Ruby => "RubyGems",
+            Ecosystem::Php => "Packagist",
+            // not in OSV; see `has_osv`
+            Ecosystem::PreCommit => "",
+            Ecosystem::Swift => "SwiftURL",
         }
     }
 
     /// True if the OSV API matches versions for this ecosystem server-side. GitHub Actions advisories carry only `ECOSYSTEM` ranges that OSV does not evaluate (verified live 2026-11-13), so its versions are matched client-side (`osv_match`).
+    /// True if OSV has this ecosystem. pre-commit hooks are audited through the packages they install (`eco::precommit::map_hooks`).
+    pub fn has_osv(&self) -> bool {
+        !matches!(self, Ecosystem::PreCommit)
+    }
+
     pub fn osv_server_side_versions(&self) -> bool {
         !matches!(self, Ecosystem::Gha)
     }
@@ -71,7 +98,15 @@ impl Ecosystem {
         match self {
             // Python and Cargo both treat `-` and `_` as equivalent, case-insensitively
             Ecosystem::Python | Ecosystem::Cargo => name_to_key(name),
-            Ecosystem::Npm | Ecosystem::Gha | Ecosystem::VsCode => name.to_lowercase(),
+            // Packagist names are case-insensitive, canonically lowercase
+            Ecosystem::Npm
+            | Ecosystem::Gha
+            | Ecosystem::VsCode
+            | Ecosystem::Php
+            | Ecosystem::PreCommit
+            | Ecosystem::Swift => name.to_lowercase(),
+            // module paths and gem names are case-sensitive
+            Ecosystem::Go | Ecosystem::Ruby => name.to_string(),
         }
     }
 }

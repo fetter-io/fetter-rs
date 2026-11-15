@@ -4,6 +4,9 @@ use crate::audit_report::AuditReport;
 use crate::audit_report::Unresolved;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::eco::go::semver_of as go_semver;
+use crate::eco::php::ComposerConstraint;
+use crate::eco::ruby::GemRequirement;
 use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
 use crate::package::Package;
@@ -64,11 +67,11 @@ pub(crate) fn split_name_requirement(arg: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// The exact version a requirement names, if it names exactly one: a bare version (npm, VS Code), `=version` (Cargo), or a single ref (GitHub Actions).
+/// The exact version a requirement names, if it names exactly one: a bare version (npm, VS Code, Go, Ruby), `=version` (Cargo, Ruby), or a single ref (GitHub Actions).
 fn exact_version(eco: Ecosystem, spec: &str) -> Option<String> {
     let s = spec.trim();
     match eco {
-        Ecosystem::Npm | Ecosystem::VsCode => {
+        Ecosystem::Npm | Ecosystem::VsCode | Ecosystem::Swift => {
             let v = s.strip_prefix('=').unwrap_or(s).trim();
             nodejs_semver::Version::parse(v).ok().map(|_| v.to_string())
         }
@@ -76,7 +79,20 @@ fn exact_version(eco: Ecosystem, spec: &str) -> Option<String> {
             let v = s.strip_prefix('=')?.trim();
             semver::Version::parse(v).ok().map(|_| v.to_string())
         }
-        Ecosystem::Gha => (s != "*" && !s.contains(',')).then(|| s.to_string()),
+        Ecosystem::Gha | Ecosystem::PreCommit => {
+            (s != "*" && !s.contains(',')).then(|| s.to_string())
+        }
+        Ecosystem::Go => {
+            let v = s.strip_prefix('=').unwrap_or(s).trim();
+            go_semver(v).map(|_| v.to_string())
+        }
+        Ecosystem::Php => ComposerConstraint::parse(s).ok().and_then(|c| {
+            c.exact()?;
+            Some(s.trim_start_matches('=').trim().to_string())
+        }),
+        Ecosystem::Ruby => GemRequirement::parse(s)
+            .ok()
+            .and_then(|r| r.exact().map(|v| v.to_string())),
         Ecosystem::Python => None,
     }
 }
@@ -95,8 +111,28 @@ fn requirement_to_packages(
         .filter(|e| e.specs.len() == 1)
         .and_then(|e| exact_version(eco, &e.specs[0]));
     if let Some(v) = &exact {
-        if matches!(eco, Ecosystem::Npm | Ecosystem::Gha) {
-            return Ok(vec![Package::new(eco, name, VersionSpec::new(v), None)]);
+        if matches!(
+            eco,
+            Ecosystem::Npm
+                | Ecosystem::Gha
+                | Ecosystem::PreCommit
+                | Ecosystem::Swift
+                | Ecosystem::Go
+                | Ecosystem::Ruby
+                | Ecosystem::Php
+        ) {
+            // Packagist names are canonically lowercase (OSV's are case-sensitive)
+            let canonical = if eco == Ecosystem::Php {
+                name.to_lowercase()
+            } else {
+                name.to_string()
+            };
+            return Ok(vec![Package::new(
+                eco,
+                &canonical,
+                VersionSpec::new(v),
+                None,
+            )]);
         }
     }
     let rv = list_versions(client, eco, name, cache_config, log)?;
@@ -266,12 +302,28 @@ impl LookupReport {
                 ));
             }
         }
-        let entries: Vec<(Ecosystem, &ReqEntry)> = allow_list
+        // A requirement is audited at its newest allowed version (what would be installed). An entry whose specs are all exact versions (as from an SBOM or purl list, where each version is present) is audited at every one.
+        let mut entries: Vec<(Ecosystem, ReqEntry)> = Vec::new();
+        for (eco, section) in allow_list
             .sections
             .iter()
             .filter(|(e, _)| ecosystems.contains(e))
-            .flat_map(|(e, s)| s.iter().map(move |(_, entry)| (*e, entry)))
-            .collect();
+        {
+            for (_, entry) in section.iter() {
+                let all_exact = entry.specs.len() > 1
+                    && entry.specs.iter().all(|s| exact_version(*eco, s).is_some());
+                if all_exact {
+                    for spec in &entry.specs {
+                        entries.push((
+                            *eco,
+                            ReqEntry::new(*eco, &entry.name, vec![spec.clone()])?,
+                        ));
+                    }
+                } else {
+                    entries.push((*eco, entry.clone()));
+                }
+            }
+        }
         resolutions.par_extend(entries.par_iter().map(|(eco, entry)| {
             Resolution::from_result(
                 *eco,
@@ -634,6 +686,70 @@ mod tests {
         );
         assert_eq!(exact_version(Ecosystem::Gha, "v4"), Some("v4".to_string()));
         assert_eq!(exact_version(Ecosystem::Gha, "*"), None);
+        assert_eq!(
+            exact_version(Ecosystem::Go, "v1.3.0"),
+            Some("v1.3.0".to_string())
+        );
+        assert_eq!(
+            exact_version(Ecosystem::Go, "=v0.0.0-20221125231312-a49e3df8f510"),
+            Some("v0.0.0-20221125231312-a49e3df8f510".to_string())
+        );
+        assert_eq!(exact_version(Ecosystem::Go, ">=v1.3.0"), None);
+        assert_eq!(exact_version(Ecosystem::Go, "1.3.0"), None);
+        assert_eq!(
+            exact_version(Ecosystem::Ruby, "7.1.3.4"),
+            Some("7.1.3.4".to_string())
+        );
+        assert_eq!(
+            exact_version(Ecosystem::Ruby, "= 7.1"),
+            Some("7.1".to_string())
+        );
+        assert_eq!(exact_version(Ecosystem::Ruby, "~> 7.1"), None);
+        assert_eq!(
+            exact_version(Ecosystem::Php, "v5.4.0"),
+            Some("v5.4.0".to_string())
+        );
+        assert_eq!(
+            exact_version(Ecosystem::Php, "==7.4.0"),
+            Some("7.4.0".to_string())
+        );
+        assert_eq!(exact_version(Ecosystem::Php, "^7.4"), None);
+        assert_eq!(exact_version(Ecosystem::Php, "dev-main"), None);
+        assert_eq!(
+            exact_version(Ecosystem::Swift, "2.8.1"),
+            Some("2.8.1".to_string())
+        );
+        assert_eq!(exact_version(Ecosystem::Swift, ">=2.0.0"), None);
+    }
+
+    #[test]
+    fn test_requirement_to_packages_php_exact_a() {
+        use crate::ureq_client::UreqClientMock;
+        // an exact version skips the registry; the name is canonicalized to lowercase for OSV
+        let client: Arc<dyn UreqClient> = Arc::new(UreqClientMock {
+            mock_post: None,
+            mock_get: None,
+        });
+        let entry = ReqEntry::new(
+            Ecosystem::Php,
+            "Symfony/Http-Kernel",
+            vec!["v5.4.0".to_string()],
+        )
+        .unwrap();
+        let cc = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let packages = requirement_to_packages(
+            &client,
+            Ecosystem::Php,
+            "Symfony/Http-Kernel",
+            Some(&entry),
+            None,
+            &cc,
+            FlagLog(false),
+        )
+        .unwrap();
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].name, "symfony/http-kernel");
+        assert_eq!(packages[0].version.to_string(), "v5.4.0");
     }
 
     fn mock_client(get: &[(&str, &str)], post: &str) -> Arc<dyn UreqClient> {
@@ -819,5 +935,34 @@ mod tests {
             unresolved,
             vec!["python internal-pkg>=1", "npm @corp/private ^1"]
         );
+    }
+
+    #[test]
+    fn test_from_allow_list_all_exact_a() {
+        // purls (as from an SBOM) list several present versions: each is audited, without a registry
+        let client = mock_client(&[], r#"{"results": [{}, {}]}"#);
+        let al = AllowList::from_fetter_toml(
+            "purls = [\"pkg:npm/lodash@4.17.15\", \"pkg:npm/lodash@4.17.21\"]\n[npm]\n\"left-pad\" = [\"1.3.0\", \"^1\"]\n",
+        )
+        .unwrap();
+        let cc = CacheConfig::new(DURATION_0, path_cache(true).unwrap());
+        let lr = LookupReport::from_allow_list(
+            client,
+            &al,
+            &Ecosystem::ALL,
+            None,
+            &cc,
+            FlagCacheRefresh(false),
+            FlagLog(false),
+            CvssFilter::All,
+            FlagRetainPassing(true),
+        )
+        .unwrap();
+        let mut got: Vec<String> =
+            lr.records.iter().map(|r| r.package.to_string()).collect();
+        got.sort();
+        assert_eq!(got, vec!["lodash-4.17.15", "lodash-4.17.21"]);
+        // a mixed entry (an exact version and a range) is a requirement: its registry is consulted, and is missing here
+        assert_eq!(lr.unresolved.len(), 1);
     }
 }

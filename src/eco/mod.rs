@@ -2,10 +2,17 @@
 
 pub(crate) mod cargo;
 pub(crate) mod gha;
+pub(crate) mod go;
 pub(crate) mod npm;
+pub(crate) mod php;
+pub(crate) mod precommit;
 pub(crate) mod python;
+pub(crate) mod ruby;
+pub(crate) mod swift;
 pub(crate) mod vscode;
 
+use std::collections::HashSet;
+use std::fs;
 use std::fs::FileType;
 use std::path::Path;
 use std::path::PathBuf;
@@ -53,6 +60,63 @@ pub(crate) struct Hook {
     pub(crate) detail: String,
 }
 
+/// The installed files of one package at one site (for `unpack-*` and `purge-*`). `files` are explicit files, each with whether it exists; `dirs` are directories that belong wholly to the package (removed recursively by `purge-*`).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Artifacts {
+    pub(crate) files: Vec<(PathBuf, bool)>,
+    pub(crate) dirs: Vec<PathBuf>,
+}
+
+impl Artifacts {
+    /// Artifacts of packages that are installed as whole directories (npm packages, VS Code extensions): the directories, and all files below them. Below each directory, child directories named in `exclude` (e.g. `node_modules`, which holds other packages) are not listed. Symlinks are listed as files and not followed.
+    pub(crate) fn from_dirs(dirs: Vec<PathBuf>, exclude: &[&str]) -> Self {
+        let mut files = Vec::new();
+        for dir in &dirs {
+            collect_files(dir, exclude, &mut files);
+        }
+        files.sort();
+        Artifacts { files, dirs }
+    }
+}
+
+/// Recursively collect files below `dir`; child directories of `dir` itself named in `exclude` are skipped.
+fn collect_files(dir: &Path, exclude: &[&str], out: &mut Vec<(PathBuf, bool)>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+        if is_dir {
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|n| exclude.contains(&n))
+            {
+                continue;
+            }
+            collect_files(&path, &[], out);
+        } else {
+            out.push((path, true));
+        }
+    }
+}
+
+/// Lines of a hook file to show.
+pub(crate) const HOOK_HEAD_LINES: usize = 10;
+
+/// The first lines of a file, joined with spaces (for hooks whose code is in a file).
+pub(crate) fn head_lines(fp: &Path, n: usize) -> std::io::Result<String> {
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(fs::File::open(fp)?);
+    Ok(reader
+        .lines()
+        .take(n)
+        .map_while(Result::ok)
+        .collect::<Vec<_>>()
+        .join(" "))
+}
+
 /// The result of a scanner inspecting one directory.
 #[derive(Debug, Default)]
 pub(crate) struct Detect {
@@ -69,6 +133,11 @@ pub(crate) struct Detect {
 pub(crate) trait EcosystemScanner: Sync {
     /// Additional `(directory, recursive)` roots to walk beyond the home directories (e.g. PATH bin dirs for Python).
     fn roots(&self) -> Vec<(PathBuf, bool)> {
+        Vec::new()
+    }
+
+    /// Directories of downloaded package sources (e.g. Cargo's registry, Go's module cache). They contain lockfiles and manifests of other packages, not projects of any ecosystem, so the walk never enters them, whichever ecosystems are enabled. Default: none.
+    fn cache_dirs(&self) -> Vec<PathBuf> {
         Vec::new()
     }
 
@@ -101,6 +170,15 @@ pub(crate) trait EcosystemScanner: Sync {
     fn site_to_hooks(&self, _site: &Site) -> Vec<Hook> {
         Vec::new()
     }
+
+    /// Installed artifacts of the `wanted` packages at a Site (for `unpack-*` and `purge-*`), one entry per package; a package installed several times within the site has its artifacts merged. Wanted packages without artifacts at this site are omitted. Default: none, as lockfile and manifest sites have no installed files.
+    fn site_to_artifacts(
+        &self,
+        _site: &Site,
+        _wanted: &HashSet<&Package>,
+    ) -> Vec<(Package, Artifacts)> {
+        Vec::new()
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -108,6 +186,11 @@ static PYTHON: python::PythonScanner = python::PythonScanner;
 static CARGO: cargo::CargoScanner = cargo::CargoScanner;
 static NPM: npm::NpmScanner = npm::NpmScanner;
 static GHA: gha::GhaScanner = gha::GhaScanner;
+static GO: go::GoScanner = go::GoScanner;
+static RUBY: ruby::RubyScanner = ruby::RubyScanner;
+static PHP: php::PhpScanner = php::PhpScanner;
+static PRECOMMIT: precommit::PreCommitScanner = precommit::PreCommitScanner;
+static SWIFT: swift::SwiftScanner = swift::SwiftScanner;
 static VSCODE: vscode::VsCodeScanner = vscode::VsCodeScanner;
 
 /// Return the scanner for an ecosystem, if one is implemented.
@@ -118,6 +201,11 @@ pub(crate) fn scanner_for(ecosystem: Ecosystem) -> Option<&'static dyn Ecosystem
         Ecosystem::Npm => Some(&NPM),
         Ecosystem::Gha => Some(&GHA),
         Ecosystem::VsCode => Some(&VSCODE),
+        Ecosystem::Go => Some(&GO),
+        Ecosystem::Ruby => Some(&RUBY),
+        Ecosystem::Php => Some(&PHP),
+        Ecosystem::PreCommit => Some(&PRECOMMIT),
+        Ecosystem::Swift => Some(&SWIFT),
     }
 }
 

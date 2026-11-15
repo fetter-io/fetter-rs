@@ -11,6 +11,27 @@ pub trait UreqClient: Send + Sync {
     fn get_with_accept(&self, url: &str, _accept: &str) -> Result<String, ureq::Error> {
         self.get(url)
     }
+    /// The output of `git ls-remote --tags` for a repository URL (with `--refs` if `refs_only`, which omits peeled `^{}` lines); an error is git's stderr. Terminal prompts are disabled: GitHub asks for credentials for a repository that does not exist (or is private), which would otherwise hang. By default this runs `git`.
+    fn git_ls_remote_tags(&self, url: &str, refs_only: bool) -> Result<String, String> {
+        let mut args = vec!["ls-remote", "--tags"];
+        if refs_only {
+            args.push("--refs");
+        }
+        args.push(url);
+        let output = std::process::Command::new("git")
+            .args(&args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| {
+                format!("Failed to run git (required for GitHub Actions tags): {e}")
+            })?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -66,5 +87,10 @@ impl UreqClient for UreqClientMock {
     fn get(&self, url: &str) -> Result<String, ureq::Error> {
         // like a server without the resource
         Self::find_response(&self.mock_get, url).ok_or(ureq::Error::StatusCode(404))
+    }
+    /// Answers from `mock_get` under the key `git+<url>`; git is never run. Without a response, fails as git does for a missing repository.
+    fn git_ls_remote_tags(&self, url: &str, _refs_only: bool) -> Result<String, String> {
+        Self::find_response(&self.mock_get, &format!("git+{url}"))
+            .ok_or_else(|| "remote: Repository not found.".to_string())
     }
 }
