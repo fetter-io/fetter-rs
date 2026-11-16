@@ -13,7 +13,7 @@ readme = "README.md"
 # the working spec and articles are for the repository, not the published crate
 exclude = ["SPEC.md", "SPEC-scope.md", "doc/"]
 
-description = "System-wide package discovery, validation, vulnerability scanning, and allow-listing for Python, npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, VS Code extensions, and Chromium and Firefox browser extensions."
+description = "Comprehensive open-source supply-chain visibility, providing system-wide package discovery, validation, vulnerability scanning, and allow-listing for Python, npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, VS Code extensions, and Chromium and Firefox browser extensions."
 keywords = ["sbom", "vulnerability", "allow-listing", "cybersecurity", "osv"]
 
 categories = [

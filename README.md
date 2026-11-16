@@ -12,9 +12,9 @@
 
 ## System-wide Package Discovery, Validation, and Allow-Listing
 
-The `fetter` command-line tool finds the packages on a system and checks them against an allow list and the Open Source Vulnerabilities (OSV) database. It covers Python environments, npm projects, Rust (Cargo) projects and installed crates, Go modules, Ruby projects and installed gems, PHP (Composer) projects, Swift packages, pre-commit hooks, GitHub Actions workflows, VS Code extensions, and browser extensions (Chromium and Firefox families), all in a single fast, multi-threaded scan.
+The `fetter` command-line tool provides comprehensive open-source supply-chain visibility by finding all packages on a system and checking them against allow lists and the Open Source Vulnerabilities (OSV) database. It covers Python environments, npm projects, Rust (Cargo) projects and installed crates, Go modules, Ruby projects and installed gems, PHP (Composer) projects, Swift packages, pre-commit hooks, GitHub Actions workflows, VS Code extensions, and browser extensions (Chromium and Firefox families), all in a single fast, multi-threaded scan.
 
-As an alternative to `pip-audit`, `fetter` can look up vulnerabilities for packages defined in requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`, and for packages of every supported ecosystem in a `fetter.toml` allow list. Full vulnerability details, including CVSS scores, are provided.
+As an alternative to `pip-audit` for Python and related tools for different ecosystems, `fetter` can look up vulnerabilities for packages defined in requirements.txt, pyproject.toml, or lock files created by `uv`, `pixi`, `poetry`, `pipenv`, or `pip-tools`, and for packages of every supported ecosystem in a `fetter.toml` allow list. Full vulnerability details, including CVSS scores, are provided.
 
 Additionally, `fetter` can configure a Python virtual environment to validate package alignment before every Python run, enforcing a locked and reproducible development environment.
 
