@@ -7,7 +7,7 @@ use std::io::{Error, Write};
 use std::path::PathBuf;
 
 // use crate::util::get_writer;
-use crate::inspect_report::PY_NAME_KEEP;
+use crate::eco::python::PY_STARTUP_MODULES;
 use crate::util::get_writer;
 use crate::write_color::write_color;
 
@@ -36,13 +36,23 @@ fn optimize_widths(
     ellipsisable: &[bool],
     w_gutter: usize,
 ) -> Vec<WidthFormat> {
-    // total characters needed; we add a gutter after all columns, even the last one
-    let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
-    let ellipsisable_any = ellipsisable.iter().any(|&x| x);
     let w_terminal = match terminal::size() {
         Ok((w, _)) => w,
         _ => 0,
     };
+    optimize_widths_for(widths_max, ellipsisable, w_gutter, w_terminal)
+}
+
+/// Fit columns to `w_terminal` by shrinking only ellipsisable columns, in proportion to their widths. A terminal width of 0 means unknown: no fitting. If the terminal is narrower than the non-ellipsisable columns alone, ellipsisable columns shrink to their minimum and the table overflows rather than failing.
+fn optimize_widths_for(
+    widths_max: &[usize],
+    ellipsisable: &[bool],
+    w_gutter: usize,
+    w_terminal: u16,
+) -> Vec<WidthFormat> {
+    // total characters needed; we add a gutter after all columns, even the last one
+    let w_total: usize = widths_max.iter().sum::<usize>() + (w_gutter * widths_max.len());
+    let ellipsisable_any = ellipsisable.iter().any(|&x| x);
 
     if !ellipsisable_any || w_total <= w_terminal.into() || w_terminal == 0 {
         return widths_max
@@ -69,7 +79,8 @@ fn optimize_widths(
             // we derive proportion based on observed max_width
             let proportion = *width as f64 / w_ellipsisable as f64;
             let reduction = (proportion * w_excess) as usize;
-            let w_field = (*width - reduction).max(3);
+            // saturating: the reduction exceeds the column when the terminal is narrower than the non-ellipsisable columns
+            let w_field = width.saturating_sub(reduction).max(w_gutter + 1);
             widths.push(WidthFormat {
                 width_chars: w_field - w_gutter,
                 width_pad: w_field,
@@ -102,21 +113,50 @@ fn prepare_field(value: &String, widths: &WidthFormat) -> String {
     }
 }
 
+/// Quote a delimited field per RFC 4180 if it contains the delimiter, a double quote, or a line break; embedded double quotes are doubled. Other fields are written unchanged.
+fn quote_field(field: &str, delimiter: char) -> std::borrow::Cow<'_, str> {
+    if field.contains([delimiter, '"', '\n', '\r']) {
+        std::borrow::Cow::Owned(format!("\"{}\"", field.replace('"', "\"\"")))
+    } else {
+        std::borrow::Cow::Borrowed(field)
+    }
+}
+
+/// Write rows joined by `delimiter`. If `quote`, fields are quoted as needed (see `quote_field`); a delimiter that cannot be used with quoting (a double quote or line break) is an error.
 fn to_table_delimited<W: Write, T: Rowable>(
     writer: &mut W,
     column_formats: Vec<ColumnFormat>,
     records: &Vec<T>,
-    delimiter: &str,
+    delimiter: char,
+    quote: bool,
 ) -> Result<(), Error> {
+    if quote && matches!(delimiter, '"' | '\n' | '\r') {
+        return Err(Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Invalid delimiter {delimiter:?}: a double quote or line break cannot delimit quoted fields"),
+        ));
+    }
     if records.is_empty() || column_formats.is_empty() {
         return Ok(());
     }
+    let sep = delimiter.to_string();
+    let join = |fields: &[String]| -> String {
+        if quote {
+            fields
+                .iter()
+                .map(|f| quote_field(f, delimiter))
+                .collect::<Vec<_>>()
+                .join(&sep)
+        } else {
+            fields.join(&sep)
+        }
+    };
     let header_labels: Vec<String> =
         column_formats.iter().map(|hf| hf.header.clone()).collect();
-    writeln!(writer, "{}", header_labels.join(delimiter))?;
+    writeln!(writer, "{}", join(&header_labels))?;
     for record in records {
         for row in record.to_rows(&RowableContext::Delimited) {
-            writeln!(writer, "{}", row.join(delimiter))?;
+            writeln!(writer, "{}", join(&row))?;
         }
     }
     Ok(())
@@ -210,9 +250,9 @@ impl ColumnFormat {
             }
         } else if self.header == "Site" {
             write_color(writer, "#999999", &field);
-        } else if self.header == "File" {
-            // used in InspectReport
-            if PY_NAME_KEEP.contains(&message.as_str()) {
+        } else if self.header == "Hook" {
+            // used in InspectReport: highlight Python startup modules
+            if PY_STARTUP_MODULES.contains(&message.as_str()) {
                 write_color(writer, "#FF999C", &field);
             } else {
                 write!(writer, "{field}")?;
@@ -229,18 +269,154 @@ pub trait Tableable<T: Rowable> {
     fn get_header(&self) -> Vec<ColumnFormat>;
     fn get_records(&self) -> &Vec<T>;
 
+    /// Whether delimited output quotes fields that contain the delimiter (RFC 4180). Override to false for output that is not a table, such as a requirements file.
+    fn delimited_quoting(&self) -> bool {
+        true
+    }
+
     fn to_file(&self, file_path: &PathBuf, delimiter: char) -> io::Result<()> {
-        let mut file = File::create(file_path)?;
+        let quote = self.delimited_quoting();
+        // validate before creating (and truncating) the file
+        if quote && matches!(delimiter, '"' | '\n' | '\r') {
+            return to_table_delimited(
+                &mut io::sink(),
+                self.get_header(),
+                self.get_records(),
+                delimiter,
+                quote,
+            );
+        }
+        let mut file = File::create(file_path).map_err(|e| {
+            Error::new(
+                e.kind(),
+                format!("Cannot write {}: {e}", file_path.display()),
+            )
+        })?;
         to_table_delimited(
             &mut file,
             self.get_header(),
             self.get_records(),
-            &delimiter.to_string(),
+            delimiter,
+            quote,
         )
     }
 
     fn to_writer(&self, stderr: bool) -> io::Result<()> {
         let mut writer = get_writer(stderr);
         to_table_display(&mut writer, self.get_header(), self.get_records())
+    }
+}
+
+#[cfg(test)]
+mod tests_widths {
+    use super::*;
+
+    #[test]
+    fn test_optimize_widths_fits_a() {
+        // fits: unchanged
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 100);
+        assert_eq!((w[1].width_chars, w[1].width_pad), (40, 42));
+        // unknown terminal width: unchanged
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 0);
+        assert_eq!(w[1].width_chars, 40);
+    }
+
+    #[test]
+    fn test_optimize_widths_shrinks_a() {
+        // 10+2 + 40+2 = 54 needed, 34 available: only the ellipsisable column shrinks, and the row fits
+        let w = optimize_widths_for(&[10, 40], &[false, true], 2, 34);
+        assert_eq!((w[0].width_chars, w[0].width_pad), (10, 12));
+        assert!(w[1].width_chars < 40);
+        assert!(w[0].width_pad + w[1].width_pad <= 34);
+    }
+
+    #[test]
+    fn test_optimize_widths_narrow_terminal_a() {
+        // the non-ellipsisable column alone exceeds the terminal: no underflow, minimum widths
+        let w = optimize_widths_for(&[60, 40, 30], &[false, true, true], 2, 20);
+        assert_eq!(w[0].width_chars, 60);
+        assert!(w[1].width_chars >= 1 && w[1].width_pad == w[1].width_chars + 2);
+        assert!(w[2].width_chars >= 1 && w[2].width_pad == w[2].width_chars + 2);
+        // fields render without panicking
+        let _ = prepare_field(&"x".repeat(100), &w[1]);
+        let _ = prepare_field(&"y".to_string(), &w[2]);
+    }
+}
+
+#[cfg(test)]
+mod tests_delimited {
+    use super::*;
+
+    struct Row(Vec<String>);
+    impl Rowable for Row {
+        fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
+            vec![self.0.clone()]
+        }
+    }
+
+    fn cols(names: &[&str]) -> Vec<ColumnFormat> {
+        names
+            .iter()
+            .map(|n| ColumnFormat::new(n.to_string(), false, "#666666".to_string()))
+            .collect()
+    }
+
+    fn render(rows: Vec<Vec<&str>>, delimiter: char, quote: bool) -> String {
+        let records: Vec<Row> = rows
+            .into_iter()
+            .map(|r| Row(r.into_iter().map(String::from).collect()))
+            .collect();
+        let mut out = Vec::new();
+        to_table_delimited(&mut out, cols(&["A", "B"]), &records, delimiter, quote)
+            .unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn test_quote_field_a() {
+        assert_eq!(quote_field("plain", ','), "plain");
+        assert_eq!(quote_field("a,b", ','), "\"a,b\"");
+        assert_eq!(quote_field("say \"hi\"", ','), "\"say \"\"hi\"\"\"");
+        assert_eq!(quote_field("two\nlines", ','), "\"two\nlines\"");
+        // only the active delimiter triggers quoting
+        assert_eq!(quote_field("a|b", ','), "a|b");
+        assert_eq!(quote_field("a,b", '|'), "a,b");
+    }
+
+    #[test]
+    fn test_delimited_unchanged_without_specials_a() {
+        // the common case is byte-identical to unquoted output
+        assert_eq!(
+            render(vec![vec!["numpy-2.1.0", "/site-packages"]], '|', true),
+            "A|B\nnumpy-2.1.0|/site-packages\n"
+        );
+    }
+
+    #[test]
+    fn test_delimited_quotes_a() {
+        assert_eq!(
+            render(
+                vec![vec![
+                    "sharp-0.34.5 install",
+                    "node install/check.js || npm run build"
+                ]],
+                '|',
+                true
+            ),
+            "A|B\nsharp-0.34.5 install|\"node install/check.js || npm run build\"\n"
+        );
+        // without quoting (e.g. requirements files), fields are written as is
+        assert_eq!(render(vec![vec!["a|b", "c"]], '|', false), "A|B\na|b|c\n");
+    }
+
+    #[test]
+    fn test_delimited_invalid_delimiter_a() {
+        let records = vec![Row(vec!["x".to_string(), "y".to_string()])];
+        for d in ['"', '\n', '\r'] {
+            let mut out = Vec::new();
+            let err = to_table_delimited(&mut out, cols(&["A", "B"]), &records, d, true)
+                .unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        }
     }
 }

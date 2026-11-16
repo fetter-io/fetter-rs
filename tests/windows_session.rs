@@ -46,12 +46,12 @@ fn base_python() -> String {
     panic!("no base python interpreter found on PATH");
 }
 
-/// Invoke `fetter -e <py>` with caching disabled (so environment mutations are
+/// Invoke `fetter --origin <py>` with caching disabled (so environment mutations are
 /// always observed) and an isolated cache directory. Asserts success; returns
 /// stdout.
 fn fetter(py: &Path, cache: &Path, args: &[&str]) -> String {
     let mut c = Command::new(FETTER);
-    c.arg("-e")
+    c.arg("--origin")
         .arg(py)
         .arg("--cache-duration")
         .arg("0")
@@ -159,12 +159,10 @@ fn windows_interactive_session() {
     // ---------------------------------------------------------------------
     // Session 1: inspect the fresh environment.
     // ---------------------------------------------------------------------
-    // count -> one exe, one site, two packages.
+    // count -> one origin, one site, two packages.
     fetter(&py, &cache, &["count", "write", "-o", write_s, "-d", ","]);
     let count = read(&write_file);
-    assert!(count.contains("Executables,1"), "count:\n{count}");
-    assert!(count.contains("Sites,1"), "count:\n{count}");
-    assert!(count.contains("Packages,2"), "count:\n{count}");
+    assert!(count.contains("python,1,1,2"), "count:\n{count}");
 
     // scan -> both packages listed (sorted).
     fetter(&py, &cache, &["scan", "write", "-o", write_s, "-d", ","]);
@@ -216,7 +214,7 @@ fn windows_interactive_session() {
     let unpack = read(&write_file);
     let foo_row = unpack
         .lines()
-        .find(|l| l.starts_with("foo-1.0.0,"))
+        .find(|l| l.split(',').nth(1) == Some("foo-1.0.0"))
         .unwrap_or_else(|| panic!("no foo row in unpack:\n{unpack}"));
     // Trailing fields are Files,Dirs (the Site column contains no comma).
     let fields: Vec<&str> = foo_row.rsplitn(3, ',').collect();
@@ -253,7 +251,7 @@ fn windows_interactive_session() {
     fetter(&py, &cache, &["count", "write", "-o", write_s, "-d", ","]);
     let count = read(&write_file);
     assert!(
-        count.contains("Packages,1"),
+        count.contains("python,1,1,1"),
         "count after removal:\n{count}"
     );
 

@@ -1,0 +1,78 @@
+[
+ "tenant-key",
+ {
+  "username": "user",
+  "hostname": "host",
+  "os_name": "macos",
+  "os_version": "14.1.1",
+  "architecture": "aarch64",
+  "logical_cores": 16
+ },
+ [
+  [
+   "/home/user/proj/venv/bin/python",
+   "/home/user/proj/venv/lib/python3.12/site-packages",
+   "/home/user/proj/venv/bin/python3"
+  ],
+  [
+   [
+    0,
+    [
+     1
+    ]
+   ],
+   [
+    2,
+    [
+     1
+    ]
+   ]
+  ],
+  [
+   [
+    {
+     "name": "dill",
+     "key": "dill",
+     "version": "0.3.8",
+     "direct_url": {
+      "url": "https://github.com/uqfoundation/dill.git",
+      "vcs_info": {
+       "commit_id": "a0a8e86976708d0436eec5c8f7d25329da727cb5",
+       "vcs": "git"
+      }
+     }
+    },
+    [
+     1
+    ]
+   ],
+   [
+    {
+     "name": "requests",
+     "key": "requests",
+     "version": "2.31.0",
+     "direct_url": null
+    },
+    [
+     1
+    ]
+   ]
+  ],
+  [
+   [
+    1,
+    [
+     0,
+     2
+    ]
+   ]
+  ],
+  false,
+  false,
+  "2fe51963a4588ad6aa3613800b74d5265c74c01827cdfc7f60c8d2a42e2b7080"
+ ],
+ {
+  "secs": 1794774241,
+  "nanos": 946185000
+ }
+]

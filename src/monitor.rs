@@ -1,5 +1,6 @@
 use crate::scan_fs::ScanFS;
 use crate::system_tag::SystemTag;
+use crate::transmit::payload_json;
 use crate::ureq_client::UreqClient;
 use crate::util::logger;
 use crate::util::FlagLog;
@@ -14,7 +15,7 @@ use std::{thread, time::Duration};
 
 #[allow(clippy::too_many_arguments)]
 fn monitor_scan(
-    exe_paths: Arc<Vec<PathBuf>>,
+    origin_paths: Arc<Vec<PathBuf>>,
     system_tag: Arc<SystemTag>,
     sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>>,
     client: Arc<dyn UreqClient>,
@@ -23,36 +24,57 @@ fn monitor_scan(
     config: ScanConfig,
     log: FlagLog,
 ) {
-    logger!(log, module_path!(), "Calling from_exes().");
-    let sfs = ScanFS::from_exes(&exe_paths, &config, log).expect("from_exes() failed.");
+    logger!(log, module_path!(), "Calling from_origin_paths().");
+    // a failed scan or serialization skips this period; the worker continues
+    let mut sfs = match ScanFS::from_origin_paths(&origin_paths, &config, log) {
+        Ok(sfs) => sfs,
+        Err(e) => {
+            logger!(log, module_path!(), "Scan failed, not posting: {}", e);
+            return;
+        }
+    };
+    sfs.load_hooks();
 
     let duration_since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
+        .unwrap_or_default();
 
-    let mut sfs_prev = sfs_prev_mutex.lock().unwrap();
+    let Ok(mut sfs_prev) = sfs_prev_mutex.lock() else {
+        logger!(
+            log,
+            module_path!(),
+            "Previous scan unavailable, not posting."
+        );
+        return;
+    };
 
-    let data = if sfs_prev.as_ref() == Some(&sfs) {
+    let scan = if sfs_prev.as_ref() == Some(&sfs) {
         logger!(log, module_path!(), "Scan results unchanged.");
-        (&*tenant, &*system_tag, None, &duration_since_epoch)
+        None
     } else {
         logger!(log, module_path!(), "Scan results new.");
         *sfs_prev = Some(sfs);
-        let sfs_ref = sfs_prev.as_ref().expect("Could not get ref from mutex");
-        (&*tenant, &*system_tag, Some(sfs_ref), &duration_since_epoch)
+        sfs_prev.as_ref()
     };
 
-    let body = serde_json::to_string(&data).expect("serialization failed.");
+    let body = match payload_json(&tenant, &system_tag, &duration_since_epoch, scan) {
+        Ok(b) => b,
+        Err(e) => {
+            logger!(log, module_path!(), "{}, not posting.", e);
+            // post a full scan next time
+            *sfs_prev = None;
+            return;
+        }
+    };
 
     logger!(log, module_path!(), "Sending {:?} characters.", body.len());
-    // println!("{}", body);
 
     let response: Result<String, ureq::Error> = client.post(&url, &body);
     logger!(log, module_path!(), "Got response: {:?}", response);
 }
 
 pub(crate) fn monitor_scan_loop(
-    exe_paths: &[PathBuf],
+    origin_paths: &[PathBuf],
     client: Arc<dyn UreqClient>,
     url: &String,
     tenant: &String,
@@ -60,11 +82,14 @@ pub(crate) fn monitor_scan_loop(
     period: u64,
     log: FlagLog,
 ) -> ResultDynError<()> {
-    let eps = Arc::new(exe_paths.to_owned());
+    let eps = Arc::new(origin_paths.to_owned());
     let url_arc = Arc::new(url.to_owned());
     let tenant_arc = Arc::new(tenant.to_owned());
 
-    let st = Arc::new(SystemTag::from_system().expect("failed from_system()"));
+    let st = Arc::new(
+        SystemTag::from_system()
+            .map_err(|e| format!("Cannot read system details: {e}"))?,
+    );
     // we hold the owned previous ScanFS
     let sfs_prev_mutex: Arc<Mutex<Option<ScanFS>>> = Arc::new(Mutex::new(None));
 
@@ -76,7 +101,7 @@ pub(crate) fn monitor_scan_loop(
             client,
             url_arc,
             tenant_arc,
-            *config,
+            config.clone(),
             log,
         );
         return Ok(());
@@ -101,7 +126,7 @@ pub(crate) fn monitor_scan_loop(
             Arc::clone(&client),
             Arc::clone(&url_arc),
             Arc::clone(&tenant_arc),
-            *config,
+            config.clone(),
             log,
         )) {
             logger!(log, module_path!(), "Worker panicked: {e}");

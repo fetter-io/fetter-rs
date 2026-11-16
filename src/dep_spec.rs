@@ -301,6 +301,20 @@ impl DepSpec {
         })
     }
 
+    /// A requirement admitting the versions from `min` to `max` (inclusive): `name>=min,<=max`, or `name==min` if they are equal.
+    pub(crate) fn from_package_range(
+        min: &Package,
+        max: &Package,
+    ) -> ResultDynError<Self> {
+        if min.version == max.version {
+            return Self::from_package(min, DepOperator::Eq);
+        }
+        let mut ds = Self::from_package(min, DepOperator::GreaterThanOrEq)?;
+        ds.operators.push(DepOperator::LessThanOrEq);
+        ds.versions.push(max.version.clone());
+        Ok(ds)
+    }
+
     // pub(crate) fn from_dep_specs(dep_specs: Vec<&DepSpec>) -> ResultDynError<Self> {
     //     let mut names = HashSet::new();
     //     let mut keys = HashSet::new();

@@ -1,6 +1,12 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
-use crate::path_shared::PathShared;
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::eco::scanner_for;
+use crate::ecosystem::Ecosystem;
+use crate::origin_site::Site;
 use crate::scan_fs::ScanFS;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
@@ -8,21 +14,25 @@ use crate::table::RowableContext;
 use crate::table::Tableable;
 
 //------------------------------------------------------------------------------
+/// Counts for one ecosystem, or for all ecosystems if `ecosystem` is None.
 #[derive(Debug, Clone)]
 pub(crate) struct CountRecord {
-    key: String,
-    value: usize,
-}
-
-impl CountRecord {
-    pub(crate) fn new(key: String, value: usize) -> Self {
-        CountRecord { key, value }
-    }
+    ecosystem: Option<Ecosystem>,
+    counts: Counts,
 }
 
 impl Rowable for CountRecord {
     fn to_rows(&self, _context: &RowableContext) -> Vec<Vec<String>> {
-        vec![vec![self.key.clone(), self.value.to_string()]]
+        let label = match self.ecosystem {
+            Some(e) => e.to_string(),
+            None => "all".to_string(),
+        };
+        vec![vec![
+            label,
+            self.counts.origins.to_string(),
+            self.counts.sites.to_string(),
+            self.counts.packages.to_string(),
+        ]]
     }
 }
 
@@ -32,22 +42,67 @@ pub(crate) struct CountReport {
     records: Vec<CountRecord>,
 }
 
+/// Origins, sites and packages found, for one ecosystem or all; as in `fetter count`, only sites that contain at least one package are counted.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Counts {
+    pub origins: usize,
+    pub sites: usize,
+    pub packages: usize,
+}
+
+/// Counts per enabled (and implemented) ecosystem, including those with zero counts, and the totals.
+pub(crate) fn ecosystem_counts(
+    scan_fs: &ScanFS,
+) -> (BTreeMap<Ecosystem, Counts>, Counts) {
+    let sites: HashSet<&Site> = scan_fs.package_to_sites.values().flatten().collect();
+    let per = scan_fs
+        .ecosystems()
+        .iter()
+        .filter(|e| scanner_for(**e).is_some())
+        .map(|e| {
+            (
+                *e,
+                Counts {
+                    origins: scan_fs
+                        .origin_to_sites
+                        .keys()
+                        .filter(|o| o.ecosystem == *e)
+                        .count(),
+                    sites: sites.iter().filter(|s| s.ecosystem == *e).count(),
+                    packages: scan_fs
+                        .package_to_sites
+                        .keys()
+                        .filter(|p| p.ecosystem == *e)
+                        .count(),
+                },
+            )
+        })
+        .collect();
+    let total = Counts {
+        origins: scan_fs.origin_to_sites.len(),
+        sites: sites.len(),
+        packages: scan_fs.package_to_sites.len(),
+    };
+    (per, total)
+}
+
 impl CountReport {
+    /// One row per enabled (and implemented) ecosystem, including those with zero counts; if there is more than one row, a final "all" row gives totals. Only Sites that contain at least one package are counted.
     pub(crate) fn from_scan_fs(scan_fs: &ScanFS) -> CountReport {
-        // discover unique packages
-        let mut site_packages: HashSet<&PathShared> = HashSet::new();
-        for package in scan_fs.package_to_sites.keys() {
-            if let Some(site_paths) = scan_fs.package_to_sites.get(package) {
-                for path in site_paths {
-                    site_packages.insert(path);
-                }
-            }
+        let (per, total) = ecosystem_counts(scan_fs);
+        let mut records: Vec<CountRecord> = per
+            .into_iter()
+            .map(|(e, c)| CountRecord {
+                ecosystem: Some(e),
+                counts: c,
+            })
+            .collect();
+        if records.len() > 1 {
+            records.push(CountRecord {
+                ecosystem: None,
+                counts: total,
+            });
         }
-        let records = vec![
-            CountRecord::new("Executables".to_string(), scan_fs.exe_to_sites.len()),
-            CountRecord::new("Sites".to_string(), site_packages.len()),
-            CountRecord::new("Packages".to_string(), scan_fs.package_to_sites.len()),
-        ];
         CountReport { records }
     }
 }
@@ -55,8 +110,10 @@ impl CountReport {
 impl Tableable<CountRecord> for CountReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
-            ColumnFormat::new("".to_string(), false, "#666666".to_string()),
-            ColumnFormat::new("Count".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Origins".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Sites".to_string(), false, "#666666".to_string()),
+            ColumnFormat::new("Packages".to_string(), false, "#666666".to_string()),
         ]
     }
     fn get_records(&self) -> &Vec<CountRecord> {
@@ -93,9 +150,24 @@ mod tests {
 
         let file = File::open(&fp).unwrap();
         let mut lines = io::BufReader::new(file).lines();
-        assert_eq!(lines.next().unwrap().unwrap(), ",Count");
-        assert_eq!(lines.next().unwrap().unwrap(), "Executables,1");
-        assert_eq!(lines.next().unwrap().unwrap(), "Sites,1");
-        assert_eq!(lines.next().unwrap().unwrap(), "Packages,3");
+        assert_eq!(
+            lines.next().unwrap().unwrap(),
+            "Ecosystem,Origins,Sites,Packages"
+        );
+        assert_eq!(lines.next().unwrap().unwrap(), "python,1,1,3");
+        // implemented ecosystems with nothing found still get a row, then totals
+        assert_eq!(lines.next().unwrap().unwrap(), "npm,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "cargo,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "gha,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "vscode,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "go,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "ruby,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "php,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "precommit,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "swift,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "chromium,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "firefox,0,0,0");
+        assert_eq!(lines.next().unwrap().unwrap(), "all,1,1,3");
+        assert!(lines.next().is_none());
     }
 }

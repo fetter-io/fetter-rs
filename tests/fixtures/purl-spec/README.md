@@ -1,0 +1,1 @@
+Test data from the purl specification, https://github.com/package-url/purl-spec (commit 26671718c3da, 2026-11-14): `tests/spec/specification-test.json` and the `tests/types/<type>-test.json` files of the purl types fetter maps. MIT licensed; see `LICENSE`. Used by `src/purl.rs` tests.

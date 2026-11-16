@@ -1,0 +1,116 @@
+{
+  "fetter_version": "5.0.0",
+  "scan": {
+    "config": {
+      "all_users": false,
+      "ecosystems": [
+        "python",
+        "npm",
+        "cargo",
+        "gha",
+        "vscode",
+        "go",
+        "ruby",
+        "php",
+        "precommit",
+        "swift",
+        "chromium",
+        "firefox"
+      ],
+      "force_usite": false,
+      "roots": []
+    },
+    "origin_sites": [
+      {
+        "origin": 0,
+        "sites": [
+          0
+        ]
+      },
+      {
+        "origin": 1,
+        "sites": [
+          1
+        ]
+      }
+    ],
+    "origins": [
+      {
+        "ecosystem": "python",
+        "path": 0
+      },
+      {
+        "ecosystem": "npm",
+        "path": 1
+      }
+    ],
+    "origins_hash": "hash",
+    "packages": [
+      {
+        "package": {
+          "direct_url": null,
+          "ecosystem": "python",
+          "key": "requests",
+          "name": "requests",
+          "purl": "pkg:pypi/requests@2.31.0",
+          "version": "2.31.0"
+        },
+        "sites": [
+          0
+        ]
+      },
+      {
+        "package": {
+          "direct_url": null,
+          "ecosystem": "npm",
+          "key": "lodash",
+          "name": "lodash",
+          "purl": "pkg:npm/lodash@4.17.15",
+          "version": "4.17.15"
+        },
+        "sites": [
+          1
+        ]
+      }
+    ],
+    "paths": [
+      "/home/user/.venv/bin/python",
+      "/home/user/proj",
+      "/home/user/.venv/lib/python3.12/site-packages",
+      "/home/user/proj/package-lock.json"
+    ],
+    "sites": [
+      {
+        "ecosystem": "python",
+        "hooks": [
+          {
+            "detail": "import _virtualenv",
+            "name": "_virtualenv.pth"
+          }
+        ],
+        "kind": "installed",
+        "path": 2
+      },
+      {
+        "ecosystem": "npm",
+        "hooks": [],
+        "kind": "lockfile",
+        "path": 3
+      }
+    ]
+  },
+  "schema": 1,
+  "system": {
+    "architecture": "x86_64",
+    "hostname": "host",
+    "logical_cores": 8,
+    "os_name": "linux",
+    "os_version": "6.8",
+    "username": "user"
+  },
+  "tenant": "t",
+  "time": {
+    "nanos": 5,
+    "secs": 1700000000
+  }
+}

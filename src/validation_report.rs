@@ -4,10 +4,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 
+use crate::allow_list::EcoSection;
+use crate::allow_list::ReqEntry;
 use crate::dep_manifest::DepManifest;
 use crate::dep_spec::DepSpec;
+use crate::ecosystem::Ecosystem;
+use crate::origin_site::Origin;
+use crate::origin_site::Site;
 use crate::package::Package;
-use crate::path_shared::PathShared;
 use crate::table::ColumnFormat;
 use crate::table::Rowable;
 use crate::table::RowableContext;
@@ -35,34 +39,67 @@ impl fmt::Display for ValidationExplain {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationFlags {
     pub permit_superset: bool,
     pub permit_subset: bool,
 }
 
+/// A requirement a package is validated against: a Python dependency specification, or a requirement of another ecosystem from an allow list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Dependency {
+    Python(DepSpec),
+    Other(ReqEntry),
+}
+
+impl fmt::Display for Dependency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Dependency::Python(ds) => ds.fmt(f),
+            Dependency::Other(entry) => entry.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ValidationRecord {
+    pub ecosystem: Ecosystem,
     pub package: Option<Package>,
-    pub dep_spec: Option<DepSpec>,
-    pub sites: Option<Vec<PathShared>>,
+    pub dependency: Option<Dependency>,
+    pub sites: Option<Vec<Site>>,
 }
 
 impl ValidationRecord {
+    /// A record for Python (a DepSpec dependency).
     pub fn new(
         package: Option<Package>,
         dep_spec: Option<DepSpec>,
-        sites: Option<Vec<PathShared>>,
+        sites: Option<Vec<Site>>,
     ) -> Self {
         ValidationRecord {
+            ecosystem: Ecosystem::Python,
             package,
-            dep_spec,
+            dependency: dep_spec.map(Dependency::Python),
+            sites,
+        }
+    }
+
+    fn new_other(
+        ecosystem: Ecosystem,
+        package: Option<Package>,
+        entry: Option<&ReqEntry>,
+        sites: Option<Vec<Site>>,
+    ) -> Self {
+        ValidationRecord {
+            ecosystem,
+            package,
+            dependency: entry.cloned().map(Dependency::Other),
             sites,
         }
     }
 
     pub fn explain(&self) -> ValidationExplain {
-        match (&self.package, &self.dep_spec) {
+        match (&self.package, &self.dependency) {
             (Some(_), Some(_)) => ValidationExplain::Misdefined,
             (None, Some(_)) => ValidationExplain::Missing,
             (Some(_), None) => ValidationExplain::Unrequired,
@@ -81,8 +118,8 @@ impl Rowable for ValidationRecord {
             Some(package) => package.to_string(),
             None => pkg_missing.to_string(),
         };
-        let dep_display = match &self.dep_spec {
-            Some(dep_spec) => dep_spec.to_string(),
+        let dep_display = match &self.dependency {
+            Some(dependency) => dependency.to_string(),
             None => dep_missing.to_string(),
         };
         // we reduce this to a string for concise representation
@@ -95,6 +132,7 @@ impl Rowable for ValidationRecord {
             None => "".to_string(),
         };
         vec![vec![
+            self.ecosystem.to_string(),
             pkg_display,
             dep_display,
             self.explain().to_string(),
@@ -105,8 +143,9 @@ impl Rowable for ValidationRecord {
 
 //------------------------------------------------------------------------------
 // A summary of validation results suitable for JSON serialization to naive readers that need labelled fields.
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ValidationDigestRecord {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ValidationDigestRecord {
+    ecosystem: String,
     package: Option<String>,
     dependency: Option<String>,
     explain: String,
@@ -124,9 +163,9 @@ pub struct ValidationReport {
 impl ValidationReport {
     pub fn from_components(
         packages: &Vec<Package>, // ordered for reporting
-        package_to_sites: &HashMap<Package, Vec<PathShared>>,
-        site_to_exes: &HashMap<PathShared, Vec<PathShared>>, // only needed if exe_to_ems is Some
-        exe_to_ems: &Option<HashMap<PathShared, EnvMarkerState>>,
+        package_to_sites: &HashMap<Package, Vec<Site>>,
+        site_to_origins: &HashMap<Site, Vec<Origin>>, // only needed if origin_to_ems is Some
+        origin_to_ems: &Option<HashMap<Origin, EnvMarkerState>>,
         dm: &DepManifest,
         vf: &ValidationFlags,
         ignore: Option<&HashSet<String>>,
@@ -151,16 +190,16 @@ impl ValidationReport {
                     ));
                 }
                 // else do not add record
-            } else if let Some(exe_to_ems) = exe_to_ems {
+            } else if let Some(origin_to_ems) = origin_to_ems {
                 // For each package, if the DepManifest has env_marker_active, we have already loaded EnvMarkerState
                 for site in package_to_sites.get(package).unwrap() {
-                    // let exe = site_to_exes.get(site).unwrap()
-                    let exe = site_to_exes
+                    // origins are sorted, so the first is the smallest path
+                    let origin = site_to_origins
                         .get(site)
-                        .and_then(|exes| exes.iter().min_by_key(|p| p.to_string())) // pick smallest path
-                        .expect("no exe mapped for site");
+                        .and_then(|origins| origins.first())
+                        .expect("no origin mapped for site");
 
-                    let ems = exe_to_ems.get(exe);
+                    let ems = origin_to_ems.get(origin);
                     // validate() expects Option
                     let (valid, ds) = dm.validate(package, vf.permit_superset, ems);
                     if let Some(ds) = ds {
@@ -202,8 +241,8 @@ impl ValidationReport {
                         }
                         // if a DS has an env_marker, that env_marker must be valid for at least one of our exe environents
                         if !ds.env_marker.is_empty() {
-                            if let Some(exe_to_ems) = exe_to_ems {
-                                if exe_to_ems
+                            if let Some(origin_to_ems) = origin_to_ems {
+                                if origin_to_ems
                                     .values()
                                     .any(|ems| ds.validate_env_marker(ems))
                                 {
@@ -228,6 +267,65 @@ impl ValidationReport {
         ValidationReport { records }
     }
 
+    /// Validate the packages of one non-Python ecosystem against its allow-list section, with the same semantics as Python validation (without environment markers): a package with a requirement it does not satisfy is Misdefined; a package without a requirement is Unrequired (unless `permit_superset`); a requirement no package matched is Missing (unless `permit_subset`). `packages` should be ordered for reporting.
+    pub(crate) fn records_from_section(
+        ecosystem: Ecosystem,
+        packages: &[Package],
+        package_to_sites: &HashMap<Package, Vec<Site>>,
+        section: &EcoSection,
+        vf: &ValidationFlags,
+        ignore: Option<&HashSet<String>>,
+    ) -> Vec<ValidationRecord> {
+        let ignored = |name: &str| ignore.is_some_and(|i| i.contains(name));
+        let mut records = Vec::new();
+        let mut matched: HashSet<&str> = HashSet::new();
+        for package in packages {
+            if ignored(&package.name) {
+                continue;
+            }
+            let sites = package_to_sites.get(package).cloned();
+            match section.get(&package.key) {
+                Some(entry) => {
+                    matched.insert(package.key.as_str());
+                    if !entry.matches(package) {
+                        records.push(ValidationRecord::new_other(
+                            ecosystem,
+                            Some(package.clone()),
+                            Some(entry),
+                            sites,
+                        ));
+                    }
+                }
+                None => {
+                    if !vf.permit_superset {
+                        records.push(ValidationRecord::new_other(
+                            ecosystem,
+                            Some(package.clone()),
+                            None,
+                            sites,
+                        ));
+                    }
+                }
+            }
+        }
+        if !vf.permit_subset {
+            for (key, entry) in section.iter() {
+                if !matched.contains(key.as_str())
+                    && !ignored(&entry.name)
+                    && !entry.optional
+                {
+                    records.push(ValidationRecord::new_other(
+                        ecosystem,
+                        None,
+                        Some(entry),
+                        None,
+                    ));
+                }
+            }
+        }
+        records
+    }
+
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.records.len()
@@ -244,15 +342,13 @@ impl ValidationReport {
         let mut digests: ValidationDigest = Vec::new();
         for record in &records {
             let pkg_display = record.package.as_ref().map(|package| format!("{package}"));
-            let dep_display = record
-                .dep_spec
-                .as_ref()
-                .map(|dep_spec| format!("{dep_spec}"));
+            let dep_display = record.dependency.as_ref().map(|d| d.to_string());
             let sites = record
                 .sites
                 .as_ref()
                 .map(|sites| sites.iter().map(|s| s.to_string()).collect::<Vec<_>>());
             digests.push(ValidationDigestRecord {
+                ecosystem: record.ecosystem.to_string(),
                 package: pkg_display,
                 dependency: dep_display,
                 explain: record.explain().to_string(),
@@ -266,6 +362,7 @@ impl ValidationReport {
 impl Tableable<ValidationRecord> for ValidationReport {
     fn get_header(&self) -> Vec<ColumnFormat> {
         vec![
+            ColumnFormat::new("Ecosystem".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Package".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Dependency".to_string(), false, "#666666".to_string()),
             ColumnFormat::new("Explain".to_string(), false, "#666666".to_string()),
@@ -325,17 +422,17 @@ mod tests {
         let mut lines = io::BufReader::new(file).lines();
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "Package|Dependency|Explain|Sites"
+            "Ecosystem|Package|Dependency|Explain|Sites"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "numpy-1.19.3|numpy==2.1.0|Misdefined|/usr/lib/python3/site-packages"
+            "python|numpy-1.19.3|numpy==2.1.0|Misdefined|/usr/lib/python3/site-packages"
         );
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "packaging-24.1||Unrequired|/usr/lib/python3/site-packages"
+            "python|packaging-24.1||Unrequired|/usr/lib/python3/site-packages"
         );
-        assert_eq!(lines.next().unwrap().unwrap(), "static-frame-2.13.0|static_frame==2.1.0|Misdefined|/usr/lib/python3/site-packages");
+        assert_eq!(lines.next().unwrap().unwrap(), "python|static-frame-2.13.0|static_frame==2.1.0|Misdefined|/usr/lib/python3/site-packages");
         assert!(lines.next().is_none());
     }
 }

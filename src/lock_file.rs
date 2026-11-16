@@ -1,7 +1,6 @@
 use crate::util::ResultDynError;
 use crate::util::{conda_fn_to_name_version, str_to_py_marker, toml_to_py_marker};
 use serde_json::Value as JsonValue;
-use serde_yaml::Value;
 use toml::Value as TomlValue;
 
 #[derive(Debug, PartialEq)]
@@ -208,11 +207,12 @@ impl LockFile {
 
     // Extracts dependencies from a Pixi Lock file
     fn get_pixi_dep(&self) -> ResultDynError<Vec<String>> {
-        let parsed_yaml: Value = serde_yaml::from_str(&self.content)?;
-        let default_packages: Vec<Value> = Vec::with_capacity(0);
+        // YAML is parsed into a JSON value; pixi.lock keys are all strings
+        let parsed_yaml: JsonValue = serde_saphyr::from_str(&self.content)?;
+        let default_packages: Vec<JsonValue> = Vec::with_capacity(0);
         let packages = parsed_yaml
             .get("packages")
-            .and_then(Value::as_sequence)
+            .and_then(JsonValue::as_array)
             .unwrap_or(&default_packages);
         let deps = packages
             .iter()
@@ -223,11 +223,13 @@ impl LockFile {
 
                 let marker = package
                     .get("depends")
-                    .and_then(Value::as_sequence)
+                    .and_then(JsonValue::as_array)
                     .and_then(|deps| {
-                        deps.iter().filter_map(Value::as_str).find_map(|dep_str| {
-                            dep_str.strip_prefix("python ").map(str_to_py_marker)
-                        })
+                        deps.iter()
+                            .filter_map(JsonValue::as_str)
+                            .find_map(|dep_str| {
+                                dep_str.strip_prefix("python ").map(str_to_py_marker)
+                            })
                     })?;
                 Some(format!("{package_name}=={package_version}; {marker}"))
             })

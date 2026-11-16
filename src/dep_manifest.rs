@@ -70,6 +70,10 @@ impl Tableable<DepManifestRecord> for DepManifestReport {
     fn get_records(&self) -> &Vec<DepManifestRecord> {
         &self.records
     }
+    /// A requirements file, not a table: lines (with spaces in markers) are written as is.
+    fn delimited_quoting(&self) -> bool {
+        false
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -198,7 +202,7 @@ impl DepManifest {
                 Anchor::Upper => {
                     DepSpec::from_package(pkg_max, DepOperator::LessThanOrEq)
                 }
-                Anchor::Both => return Err("Not implemented".into()),
+                Anchor::Both => DepSpec::from_package_range(pkg_min, pkg_max),
             };
             if let Ok(dep_spec) = ds {
                 dep_specs.push(dep_spec);
