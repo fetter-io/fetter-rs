@@ -680,7 +680,7 @@ repos:
   - `--control stdin`: Read commands from stdin while waiting between scans, one per line: `scan` (scan now), `report` (scan and report now), and `stop` (end monitoring). For a program that runs `monitor-diff` as a child process; at the end of input, scanning continues on the period. Requires a period above 0.
 - Subcommands
   - `text`: Print a text report (the default); nothing is printed when nothing changed.
-  - `json`: Write a JSON Lines event stream, one object per line with `schema`, `event`, `time`, and `system`. Events are `start` (configuration and baseline time), `scan` (after every scan: its `trigger`, `start`, `period`, or `request`; counts of origins, sites and packages, in total and per ecosystem, as `count` reports them; and the changes since the previous scan), `report` (the evaluated changes since the baseline), and `error`. Readers should ignore events and fields they do not know.
+  - `json`: Write a JSON Lines event stream, one object per line with `schema`, `event`, `time`, and `system`. Events are `start` (configuration and baseline time), `scan` (after every scan: its `trigger`, `start`, `period`, or `request`; counts of origins, sites and packages, in total and per ecosystem, as `count` reports them; and the changes since the previous scan), `report` (the evaluated changes since the baseline; each new or resolved vulnerability names the sites holding its package, as `sites`), and `error`. Readers should ignore events and fields they do not know.
     - `--output, -o <FILE>`: Append to a file (flushed per line) instead of writing to stdout.
   - `save`: Write a baseline of the current system to a file.
     - `--output, -o <FILE>`: The file to write.
@@ -696,6 +696,10 @@ fetter monitor-diff --period 600 --control stdin json   # driven by a supervisin
 
 
 ## What is New in Fetter
+
+### 5.1.0
+
+Extended diff report to include sites.
 
 ### 5.0.0
 

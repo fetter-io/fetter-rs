@@ -710,6 +710,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 ## 10. Decision log
 
 - 2026-11-15: The `monitor-scan` payload is a named-field object with a `schema` number independent of fetter's version (1), shared with the scan cache; readers skip what they do not know; fetter 3–4 posts are read as Python. Hooks are sent per site; environment markers are not. fetter-orb is updated separately.
+- 2026-11-16 (after 5.0.0): `VulnFinding` and `VulnResolved` carry `sites`, the paths of the sites holding the package (the reported scan's for new, the baseline's for resolved), so a reader can say where a vulnerable package is installed even when it did not change (a `published` advisory). Optional and omitted when empty, so the event stream stays at schema 1. Requested by fetter-scope, for fixing a high-CVSS vulnerability where it is and for a per-site view.
 - 2026-11-16: `monitor-diff` takes commands (`scan`, `report`, `stop`) on stdin with `--control stdin`, chosen over `SIGUSR1` (not on Windows) and a polled trigger file; `scan` events carry per-ecosystem counts and a `trigger`. Both added before the 5.0.0 release so the event stream's first version is complete.
 - 2026-11-15: `monitor-diff` compares locally against a rolling (or fixed) baseline, re-auditing all packages each report so new advisories against unchanged packages are found. Display and notification are left to separate programs reading its versioned JSON Lines event stream; fetter itself only writes text or events.
 

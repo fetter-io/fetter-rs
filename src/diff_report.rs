@@ -313,12 +313,30 @@ pub struct VulnFinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     pub url: String,
+    /// The paths of the sites holding the package in the scan reported, sorted (omitted if none are known).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sites: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VulnResolved {
     pub package: Package,
     pub id: String,
+    /// The paths of the sites that held the package in the baseline, sorted (omitted if none are known).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sites: Vec<String>,
+}
+
+/// The paths of the sites holding `package` in `scan`, sorted and unique.
+fn package_sites(scan: &ScanFS, package: &Package) -> Vec<String> {
+    let mut sites: Vec<String> = scan
+        .package_to_sites
+        .get(package)
+        .map(|ss| ss.iter().map(|s| s.path.to_string()).collect())
+        .unwrap_or_default();
+    sites.sort();
+    sites.dedup();
+    sites
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,6 +438,7 @@ impl DiffReport {
                             .and_then(|i| i.cvss_details.as_ref())
                             .and_then(|c| c.get_max_score()),
                         url: format!("https://osv.dev/vulnerability/{id}"),
+                        sites: package_sites(now, &pv.package),
                     });
                 }
             }
@@ -431,6 +450,9 @@ impl DiffReport {
                             resolved_vulns.push(VulnResolved {
                                 package: pv.package.clone(),
                                 id: id.clone(),
+                                sites: base
+                                    .map(|b| package_sites(b.scan, &pv.package))
+                                    .unwrap_or_default(),
                             });
                         }
                     }
@@ -893,6 +915,12 @@ mod tests {
         );
         assert_eq!(r.resolved_vulns.len(), 1);
         assert_eq!(r.resolved_vulns[0].id, "GHSA-fixed");
+        // where each is: the sites holding the package, now for new and at the baseline for resolved
+        let site = "/env/lib/python3.12/site-packages".to_string();
+        assert!(r.new_vulns.iter().all(|v| v.sites == vec![site.clone()]));
+        assert_eq!(r.resolved_vulns[0].sites, vec![site.clone()]);
+        let j = serde_json::to_value(&r.new_vulns[0]).unwrap();
+        assert_eq!(j["sites"], serde_json::json!([site]));
 
         // an advisory that still affects an upgraded package is neither new nor resolved
         let upgraded = pkg(Ecosystem::Python, "requests", "2.32.0");
@@ -924,6 +952,52 @@ mod tests {
         assert!(r.new_vulns.iter().all(|v| v.source == VulnSource::Existing));
         assert!(r.changes.is_empty() && r.resolved_vulns.is_empty());
         assert!(r.to_text().contains("baseline established"));
+    }
+
+    #[test]
+    fn test_diff_report_vuln_sites_a() {
+        let lodash = pkg(Ecosystem::Npm, "lodash", "4.17.15");
+        let other = Site::new(
+            Ecosystem::Npm,
+            SiteKind::Installed,
+            PathShared::from("/a/node_modules"),
+        );
+        // one package at two sites (and listed twice at one): sorted, unique
+        let now = scan(
+            &[
+                (lodash.clone(), npm_site()),
+                (lodash.clone(), other.clone()),
+                (lodash.clone(), npm_site()),
+            ],
+            Some(vec![]),
+        );
+        let audit = Audit {
+            vulns: vec![PackageVulns {
+                package: lodash.clone(),
+                ids: vec!["GHSA-x".into()],
+            }],
+            infos: HashMap::new(),
+        };
+        let r = DiffReport::new(None, &now, Duration::from_secs(1), Ok(&audit), None);
+        assert_eq!(
+            r.new_vulns[0].sites,
+            vec![
+                "/a/node_modules".to_string(),
+                "/proj/node_modules".to_string()
+            ]
+        );
+
+        // no known sites: the field is omitted, and JSON without it still reads
+        let mut v = r.new_vulns[0].clone();
+        v.sites.clear();
+        let j = serde_json::to_value(&v).unwrap();
+        assert!(j.get("sites").is_none());
+        let back: VulnFinding = serde_json::from_value(j).unwrap();
+        assert!(back.sites.is_empty());
+        let resolved: VulnResolved = serde_json::from_value(serde_json::json!({
+            "package": serde_json::to_value(&lodash).unwrap(), "id": "GHSA-x"}))
+        .unwrap();
+        assert!(resolved.sites.is_empty());
     }
 
     #[test]
