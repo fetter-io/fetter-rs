@@ -11,13 +11,13 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-15, at the end of milestone 27 (`monitor-diff`).*
+*Last updated 2026-11-16, after milestone 27 (`monitor-diff`) and its control channel.*
 
 ### Where we are
 
 - **Branch** `207/polye`. **All milestones (1–27) are done** (§7); milestones 15–17 added Go, Ruby and PHP; milestone 18 resolves GHA SHA pins in `audit`; milestone 19 added pre-commit and milestone 20 Swift, for ten ecosystems; milestone 21 added package URLs (purl) and SBOM input, milestone 22 VERS version ranges, milestone 23 CycloneDX export, milestone 24 pre-commit `additional_dependencies`, milestone 25 browser extensions (`chromium`, `firefox`), for twelve ecosystems, and milestone 26 a versioned, forward-compatible `monitor-scan` payload that still reads fetter 3–4 posts, and milestone 27 `monitor-diff` (local change monitoring against a baseline). The version is 5.0.0 and the README documents v5. What remains is the release itself, which the maintainer does (see Next), plus the follow-ups in §9.
 - **Milestone 27 may not be committed yet**: check `git status` (new: `src/diff_report.rs`, `src/monitor_diff.rs`); milestones 1–26 are committed.
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 548 passed and 6 ignored. The ignored tests hit live services:
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 552 passed and 6 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
@@ -58,9 +58,9 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 ### Next: releasing 5.0.0 (maintainer)
 
 1. ~~`cargo update`~~: done (see Known issues).
-2. Verify `tests/windows_session.rs` in CI (it has not run since milestone 4).
-3. Merge `207/polye`, tag `v5.0.0` (the README's pre-commit examples use `rev: v5.0.0`), publish the crate, and build the PyPI wheel.
-4. `cargo package` includes `SPEC.md` and `doc/` (74 files); add an `exclude` in `Cargo.toml` if that is not wanted.
+2. ~~Verify `tests/windows_session.rs` in CI~~: done (CI green on Linux, macOS and Windows, Rust 1.89 and stable, at `d6b902b`).
+3. ~~Exclude `SPEC.md`, `SPEC-scope.md` and `doc/` from the crate~~: done; `cargo publish --dry-run` passes (2026-11-16), and `fetter --root . -E cargo audit` finds no advisories in the 152 locked crates.
+4. Merge `207/polye`, tag `v5.0.0` (the README's pre-commit examples use `rev: v5.0.0`), publish the crate, and build the PyPI wheel.
 
 §12 surveys further ecosystems (NuGet and Hex are the remaining candidates with OSV coverage). After the release, pick from §9 (open questions); the largest deferred items are purge for non-Python ecosystems and VEX (audit results in the CycloneDX export); for browser extensions, a known-malicious id feed would give them an `audit`.
 
@@ -678,7 +678,11 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
     - **Baseline**: `DiffState { schema, fetter_version, time, scan, vulns, violations }`, the scan as the schema 1 object. Rolling at `<cache>/monitor_diff_v1_<hash_paths>.json`, written by temp file and rename, only after a report is written and only when the status is not `unchanged` (or the baseline is new); `--baseline FILE` (from `save`) is read-only. An audit failure keeps the previous `vulns`.
     - **Output**: per the user, a live view (TUI) and notifications (email, chat) are separate programs consuming a JSON Lines stream; fetter has no UI or mail code. `Event { schema, time, system, event: start|scan|report|error }` (internally tagged; unknown events read as `Unknown`). `text` prints `DiffReport::to_text` (nothing when unchanged; cron mails output). Period 0 reports once, exit 3 on alert; a failed write ends monitoring with an error and the baseline unchanged.
     - **Verified**: 13 tests (diffs, sources, status, JSON round trips, events including an unknown one, state round trip, the loop once with a mock OSV: new baseline, unchanged, a newly published advisory, a fixed baseline left unchanged, an upgrade resolving advisories, an audit failure keeping the baseline's vulns, a failed write not advancing). Real data: a scratch venv (`requests` 2.19.0) and npm project: the first run reported 10 existing advisories (exit 3); upgrading to 2.32.4 reported the upgrade and 8 resolved (the 2 still affecting it not repeated); adding a `.pth` with `import` and an npm package with `postinstall` reported two new hooks (exit 3); a rerun printed nothing (exit 0); `--period 2 --report-period 4 json -o` gave scan heartbeats and a report of a package added mid-run.
-    - **Follow-ups**: a reference consumer (live view, notifier) as a separate project; whether transient changes between reports should be accumulated (now a report compares the last reported state to the current one).
+    - **Additions before release (2026-11-16)**, for the consumer specified in `SPEC-scope.md`:
+      - **Per-ecosystem counts**: `scan` events carry `counts: {ecosystem: {origins, sites, packages}}` from `count_report::ecosystem_counts`, shared with `fetter count` (every enabled ecosystem, zeros included). The totals now use the same definition (only sites with at least one package), as `count` does.
+      - **Control channel**: `--control stdin` (a `ControlChannel` value enum, so a file or socket channel can be added) reads commands on a thread into a channel; the wait between scans is `recv_timeout` to the period's deadline. `scan` rescans now, `report` rescans and reports whether or not one is due (resetting the report timer), `stop` ends monitoring (exit 0), and any other line is an `error` event, after which waiting continues. Commands are taken one per wake, so queued repeats each scan. At end of input the channel is dropped and the timer alone drives scans. `scan` events carry `trigger` (`start`, `period`, `request`; unknown values read as `unknown`) and `start` events `control`. Rejected with `--period 0`.
+      - Verified: 4 more tests (command parsing, `wait` on a command and after disconnect, a controlled run with `bogus`/`scan`/`report`/`stop`/`scan` queued giving `start, scan:start, report, error, scan:request, scan:request, report` and ending before the hour-long period, and the period-0 rejection). Real data over a pipe against OSV: `scan` rescanned without a report, `nonsense` gave an error event, editing a `Cargo.lock` then `report` reported the upgrade with 2 advisories resolved, and `stop` exited 0.
+    - **Follow-ups**: a reference consumer (live view, notifier) as a separate project (`SPEC-scope.md`); whether transient changes between reports should be accumulated (now a report compares the last reported state to the current one).
 
 ## 8. Testing strategy
 
@@ -706,6 +710,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 ## 10. Decision log
 
 - 2026-11-15: The `monitor-scan` payload is a named-field object with a `schema` number independent of fetter's version (1), shared with the scan cache; readers skip what they do not know; fetter 3–4 posts are read as Python. Hooks are sent per site; environment markers are not. fetter-orb is updated separately.
+- 2026-11-16: `monitor-diff` takes commands (`scan`, `report`, `stop`) on stdin with `--control stdin`, chosen over `SIGUSR1` (not on Windows) and a polled trigger file; `scan` events carry per-ecosystem counts and a `trigger`. Both added before the 5.0.0 release so the event stream's first version is complete.
 - 2026-11-15: `monitor-diff` compares locally against a rolling (or fixed) baseline, re-auditing all packages each report so new advisories against unchanged packages are found. Display and notification are left to separate programs reading its versioned JSON Lines event stream; fetter itself only writes text or events.
 
 - 2026-11-15: Browser extensions are two ecosystems, `chromium` and `firefox` (different id spaces, stores and version formats; Chromium browsers share one id space, so an extension in Chrome and Brave is one package at two sites). Packages are named by id, not display name. Chromium preferences files are read (the user's choice) for unpacked extensions and state, keeping only `extensions.settings`. No audit (no OSV ecosystem).

@@ -1,4 +1,8 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::eco::scanner_for;
 use crate::ecosystem::Ecosystem;
@@ -14,9 +18,7 @@ use crate::table::Tableable;
 #[derive(Debug, Clone)]
 pub(crate) struct CountRecord {
     ecosystem: Option<Ecosystem>,
-    origins: usize,
-    sites: usize,
-    packages: usize,
+    counts: Counts,
 }
 
 impl Rowable for CountRecord {
@@ -27,9 +29,9 @@ impl Rowable for CountRecord {
         };
         vec![vec![
             label,
-            self.origins.to_string(),
-            self.sites.to_string(),
-            self.packages.to_string(),
+            self.counts.origins.to_string(),
+            self.counts.sites.to_string(),
+            self.counts.packages.to_string(),
         ]]
     }
 }
@@ -40,37 +42,65 @@ pub(crate) struct CountReport {
     records: Vec<CountRecord>,
 }
 
+/// Origins, sites and packages found, for one ecosystem or all; as in `fetter count`, only sites that contain at least one package are counted.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Counts {
+    pub origins: usize,
+    pub sites: usize,
+    pub packages: usize,
+}
+
+/// Counts per enabled (and implemented) ecosystem, including those with zero counts, and the totals.
+pub(crate) fn ecosystem_counts(
+    scan_fs: &ScanFS,
+) -> (BTreeMap<Ecosystem, Counts>, Counts) {
+    let sites: HashSet<&Site> = scan_fs.package_to_sites.values().flatten().collect();
+    let per = scan_fs
+        .ecosystems()
+        .iter()
+        .filter(|e| scanner_for(**e).is_some())
+        .map(|e| {
+            (
+                *e,
+                Counts {
+                    origins: scan_fs
+                        .origin_to_sites
+                        .keys()
+                        .filter(|o| o.ecosystem == *e)
+                        .count(),
+                    sites: sites.iter().filter(|s| s.ecosystem == *e).count(),
+                    packages: scan_fs
+                        .package_to_sites
+                        .keys()
+                        .filter(|p| p.ecosystem == *e)
+                        .count(),
+                },
+            )
+        })
+        .collect();
+    let total = Counts {
+        origins: scan_fs.origin_to_sites.len(),
+        sites: sites.len(),
+        packages: scan_fs.package_to_sites.len(),
+    };
+    (per, total)
+}
+
 impl CountReport {
     /// One row per enabled (and implemented) ecosystem, including those with zero counts; if there is more than one row, a final "all" row gives totals. Only Sites that contain at least one package are counted.
     pub(crate) fn from_scan_fs(scan_fs: &ScanFS) -> CountReport {
-        let sites: HashSet<&Site> = scan_fs.package_to_sites.values().flatten().collect();
-
-        let mut records: Vec<CountRecord> = scan_fs
-            .ecosystems()
-            .iter()
-            .filter(|e| scanner_for(**e).is_some())
-            .map(|e| CountRecord {
-                ecosystem: Some(*e),
-                origins: scan_fs
-                    .origin_to_sites
-                    .keys()
-                    .filter(|o| o.ecosystem == *e)
-                    .count(),
-                sites: sites.iter().filter(|s| s.ecosystem == *e).count(),
-                packages: scan_fs
-                    .package_to_sites
-                    .keys()
-                    .filter(|p| p.ecosystem == *e)
-                    .count(),
+        let (per, total) = ecosystem_counts(scan_fs);
+        let mut records: Vec<CountRecord> = per
+            .into_iter()
+            .map(|(e, c)| CountRecord {
+                ecosystem: Some(e),
+                counts: c,
             })
             .collect();
-
         if records.len() > 1 {
             records.push(CountRecord {
                 ecosystem: None,
-                origins: scan_fs.origin_to_sites.len(),
-                sites: sites.len(),
-                packages: scan_fs.package_to_sites.len(),
+                counts: total,
             });
         }
         CountReport { records }

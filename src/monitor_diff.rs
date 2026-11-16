@@ -2,8 +2,11 @@
 //!
 //! Output is either text (one report per report period) or a versioned JSON Lines event stream (`Event`), meant to be consumed by separate programs (a live view, a notifier): each line is one JSON object with `schema`, `event`, `time` and `system`; readers should ignore events and fields they do not know.
 //!
+//! With `--control stdin`, commands are read from stdin, one per line, while waiting between scans: `scan` (scan now), `report` (scan and report now), and `stop` (end monitoring). This lets a supervising program rescan on demand without restarting fetter.
+//!
 //! The rolling baseline is stored in the cache directory, per scan configuration, and advanced only after a report is written; a fixed baseline (`--baseline FILE`, written by `monitor-diff save`) is never written.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
@@ -12,6 +15,9 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -25,6 +31,8 @@ use serde::Serialize;
 use crate::allow_list::AllowList;
 use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
+use crate::count_report::ecosystem_counts;
+use crate::count_report::Counts;
 use crate::diff_report::Audit;
 use crate::diff_report::BaselineRef;
 use crate::diff_report::DiffReport;
@@ -115,12 +123,19 @@ pub enum EventBody {
         period: u64,
         report_period: u64,
         ecosystems: Vec<Ecosystem>,
+        /// True if commands are read from stdin (`--control stdin`).
+        #[serde(default)]
+        control: bool,
     },
-    /// After each scan: counts, and the changes since the previous scan (not the baseline).
+    /// After each scan: what started it, counts (totals, and per ecosystem), and the changes since the previous scan (not the baseline). Counts are as in `fetter count`: only sites with at least one package are counted.
     Scan {
+        #[serde(default)]
+        trigger: Trigger,
         origins: usize,
         sites: usize,
         packages: usize,
+        #[serde(default)]
+        counts: BTreeMap<Ecosystem, Counts>,
         changes: ScanDiff,
     },
     /// The evaluated changes since the baseline.
@@ -130,6 +145,88 @@ pub enum EventBody {
     /// An event of a newer fetter.
     #[serde(other)]
     Unknown,
+}
+
+/// What started a scan.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Trigger {
+    /// The first scan.
+    Start,
+    /// The scan period elapsed.
+    #[default]
+    Period,
+    /// A `scan` or `report` command.
+    Request,
+    /// A trigger of a newer fetter.
+    #[serde(other)]
+    Unknown,
+}
+
+/// A command read from the control channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Command {
+    /// Scan now.
+    Scan,
+    /// Scan and report now, whether or not a report is due.
+    Report,
+    /// End monitoring after the current scan.
+    Stop,
+    /// A line that is not a command.
+    Invalid(String),
+}
+
+impl Command {
+    fn parse(line: &str) -> Option<Self> {
+        match line.trim() {
+            "" => None,
+            "scan" => Some(Command::Scan),
+            "report" => Some(Command::Report),
+            "stop" => Some(Command::Stop),
+            other => Some(Command::Invalid(other.to_string())),
+        }
+    }
+}
+
+/// Read commands from stdin on a thread; the channel disconnects at end of input.
+fn control_stdin() -> Receiver<Command> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        for line in io::stdin().lines() {
+            let Ok(line) = line else { break };
+            if let Some(c) = Command::parse(&line) {
+                if tx.send(c).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    rx
+}
+
+/// Why waiting between scans ended.
+#[derive(Debug, PartialEq)]
+enum Wake {
+    Period,
+    Command(Command),
+}
+
+/// Wait until `deadline`, or until a command arrives. When the channel disconnects (end of input), it is dropped and waiting continues on the timer alone.
+fn wait(control: &mut Option<Receiver<Command>>, deadline: Instant) -> Wake {
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match control {
+            None => {
+                thread::sleep(remaining);
+                return Wake::Period;
+            }
+            Some(rx) => match rx.recv_timeout(remaining) {
+                Ok(c) => return Wake::Command(c),
+                Err(RecvTimeoutError::Timeout) => return Wake::Period,
+                Err(RecvTimeoutError::Disconnected) => *control = None,
+            },
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -167,6 +264,8 @@ pub(crate) struct DiffOptions {
     pub(crate) bound: Option<DiffBound>,
     pub(crate) cvss: CvssFilter,
     pub(crate) output: DiffOutput,
+    /// Read commands from stdin (requires a period above 0).
+    pub(crate) control: bool,
 }
 
 enum Sink {
@@ -329,6 +428,30 @@ pub(crate) fn monitor_diff_loop(
     opts: &DiffOptions,
     log: FlagLog,
 ) -> ResultDynError<bool> {
+    if opts.control && opts.period == 0 {
+        return Err("--control requires a --period above 0".into());
+    }
+    let control = opts.control.then(control_stdin);
+    monitor_diff_run(
+        origin_paths,
+        client,
+        config,
+        cache_config,
+        opts,
+        control,
+        log,
+    )
+}
+
+fn monitor_diff_run(
+    origin_paths: &Vec<PathBuf>,
+    client: Arc<dyn UreqClient>,
+    config: &ScanConfig,
+    cache_config: &CacheConfig,
+    opts: &DiffOptions,
+    mut control: Option<Receiver<Command>>,
+    log: FlagLog,
+) -> ResultDynError<bool> {
     let system = SystemTag::from_system()
         .map_err(|e| format!("Cannot read system details: {e}"))?;
     let event = |body: EventBody| Event {
@@ -380,11 +503,14 @@ pub(crate) fn monitor_diff_loop(
         period: opts.period,
         report_period: opts.report_period,
         ecosystems: config.ecosystems.clone(),
+        control: control.is_some(),
     }))?;
 
     let mut prev: Option<ScanFS> = None;
     let mut last_report: Option<Instant> = None;
     let mut alert = false;
+    let mut trigger = Trigger::Start;
+    let mut force_report = false;
     loop {
         let started = Instant::now();
         match m.scan() {
@@ -400,15 +526,19 @@ pub(crate) fn monitor_diff_loop(
                     .as_ref()
                     .map(|p| ScanDiff::new(p, &sfs))
                     .unwrap_or_default();
+                let (counts, total) = ecosystem_counts(&sfs);
                 sink.emit(&event(EventBody::Scan {
-                    origins: sfs.origin_to_sites.len(),
-                    sites: sfs.site_to_origins.len(),
-                    packages: sfs.package_to_sites.len(),
+                    trigger,
+                    origins: total.origins,
+                    sites: total.sites,
+                    packages: total.packages,
+                    counts,
                     changes,
                 }))?;
-                let due = last_report.is_none_or(|t| {
-                    t.elapsed() >= Duration::from_secs(opts.report_period)
-                });
+                let due = force_report
+                    || last_report.is_none_or(|t| {
+                        t.elapsed() >= Duration::from_secs(opts.report_period)
+                    });
                 if due {
                     last_report = Some(started);
                     let prev_vulns = baseline.as_ref().and_then(|b| b.vulns.clone());
@@ -438,8 +568,30 @@ pub(crate) fn monitor_diff_loop(
         if opts.period == 0 {
             return Ok(alert);
         }
-        let period = Duration::from_secs(opts.period);
-        thread::sleep(period.saturating_sub(started.elapsed()));
+        let deadline = started + Duration::from_secs(opts.period);
+        loop {
+            match wait(&mut control, deadline) {
+                Wake::Period => {
+                    (trigger, force_report) = (Trigger::Period, false);
+                }
+                Wake::Command(Command::Scan) => {
+                    (trigger, force_report) = (Trigger::Request, false);
+                }
+                Wake::Command(Command::Report) => {
+                    (trigger, force_report) = (Trigger::Request, true);
+                }
+                Wake::Command(Command::Stop) => return Ok(alert),
+                Wake::Command(Command::Invalid(line)) => {
+                    sink.emit(&event(EventBody::Error {
+                        message: format!(
+                            "Unknown control command: {line:?} (expected scan, report, or stop)"
+                        ),
+                    }))?;
+                    continue;
+                }
+            }
+            break;
+        }
     }
 }
 
@@ -478,11 +630,23 @@ mod tests {
                 period: 60,
                 report_period: 3600,
                 ecosystems: vec![Ecosystem::Python, Ecosystem::Npm],
+                control: true,
             },
             EventBody::Scan {
+                trigger: Trigger::Request,
                 origins: 1,
                 sites: 2,
                 packages: 3,
+                counts: [(
+                    Ecosystem::Npm,
+                    Counts {
+                        origins: 1,
+                        sites: 2,
+                        packages: 3,
+                    },
+                )]
+                .into_iter()
+                .collect(),
                 changes: ScanDiff::default(),
             },
             EventBody::Report { report },
@@ -615,6 +779,7 @@ mod tests {
             bound: None,
             cvss: CvssFilter::All,
             output: DiffOutput::Json(Some(out.clone())),
+            control: false,
         };
         let vulnerable = r#"{"vulns":[{"id":"RUSTSEC-2021-0003","modified":"x"}]}"#;
         let run = |c: &str, baseline: Option<PathBuf>| {
@@ -727,6 +892,7 @@ mod tests {
             cvss: CvssFilter::All,
             // a directory cannot be opened for appending
             output: DiffOutput::Json(Some(dir.path().to_path_buf())),
+            control: false,
         };
         assert!(monitor_diff_loop(
             &origins,
@@ -738,5 +904,145 @@ mod tests {
         )
         .is_err());
         assert!(!rolling_path(dir.path(), &hash_paths(&origins, &config)).exists());
+    }
+
+    #[test]
+    fn test_command_parse_a() {
+        assert_eq!(Command::parse(" scan\r"), Some(Command::Scan));
+        assert_eq!(Command::parse("report"), Some(Command::Report));
+        assert_eq!(Command::parse("stop"), Some(Command::Stop));
+        assert_eq!(Command::parse("   "), None);
+        assert_eq!(
+            Command::parse("Scan"),
+            Some(Command::Invalid("Scan".into()))
+        );
+        // an unknown trigger of a newer fetter is read
+        let t: Trigger = serde_json::from_str(r#""signal""#).unwrap();
+        assert_eq!(t, Trigger::Unknown);
+    }
+
+    #[test]
+    fn test_wait_a() {
+        // a command ends waiting before the deadline
+        let (tx, rx) = mpsc::channel();
+        let mut control = Some(rx);
+        tx.send(Command::Scan).unwrap();
+        let far = Instant::now() + Duration::from_secs(3600);
+        assert_eq!(wait(&mut control, far), Wake::Command(Command::Scan));
+        // end of input: the channel is dropped, and waiting continues on the timer
+        drop(tx);
+        assert_eq!(wait(&mut control, Instant::now()), Wake::Period);
+        assert!(control.is_none());
+        assert_eq!(wait(&mut control, Instant::now()), Wake::Period);
+    }
+
+    #[test]
+    fn test_monitor_diff_control_a() {
+        let dir = tempfile::tempdir().unwrap();
+        let proj = dir.path().join("proj");
+        fs::create_dir(&proj).unwrap();
+        cargo_lock(&proj, "1.6.0");
+        let out = dir.path().join("events.jsonl");
+        let origins = vec![proj];
+        let config = ScanConfig::new(false, false).with_ecosystems(&[Ecosystem::Cargo]);
+        let cache_config = CacheConfig::new(Duration::ZERO, dir.path().to_path_buf());
+        // periods of an hour: every scan after the first comes from a command
+        let opts = DiffOptions {
+            period: 3600,
+            report_period: 3600,
+            baseline: None,
+            report_always: true,
+            bound: None,
+            cvss: CvssFilter::All,
+            output: DiffOutput::Json(Some(out.clone())),
+            control: true,
+        };
+        let (tx, rx) = mpsc::channel();
+        for c in ["bogus", "scan", "report", "stop", "scan"] {
+            tx.send(Command::parse(c).unwrap()).unwrap();
+        }
+        let started = Instant::now();
+        let alert = monitor_diff_run(
+            &origins,
+            client("{}"),
+            &config,
+            &cache_config,
+            &opts,
+            Some(rx),
+            FlagLog(false),
+        )
+        .unwrap();
+        assert!(!alert);
+        assert!(started.elapsed() < Duration::from_secs(60));
+
+        let e = events(&out);
+        let kinds: Vec<String> = e
+            .iter()
+            .map(|e| match &e.body {
+                EventBody::Start { control, .. } => format!("start:{control}"),
+                EventBody::Scan { trigger, .. } => format!("scan:{trigger:?}"),
+                EventBody::Report { .. } => "report".into(),
+                EventBody::Error { message } => {
+                    assert!(message.contains("bogus"), "{message}");
+                    "error".into()
+                }
+                EventBody::Unknown => "unknown".into(),
+            })
+            .collect();
+        // `scan` does not report (none is due); `report` does; `stop` ends before the last `scan`
+        assert_eq!(
+            kinds,
+            [
+                "start:true",
+                "scan:Start",
+                "report",
+                "error",
+                "scan:Request",
+                "scan:Request",
+                "report"
+            ]
+        );
+        match &e[1].body {
+            EventBody::Scan {
+                packages, counts, ..
+            } => {
+                assert_eq!(*packages, 1);
+                assert_eq!(
+                    counts.get(&Ecosystem::Cargo),
+                    Some(&Counts {
+                        origins: 1,
+                        sites: 1,
+                        packages: 1
+                    })
+                );
+            }
+            _ => panic!("not a scan"),
+        }
+    }
+
+    #[test]
+    fn test_monitor_diff_control_period_a() {
+        let opts = DiffOptions {
+            period: 0,
+            report_period: 0,
+            baseline: None,
+            report_always: false,
+            bound: None,
+            cvss: CvssFilter::All,
+            output: DiffOutput::Text,
+            control: true,
+        };
+        let config = ScanConfig::new(false, false);
+        let cache_config = CacheConfig::new(Duration::ZERO, PathBuf::from("."));
+        let e = monitor_diff_loop(
+            &vec![],
+            client("{}"),
+            &config,
+            &cache_config,
+            &opts,
+            FlagLog(false),
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("--control"));
     }
 }

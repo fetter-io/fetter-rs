@@ -456,9 +456,20 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CVSS")]
         cvss: Option<Option<f64>>,
 
+        /// Read commands while waiting between scans, one per line: `scan` (scan now), `report` (scan and report now), `stop` (end monitoring). Requires a period above 0.
+        #[arg(long, value_enum, value_name = "CHANNEL")]
+        control: Option<ControlChannel>,
+
         #[command(subcommand)]
         subcommands: Option<MonitorDiffSubcommand>,
     },
+}
+
+/// Where `monitor-diff` reads commands from.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum ControlChannel {
+    /// Standard input, for a supervising program.
+    Stdin,
 }
 
 /// When `monitor-diff` writes a report.
@@ -1525,6 +1536,7 @@ where
             superset,
             strict,
             cvss,
+            control,
             subcommands,
         }) => {
             let bound = match bound {
@@ -1553,6 +1565,7 @@ where
                 bound,
                 cvss: CvssFilter::from_arg(*cvss),
                 output,
+                control: *control == Some(ControlChannel::Stdin),
             };
             let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
             if let Some(MonitorDiffSubcommand::Save { output }) = subcommands {
@@ -1605,6 +1618,8 @@ mod tests {
             "--report",
             "always",
             "--cvss=7",
+            "--control",
+            "stdin",
             "json",
             "-o",
             "/tmp/events.jsonl",
@@ -1615,9 +1630,11 @@ mod tests {
                 report_period,
                 report,
                 cvss,
+                control,
                 subcommands: Some(MonitorDiffSubcommand::Json { output }),
                 ..
             }) => {
+                assert_eq!(control, Some(ControlChannel::Stdin));
                 assert_eq!((period, report_period), (300, Some(3600)));
                 assert_eq!(report, ReportWhen::Always);
                 assert_eq!(cvss, Some(Some(7.0)));

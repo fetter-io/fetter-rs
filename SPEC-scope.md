@@ -20,22 +20,23 @@ This document is preliminary: it fixes the scope and the contract with fetter, a
 
 ## Contract with fetter
 
-Requires fetter 5.0.0 or later. At start, fetter-scope runs `fetter --version` and refuses an older binary with a clear message.
+Requires fetter 5.0.0 or later (the first release with `monitor-diff`, its per-ecosystem counts, and its control channel). At start, fetter-scope runs `fetter --version` and refuses an older binary with a clear message.
 
 **Launch:** one long-running child process:
 ```
 fetter <global args> monitor-diff --period P --report-period R [--report always]
-       [--baseline FILE] [--bound FILE ...] [--cvss=N] json
+       [--baseline FILE] [--bound FILE ...] [--cvss=N] --control stdin json
 ```
 - stdout is read line by line, as JSON Lines.
+- stdin is a pipe held open by fetter-scope for the control channel (below).
 - stderr is captured into the event log as `stderr` lines. With `--log`, it becomes fetter's diagnostic log.
 
 **Events** are fetter `monitor_diff::Event`, at schema 1. Each is a JSON object with `schema`, `event`, `time` (`{secs, nanos}`) and `system`.
 
 | Event | Fields used | Use |
 |---|---|---|
-| `start` | `baseline` (`rolling` or a path), `baseline_time`, `period`, `report_period`, `ecosystems` | header; scan schedule |
-| `scan` | `origins`, `sites`, `packages`, `changes` (a `ScanDiff` since the previous scan) | heartbeat, counts history, live change feed |
+| `start` | `baseline` (`rolling` or a path), `baseline_time`, `period`, `report_period`, `ecosystems`, `control` | header; scan schedule; whether rescan keys are enabled |
+| `scan` | `trigger` (`start`, `period`, `request`), `origins`, `sites`, `packages`, `counts` (per ecosystem: `{origins, sites, packages}`, as `fetter count`), `changes` (a `ScanDiff` since the previous scan) | heartbeat, counts history, live change feed; acknowledges a rescan request |
 | `report` | `report`: a `DiffReport` (`status`, `baseline_time`, `time`, `changes`, `new_vulns`, `resolved_vulns`, `audit_error`, `new_violations`, `resolved_violations`) | alerts, digest input |
 | `error` | `message` | shown in the event log; counted in the digest |
 
@@ -44,9 +45,25 @@ A line that is not JSON, or an event with a `schema` greater than 1, is kept in 
 **Process lifecycle:**
 - **Unexpected exit:** fetter-scope restarts fetter with exponential backoff (5 s doubling to 10 min) and records a `fetter-exit` entry. Three exits in a row with no `scan` event in between stop the restarts and raise a visible error.
 - **Exit code 3:** this means an alert in run-once mode, which fetter-scope never uses. It is still treated as an unexpected exit.
-- **Rescan now** (`s`): fetter has no rescan trigger, so fetter-scope restarts the child. Its first scan is always reported, because a report is due at start. See Open questions.
+- **Stopping** (quit, or a configuration change that needs a restart): fetter-scope writes `stop`, waits up to 30 s for the process to exit (a scan in progress finishes first), then terminates it. A child killed mid-report does not advance the rolling baseline, so either way nothing is lost.
 
-**Attach mode:** `fetter-scope attach FILE` follows a stream that fetter writes itself (`monitor-diff ... json -o FILE`, e.g. under launchd or systemd), without launching fetter. In this mode, rescanning and restarting are disabled.
+**Control channel:** fetter is launched with `--control stdin`, and fetter-scope writes commands to its stdin, one per line, UTF-8, ending in `\n`:
+
+| Command | fetter's response | Used for |
+|---|---|---|
+| `scan` | scans now; a `scan` event with `trigger: "request"`. A report follows only if one is due by `--report-period`. | `s`: rescan now (the Live and Overview tabs update) |
+| `report` | scans now and reports whether or not one is due: a `scan` event with `trigger: "request"`, then a `report` event (unless nothing changed and `--report change`); the report timer restarts | `r`: report now; before `m` sends a digest, so it includes the current state |
+| `stop` | finishes the current scan or report, then exits with 0 | quit and restart |
+| anything else | an `error` event (`Unknown control command: …`); fetter keeps running | logged as a protocol error (a fetter-scope bug, or a fetter too old for a command) |
+
+Rules for the supervisor:
+- **Commands are read only between scans.** A command sent during a scan waits until it ends, and each command runs its own scan. fetter-scope therefore keeps at most one request outstanding: after writing `scan` or `report`, it ignores further `s`/`r` presses (the footer shows "rescanning…") until a `scan` event with `trigger: "request"` arrives, or 10 minutes pass.
+- **Acknowledgement is the next `request` scan event.** There is no request id; with one outstanding request, the next `request` scan answers it. A `report` request is complete at the following `report` event, or at that scan event if nothing changed and no report was written.
+- **A closed stdin is not a stop.** If fetter-scope's end of the pipe closes (fetter-scope crashed), fetter keeps scanning on its period. fetter-scope's next start finds no child it owns and launches a new one, so a stray fetter could run alongside. To prevent this, fetter-scope records the child's pid in `state.json` and on start stops a recorded process that is still running fetter (`stop` is impossible without its stdin, so it is terminated).
+- **Write failures** (a broken pipe) mean fetter has exited; the exit handling above applies.
+- `--control` requires a period above 0, which fetter-scope always uses.
+
+**Attach mode:** `fetter-scope attach FILE` follows a stream that fetter writes itself (`monitor-diff ... json -o FILE`, e.g. under launchd or systemd), without launching fetter. There is no control channel in this mode, so rescan and report-now are disabled. (A file or socket control channel in fetter would enable them; `--control` takes a value so one can be added.)
 
 ## Configuration
 
@@ -112,7 +129,7 @@ Folding is pure: report dicts in, a digest dict out. It is tested against record
 
 **Tabs:**
 - **Overview:**
-  - per-ecosystem counts of origins, sites and packages from the latest `scan`, with a sparkline of packages over the session (from the stored scans);
+  - per-ecosystem counts of origins, sites and packages from the latest `scan` event's `counts`, highlighting an ecosystem that dropped to zero (more likely a scan problem than removals), with a sparkline of packages over the session (from the stored scans);
   - the latest report's status and section counts;
   - the pending digest's counts.
 - **Alerts:** one row per alert item, its type first: `vuln`, `hook`, `downgrade`, `violation`. Then ecosystem, package or site, detail, report time, and whether it has been mailed.
@@ -131,8 +148,9 @@ Folding is pure: report dicts in, a digest dict out. It is tested against record
 
 | Key | Action |
 |---|---|
-| `s` | rescan now (restart fetter; launch mode only) |
-| `m` | send the digest now |
+| `s` | rescan now (`scan` on the control channel; launch mode only) |
+| `r` | report now (`report` on the control channel; launch mode only) |
+| `m` | send the digest now (sends `report` first in launch mode, then sends the digest when that report or scan event arrives, or after 2 minutes) |
 | `p` | preview the digest's HTML in a browser (a temp file) |
 | `c` | copy the selected row's package, ID or URL (OSC 52, plus the clipboard tool when present, as in assistant-bom) |
 | `/` | filter |
@@ -179,7 +197,7 @@ fetter_scope/
   __main__.py           CLI: (default) tui, run [--headless], attach FILE, digest [--send|--preview], check
   config.py             config.toml + .env → frozen dataclasses
   events.py             event parsing (tolerant), the schema 1 event types as TypedDicts
-  supervisor.py         launch, read, restart and stop fetter (asyncio subprocess); attach (follow a file)
+  supervisor.py         launch, read, restart and stop fetter (asyncio subprocess); control channel (one outstanding request); attach (follow a file)
   store.py              events/, state.json, mail/
   digest.py             fold(reports) → digest; pure
   render.py             digest → HTML (inline styles) and text
@@ -188,7 +206,7 @@ fetter_scope/
   tui.py                the Textual app
 tests/
   fixtures/streams/     recorded monitor-diff streams (user, host and paths made generic, as fetter's tests/fixtures/monitor)
-  fake_fetter.py        prints a fixture stream with delays, honors --version, can exit early
+  fake_fetter.py        prints a fixture stream with delays, honors --version, can exit early, answers scan/report/stop on stdin
 ```
 
 `fetter-scope check` validates the configuration, the fetter binary and version, and the mail credentials (a dry run with no send), then prints what would run.
@@ -206,7 +224,8 @@ No test runs a real fetter scan, sends mail, or touches the network.
   - alert status kept after cancellation;
   - audit errors and missing scans as problems.
 - **Scheduler:** `every`/`at`/`weekday` alignment, catch-up after downtime, alert rate limiting, and backoff. All are driven by an injected clock.
-- **Supervisor:** `fake_fetter.py` for reading, restart with backoff, the three-exit stop, stopping on quit, the version check, and attach-mode following of an appended file.
+- **Supervisor:** `fake_fetter.py` for reading, restart with backoff, the three-exit stop, stopping on quit (`stop`, then terminate after the timeout), the version check, and attach-mode following of an appended file. Control channel: `s` is ignored while a request is outstanding, the next `request` scan acknowledges it, an unknown-command `error` is logged, a broken pipe is handled as an exit, and a stale pid in `state.json` is stopped.
+- **Integration (optional, marked):** one test runs the real fetter on a temporary `Cargo.lock` project with a stubbed `--cache-directory` and drives `scan`, `report` and `stop`; skipped when fetter is not on `PATH` or the network is unavailable.
 - **Store:** restart rebuilds the pending period, plus retention.
 - **Render:** a golden HTML and text for a fixture digest; the size limit with "and N more".
 - **Delivery:** Postmark via a stubbed `urlopen`, and SMTP via a stubbed `smtplib.SMTP`. A failure does not advance the period.
@@ -215,7 +234,7 @@ No test runs a real fetter scan, sends mail, or touches the network.
 ## Milestones
 
 1. [ ] Skeleton: packaging, config, `check`, event parsing, fixture streams recorded from fetter.
-2. [ ] Supervisor and store: launch, attach, restart, `events/` log, headless `run` (log only).
+2. [ ] Supervisor and store: launch, attach, restart, control channel, `events/` log, headless `run` (log only).
 3. [ ] Digest folding and render (text and HTML), `digest --preview`.
 4. [ ] Delivery and scheduler: Postmark and SMTP, digests and immediate alerts, catch-up, `state.json`.
 5. [ ] TUI: header, Overview, Alerts (with detail), Changes, Live, Log.
@@ -231,8 +250,8 @@ No test runs a real fetter scan, sends mail, or touches the network.
 
 ## Open questions
 
-- **Rescan trigger:** should fetter's `monitor-diff` accept a signal (e.g. `SIGUSR1`, or a line on stdin) to rescan and report now, instead of being restarted? A restart re-reads the rolling baseline and is otherwise harmless.
 - **Transient changes in fetter:** fetter's reports already miss changes that appear and disappear between two of its reports. Should fetter-scope set `report_period = period` by default so that every scan can be reported (the default above), or should fetter accumulate them itself (fetter SPEC milestone 27 follow-up)?
 - **Net classification after folding:** for the net kind of a folded package change (first `from` → last `to`), should fetter add a `compare` field, or a small `fetter compare-versions` command, rather than relying on the last step's kind?
-- **Per-ecosystem counts:** should fetter's `scan` event carry counts per ecosystem? fetter-scope currently has only totals, so per-ecosystem Overview counts need fetter to add them, or a `count` run.
+- **Control in attach mode:** should fetter add a file or socket control channel (`--control fifo:PATH`?) so a TUI attached to a service's stream can rescan? Until then, attach mode is read-only.
+- **Settled:** a rescan trigger (fetter's `--control stdin`) and per-ecosystem counts (`scan.counts`) were added to fetter before 5.0.0.
 - **Data directory:** a repository directory, as assistant-bom commits its snapshots, or a state directory? This spec proposes a state directory, since the events contain local paths.
