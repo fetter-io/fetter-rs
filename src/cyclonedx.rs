@@ -133,7 +133,7 @@ fn uuid_from(data: &[u8]) -> String {
 }
 
 /// Seconds since the Unix epoch as an RFC 3339 UTC timestamp.
-fn rfc3339(secs: u64) -> String {
+pub(crate) fn rfc3339(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let rem = secs % 86_400;
     // civil-from-days (Howard Hinnant)

@@ -39,7 +39,7 @@ impl fmt::Display for ValidationExplain {
 }
 
 //------------------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationFlags {
     pub permit_superset: bool,
     pub permit_subset: bool,
@@ -143,8 +143,8 @@ impl Rowable for ValidationRecord {
 
 //------------------------------------------------------------------------------
 // A summary of validation results suitable for JSON serialization to naive readers that need labelled fields.
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ValidationDigestRecord {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ValidationDigestRecord {
     ecosystem: String,
     package: Option<String>,
     dependency: Option<String>,

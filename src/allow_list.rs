@@ -93,6 +93,22 @@ impl PartialOrd for BrowserVersion {
     }
 }
 
+/// Order two versions of a package by its ecosystem: PEP 440 for Python, otherwise as `version_key`; `None` if either cannot be ordered (e.g. a GitHub Actions ref).
+pub(crate) fn compare_versions(
+    package: &Package,
+    other: &Package,
+) -> Option<std::cmp::Ordering> {
+    match package.ecosystem {
+        Ecosystem::Python => Some(package.version.cmp(&other.version)),
+        Ecosystem::Gha => None,
+        eco => {
+            let a = version_key(eco, &package.version.to_string())?;
+            let b = version_key(eco, &other.version.to_string())?;
+            Some(a.cmp(&b))
+        }
+    }
+}
+
 /// The version's ordering key: semver for npm, Cargo and VS Code; semver without the `v` for Go; RubyGems order for Ruby.
 fn version_key(eco: Ecosystem, v: &str) -> Option<VersionKey> {
     match eco {

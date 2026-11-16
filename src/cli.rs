@@ -27,6 +27,11 @@ use crate::eco::scanner_for;
 use crate::ecosystem::Ecosystem;
 use crate::lookup_report::LookupReport;
 use crate::monitor::monitor_scan_loop;
+use crate::monitor_diff::monitor_diff_loop;
+use crate::monitor_diff::monitor_diff_save;
+use crate::monitor_diff::DiffBound;
+use crate::monitor_diff::DiffOptions;
+use crate::monitor_diff::DiffOutput;
 use crate::scan_fs::ScanFS;
 use crate::spin::print_banner;
 use crate::spin::spin;
@@ -405,6 +410,81 @@ enum Commands {
         #[arg(short, long)]
         tenant: String,
     },
+    /// Monitor this system for changes: rescan periodically, compare each scan to a baseline, and report new vulnerabilities (including advisories newly published against unchanged packages), new hooks, downgrades, allow-list violations, and all package, site and origin changes.
+    MonitorDiff {
+        /// Seconds between scans; 0 scans and reports once, exiting with 3 if the report is an alert.
+        #[arg(short, long, default_value = "0")]
+        period: u64,
+
+        /// Seconds between reports (each covers all changes since the previous one); defaults to the scan period.
+        #[arg(long, value_name = "SECONDS")]
+        report_period: Option<u64>,
+
+        /// A fixed baseline written by `monitor-diff save`, never overwritten. If not provided, the baseline is the last reported state, kept in the cache directory.
+        #[arg(long, value_name = "FILE")]
+        baseline: Option<PathBuf>,
+
+        /// When to report: only if something changed, or after every report period.
+        #[arg(long, value_enum, default_value = "change")]
+        report: ReportWhen,
+
+        /// File path or URL from which to read bound requirements; new violations are alerts.
+        #[arg(short, long, value_name = "FILE")]
+        bound: Option<PathBuf>,
+
+        /// Names of additional optional (extra) dependency groups.
+        #[arg(long, value_name = "OPTIONS")]
+        bound_options: Option<Vec<String>>,
+
+        /// Names of packages to be excluded from validation.
+        #[arg(long, value_name = "OPTIONS", default_value = "pip")]
+        ignore: Vec<String>,
+
+        /// Observed packages can be a subset of the bound requirements.
+        #[arg(long)]
+        subset: bool,
+
+        /// Observed packages can be a superset of the bound requirements.
+        #[arg(long)]
+        superset: bool,
+
+        /// Validate every scanned ecosystem, even those the bound does not mention.
+        #[arg(long)]
+        strict: bool,
+
+        /// Filter vulnerabilities to those greater or equal to a provided CVSS score. If no argument is provided, the maximum is reported.
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CVSS")]
+        cvss: Option<Option<f64>>,
+
+        #[command(subcommand)]
+        subcommands: Option<MonitorDiffSubcommand>,
+    },
+}
+
+/// When `monitor-diff` writes a report.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum ReportWhen {
+    /// Only when something changed since the baseline.
+    Change,
+    /// Every report period, even if nothing changed.
+    Always,
+}
+
+#[derive(Subcommand)]
+enum MonitorDiffSubcommand {
+    /// Print a text report (the default).
+    Text,
+    /// Write a JSON Lines event stream (start, scan, report, error), for other programs to consume.
+    Json {
+        /// Append events to this file instead of writing to stdout.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
+    /// Write a baseline of the current system (scan, audit, validation) to a file, for use with `--baseline`.
+    Save {
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+    },
 }
 
 /// Commands that apply only to Python environments.
@@ -457,6 +537,7 @@ impl fmt::Display for Commands {
             Commands::PurgeInvalid { .. } => "purge-invalid",
             Commands::Python { .. } => "python",
             Commands::MonitorScan { .. } => "monitor-scan",
+            Commands::MonitorDiff { .. } => "monitor-diff",
         };
         write!(f, "{op_str}")
     }
@@ -1432,6 +1513,72 @@ where
                 log,
             );
         }
+        Some(Commands::MonitorDiff {
+            period,
+            report_period,
+            baseline,
+            report,
+            bound,
+            bound_options,
+            ignore,
+            subset,
+            superset,
+            strict,
+            cvss,
+            subcommands,
+        }) => {
+            let bound = match bound {
+                Some(b) => Some(DiffBound {
+                    allow_list: AllowList::from_bound(b, bound_options.as_ref(), log)?,
+                    flags: ValidationFlags {
+                        permit_superset: *superset,
+                        permit_subset: *subset,
+                    },
+                    ignore: ignore.iter().cloned().collect(),
+                    strict: *strict,
+                }),
+                None => None,
+            };
+            let output = match subcommands {
+                Some(MonitorDiffSubcommand::Json { output }) => {
+                    DiffOutput::Json(output.clone())
+                }
+                _ => DiffOutput::Text,
+            };
+            let opts = DiffOptions {
+                period: *period,
+                report_period: report_period.unwrap_or(*period),
+                baseline: baseline.clone(),
+                report_always: *report == ReportWhen::Always,
+                bound,
+                cvss: CvssFilter::from_arg(*cvss),
+                output,
+            };
+            let cache_config = CacheConfig::new(cache_dur, cache_dir.clone());
+            if let Some(MonitorDiffSubcommand::Save { output }) = subcommands {
+                monitor_diff_save(
+                    &cli.origin,
+                    client,
+                    &config,
+                    &cache_config,
+                    &opts,
+                    output,
+                    log,
+                )?;
+            } else {
+                let alert = monitor_diff_loop(
+                    &cli.origin,
+                    client,
+                    &config,
+                    &cache_config,
+                    &opts,
+                    log,
+                )?;
+                if alert {
+                    process::exit(ERROR_EXIT_CODE);
+                }
+            }
+        }
         None => {}
     }
     Ok(())
@@ -1444,6 +1591,50 @@ mod tests {
 
     fn parse(args: &[&str]) -> Cli {
         Cli::try_parse_from(args).unwrap()
+    }
+
+    #[test]
+    fn test_parse_monitor_diff_a() {
+        let cli = parse(&[
+            "fetter",
+            "monitor-diff",
+            "--period",
+            "300",
+            "--report-period",
+            "3600",
+            "--report",
+            "always",
+            "--cvss=7",
+            "json",
+            "-o",
+            "/tmp/events.jsonl",
+        ]);
+        match cli.command {
+            Some(Commands::MonitorDiff {
+                period,
+                report_period,
+                report,
+                cvss,
+                subcommands: Some(MonitorDiffSubcommand::Json { output }),
+                ..
+            }) => {
+                assert_eq!((period, report_period), (300, Some(3600)));
+                assert_eq!(report, ReportWhen::Always);
+                assert_eq!(cvss, Some(Some(7.0)));
+                assert_eq!(output, Some(PathBuf::from("/tmp/events.jsonl")));
+            }
+            _ => panic!("not monitor-diff json"),
+        }
+        let cli = parse(&["fetter", "monitor-diff", "save", "-o", "base.json"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::MonitorDiff {
+                period: 0,
+                subcommands: Some(MonitorDiffSubcommand::Save { .. }),
+                ..
+            })
+        ));
+        assert!(Cli::try_parse_from(["fetter", "monitor-diff", "save"]).is_err());
     }
 
     #[test]

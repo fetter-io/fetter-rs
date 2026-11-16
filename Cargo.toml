@@ -11,7 +11,7 @@ repository = "https://github.com/fetter-io/fetter-rs"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 # the working spec and articles are for the repository, not the published crate
-exclude = ["SPEC.md", "doc/"]
+exclude = ["SPEC.md", "SPEC-scope.md", "doc/"]
 
 description = "System-wide package discovery, validation, vulnerability scanning, and allow-listing for Python, npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, and VS Code extensions."
 keywords = ["sbom", "vulnerability", "allow-listing", "cybersecurity", "osv"]

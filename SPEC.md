@@ -11,13 +11,13 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 
 ## Picking this up
 
-*Last updated 2026-11-15, at the end of milestone 26 (versioned `monitor-scan` payload).*
+*Last updated 2026-11-15, at the end of milestone 27 (`monitor-diff`).*
 
 ### Where we are
 
-- **Branch** `207/polye`. **All milestones (1–26) are done** (§7); milestones 15–17 added Go, Ruby and PHP; milestone 18 resolves GHA SHA pins in `audit`; milestone 19 added pre-commit and milestone 20 Swift, for ten ecosystems; milestone 21 added package URLs (purl) and SBOM input, milestone 22 VERS version ranges, milestone 23 CycloneDX export, milestone 24 pre-commit `additional_dependencies`, milestone 25 browser extensions (`chromium`, `firefox`), for twelve ecosystems, and milestone 26 a versioned, forward-compatible `monitor-scan` payload that still reads fetter 3–4 posts. The version is 5.0.0 and the README documents v5. What remains is the release itself, which the maintainer does (see Next), plus the follow-ups in §9.
-- **Milestones 23–26 may not be committed yet**: check `git status` (new: `src/cyclonedx.rs`, `src/eco/{browser,browser_version,chromium,firefox}.rs`, `src/transmit.rs`, `tests/fixtures/monitor/`); milestones 1–22 are committed.
-- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 537 passed and 6 ignored. The ignored tests hit live services:
+- **Branch** `207/polye`. **All milestones (1–27) are done** (§7); milestones 15–17 added Go, Ruby and PHP; milestone 18 resolves GHA SHA pins in `audit`; milestone 19 added pre-commit and milestone 20 Swift, for ten ecosystems; milestone 21 added package URLs (purl) and SBOM input, milestone 22 VERS version ranges, milestone 23 CycloneDX export, milestone 24 pre-commit `additional_dependencies`, milestone 25 browser extensions (`chromium`, `firefox`), for twelve ecosystems, and milestone 26 a versioned, forward-compatible `monitor-scan` payload that still reads fetter 3–4 posts, and milestone 27 `monitor-diff` (local change monitoring against a baseline). The version is 5.0.0 and the README documents v5. What remains is the release itself, which the maintainer does (see Next), plus the follow-ups in §9.
+- **Milestone 27 may not be committed yet**: check `git status` (new: `src/diff_report.rs`, `src/monitor_diff.rs`); milestones 1–26 are committed.
+- **Health**: `cargo fmt --check` and `cargo clippy --all-targets` are clean; `cargo test` reports 548 passed and 6 ignored. The ignored tests hit live services:
   - `test_osv_ecosystem_names_live`
   - `test_osv_pagination_live` (≈80s)
   - `test_query_pypi_project_live`
@@ -52,6 +52,8 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 | Registries (version listing for lookups), `name@requirement` lookups | `src/registry.rs`; `LookupReport::from_name_requirement` / `from_allow_list` in `src/lookup_report.rs` |
 | Which ecosystems match server-side vs. client-side | `Ecosystem::osv_server_side_versions` (`src/ecosystem.rs`) |
 | Audit report (`unaudited`, errors) | `src/audit_report.rs` |
+| `monitor-scan` payload (schema 1), scan (de)serialization | `src/transmit.rs`; loop in `src/monitor.rs` |
+| `monitor-diff`: diff and evaluation (pure) / baseline state, event stream, loop | `src/diff_report.rs` / `src/monitor_diff.rs` |
 
 ### Next: releasing 5.0.0 (maintainer)
 
@@ -244,7 +246,7 @@ Measured prevalence on the dev machine (2026-11-13):
 
 | Shared (all ecosystems, in concept) | `fetter python …` (Python only) |
 |---|---|
-| `scan`, `search`, `count`, `inspect`, `audit`, `derive`, `validate`, `lookup-name`, `lookup-bound`, `unpack-count`, `unpack-files`, `purge-pattern`, `purge-invalid`, `monitor-scan` | `site-install`, `site-uninstall` |
+| `scan`, `search`, `count`, `inspect`, `audit`, `derive`, `validate`, `lookup-name`, `lookup-bound`, `unpack-count`, `unpack-files`, `purge-pattern`, `purge-invalid`, `monitor-scan`, `monitor-diff` | `site-install`, `site-uninstall` |
 
 - Only `site-install` / `site-uninstall` are Python-specific in concept, because they install a Python startup hook. Unpack and purge apply to most ecosystems (npm package dirs, VS Code extension dirs, cargo-installed bins). They are shared commands. Since milestone 13, `unpack-*` reads artifacts in every ecosystem; `purge-*` removes only Python packages (`scan_fs::supports_purge`).
 
@@ -670,6 +672,13 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
     - `monitor-scan` no longer panics its worker: a failed scan, a poisoned lock or a serialization failure (e.g. a non-UTF-8 path) is logged and that period is skipped (after a serialization failure the next post sends the full scan); a failure to read system details is an error at start.
     - **Verified**: 6 tests (the real v4.0.1 fixture, including its unchanged `null` form, read as two Python origins sharing one site with a git `direct_url` and re-sent as schema 1 identically; round trip with and without hooks and for unchanged scans; the `schema1.json` fixture read and re-written identically; forward compatibility with `schema` 7, extra fields, a `nuget` origin, site and package, an npm site of kind `registry`, and an unknown configured ecosystem, all skipped and counted; malformed payloads). Real data: a full-home `monitor-scan` posted to a local listener (1.6 MB; 185 origins, 270 sites, 8,635 packages, 105 hooks at 53 sites; about 4 s) read back by `from_json` with nothing skipped, and re-written to an identical scan object; reports from the v6 cache equal fresh ones.
     - **fetter-orb, not yet changed**: to use this it needs `fetter` 5, `MonitorPayload::from_json` in `monitor_scan_load_from_json` (replacing the tuple and its `expect`), `Site` instead of `PathShared` for sites (`site_packages_insert_or_get` takes `sp.path`), an ecosystem (and site kind) column for packages and sites, `Package.ecosystem` in `package_from_row`, and optionally storing hooks and `skipped`.
+27. [x] **`monitor-diff`** (at the user's request: change monitoring on one system, without fetter.io). `src/diff_report.rs` (pure: `ScanDiff`, `DiffReport`, text), `src/monitor_diff.rs` (state, events, loop); `cli::Commands::MonitorDiff`; `allow_list::compare_versions`; `ValidationDigestRecord` is public and ordered.
+    - **Diff**: origins and sites added or removed; packages compared per `(site, ecosystem, key)`: when exactly one version left and one arrived, `upgraded`/`downgraded` by the ecosystem's order (`compare_versions`: PEP 440, or `version_key`), else `changed` (GHA refs, unparseable versions, or only `direct_url` differs); otherwise each is `added`/`removed`. Hooks are diffed per site only when both scans collected them (`load_hooks` runs on every scan).
+    - **Evaluation**: every report audits all packages (`AuditReport::from_packages`; the OSV caches keep this cheap) and compares IDs keyed by `(ecosystem, key, id)`, so an advisory still affecting an upgraded package is neither new nor resolved. A new ID is `introduced` (its package was not in the baseline), `published` (it was), or `existing` (no baseline audit). Alerts: new vulnerabilities, added hooks, downgrades, new allow-list violations (validation digests not in the baseline's). Status `alert` > `changed` (any difference, resolutions, or an audit failure) > `unchanged`.
+    - **Baseline**: `DiffState { schema, fetter_version, time, scan, vulns, violations }`, the scan as the schema 1 object. Rolling at `<cache>/monitor_diff_v1_<hash_paths>.json`, written by temp file and rename, only after a report is written and only when the status is not `unchanged` (or the baseline is new); `--baseline FILE` (from `save`) is read-only. An audit failure keeps the previous `vulns`.
+    - **Output**: per the user, a live view (TUI) and notifications (email, chat) are separate programs consuming a JSON Lines stream; fetter has no UI or mail code. `Event { schema, time, system, event: start|scan|report|error }` (internally tagged; unknown events read as `Unknown`). `text` prints `DiffReport::to_text` (nothing when unchanged; cron mails output). Period 0 reports once, exit 3 on alert; a failed write ends monitoring with an error and the baseline unchanged.
+    - **Verified**: 13 tests (diffs, sources, status, JSON round trips, events including an unknown one, state round trip, the loop once with a mock OSV: new baseline, unchanged, a newly published advisory, a fixed baseline left unchanged, an upgrade resolving advisories, an audit failure keeping the baseline's vulns, a failed write not advancing). Real data: a scratch venv (`requests` 2.19.0) and npm project: the first run reported 10 existing advisories (exit 3); upgrading to 2.32.4 reported the upgrade and 8 resolved (the 2 still affecting it not repeated); adding a `.pth` with `import` and an npm package with `postinstall` reported two new hooks (exit 3); a rerun printed nothing (exit 0); `--period 2 --report-period 4 json -o` gave scan heartbeats and a report of a package added mid-run.
+    - **Follow-ups**: a reference consumer (live view, notifier) as a separate project; whether transient changes between reports should be accumulated (now a report compares the last reported state to the current one).
 
 ## 8. Testing strategy
 
@@ -697,6 +706,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 ## 10. Decision log
 
 - 2026-11-15: The `monitor-scan` payload is a named-field object with a `schema` number independent of fetter's version (1), shared with the scan cache; readers skip what they do not know; fetter 3–4 posts are read as Python. Hooks are sent per site; environment markers are not. fetter-orb is updated separately.
+- 2026-11-15: `monitor-diff` compares locally against a rolling (or fixed) baseline, re-auditing all packages each report so new advisories against unchanged packages are found. Display and notification are left to separate programs reading its versioned JSON Lines event stream; fetter itself only writes text or events.
 
 - 2026-11-15: Browser extensions are two ecosystems, `chromium` and `firefox` (different id spaces, stores and version formats; Chromium browsers share one id space, so an extension in Chrome and Brave is one package at two sites). Packages are named by id, not display name. Chromium preferences files are read (the user's choice) for unpacked extensions and state, keeping only `extensions.settings`. No audit (no OSV ecosystem).
 

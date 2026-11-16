@@ -663,6 +663,35 @@ repos:
   - `--url, -u <URL>`: Provide the URL to which to post results.
   - `--tenant, -t <TENANT>`: Provide the tenant key.
 
+### Command: `fetter monitor-diff`
+
+- Description: Monitor this system for changes. Each run (or each period) scans, compares the scan to a baseline, and reports what changed: origins, sites, and packages added or removed, upgraded, downgraded, or changed, and hooks added or removed. Changes are evaluated:
+  - every package is audited each report, and vulnerability IDs are compared to the baseline's, so advisories newly published against unchanged packages are found as well as those of changed packages;
+  - new vulnerabilities, new hooks (code that runs without being invoked), downgrades, and new allow-list violations (with `--bound`) are alerts.
+- The baseline is, by default, the last reported state, kept in the cache directory for each scan configuration and advanced only after a report is written; the first run establishes it, reporting existing vulnerabilities. `--baseline FILE` compares to a fixed snapshot written by `monitor-diff save`, which is never changed.
+- With `--period 0` (the default) `monitor-diff` reports once and exits with `3` if the report is an alert, which suits cron (which also mails a job's output). A live view or a notifier (email, chat, webhooks) is a separate program reading the `json` event stream.
+- Options
+  - `--period, -p <SECONDS>`: Seconds between scans; `0` scans and reports once.
+  - `--report-period <SECONDS>`: Seconds between reports; defaults to the scan period.
+  - `--baseline <FILE>`: A fixed baseline written by `monitor-diff save`.
+  - `--report <change|always>`: Report only when something changed (default), or every report period.
+  - `--bound, -b <FILE>`: Bound requirements to validate against (as for `validate`), with `--bound-options`, `--ignore`, `--subset`, `--superset`, and `--strict`.
+  - `--cvss[=<SCORE>]`: Filter vulnerabilities as for `audit`.
+- Subcommands
+  - `text`: Print a text report (the default); nothing is printed when nothing changed.
+  - `json`: Write a JSON Lines event stream, one object per line with `schema`, `event`, `time`, and `system`. Events are `start` (configuration and baseline time), `scan` (counts and changes since the previous scan, after every scan), `report` (the evaluated changes since the baseline), and `error`. Readers should ignore events and fields they do not know.
+    - `--output, -o <FILE>`: Append to a file (flushed per line) instead of writing to stdout.
+  - `save`: Write a baseline of the current system to a file.
+    - `--output, -o <FILE>`: The file to write.
+
+Examples:
+```
+fetter monitor-diff                                     # report changes since the last run
+fetter monitor-diff save -o golden.json                 # a fixed baseline
+fetter monitor-diff --baseline golden.json --bound fetter.toml
+fetter monitor-diff --period 600 --report-period 86400 json -o ~/fetter-events.jsonl
+```
+
 
 ## What is New in Fetter
 
@@ -671,6 +700,8 @@ repos:
 Support for multiple ecosystems: npm, Cargo, Go, Ruby, PHP, Swift, pre-commit hooks, GitHub Actions, VS Code extensions, and Chromium and Firefox browser extensions, alongside Python. pre-commit hooks are audited through the packages they install, and their pinned `additional_dependencies` are reported in their own ecosystems. All are found in a single scan; use `-E` / `--ecosystem` to select ecosystems.
 
 All commands work across ecosystems: `scan`, `search`, `count`, `inspect`, `audit`, `derive`, `validate`, `lookup-name`, `lookup-bound`, `unpack-count`, and `unpack-files`. `purge-pattern` and `purge-invalid` remove only Python packages.
+
+New `monitor-diff` command: compare the system to a baseline, once or periodically, and report changes, new vulnerabilities (including newly published advisories), new hooks, downgrades, and allow-list violations, as text or a JSON Lines event stream for other programs.
 
 New `fetter.toml` allow list for `validate`, `derive`, `lookup-bound`, and `purge-invalid`, with one table per ecosystem in native requirement syntax; `validate --strict` validates ecosystems the allow list does not mention.
 
