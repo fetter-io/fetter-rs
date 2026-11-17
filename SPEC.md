@@ -97,6 +97,7 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 - *Resolved 2026-11-14*: README examples were stale (`-e`, top-level `site-install`); rewritten in milestone 14.
 - *Resolved 2026-11-14*: delimited output (`write -d`) did not quote fields, so a value containing the delimiter corrupted its row (e.g. `sharp`'s `node install/check.js || npm run build` under `-d '|'`). See the delimited-output entry under milestone 10.
 - The `unsafe-libyaml` advisory (RUSTSEC-2024-0449) is resolved: `serde_yaml` was replaced with `serde-saphyr`.
+- *Open 2026-11-16*: `VulnFinding.sites` (5.1.0) is empty for a package the audit derives from a pre-commit hook (`map_hooks`, e.g. PyPI `black` from a `psf/black` hook), since only scanned packages are in `package_to_sites`. Seen in fetter-scope on a full home scan: 16 of 3,556 findings, all `black` at four versions. Fix: `diff_report::package_sites` should fall back to the sites of the hook package it was mapped from (`AuditReport.precommit_hooks`), i.e. the `.pre-commit-config.yaml`. Optional field, so no schema change.
 
 ---
 
