@@ -694,7 +694,6 @@ fetter monitor-diff --period 600 --report-period 86400 json -o ~/fetter-events.j
 fetter monitor-diff --period 600 --control stdin json   # driven by a supervising program
 ```
 
-
 ## What is New in Fetter
 
 ### 5.2.0
