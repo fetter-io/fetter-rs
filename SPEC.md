@@ -55,6 +55,10 @@ Status: **draft**. This is the working spec for the v5 major release. It is mean
 | `monitor-scan` payload (schema 1), scan (de)serialization | `src/transmit.rs`; loop in `src/monitor.rs` |
 | `monitor-diff`: diff and evaluation (pure) / baseline state, event stream, loop | `src/diff_report.rs` / `src/monitor_diff.rs` |
 
+### 5.2.0 (in progress, 2026-11-19)
+
+Public allow-list API for fetter-orb; see the 2026-11-19 entry in §10. The version is 5.2.0 in `Cargo.toml`, not yet published. `tests/public_allow_list.rs` exercises it through public items only.
+
 ### Next: releasing 5.0.0 (maintainer)
 
 1. ~~`cargo update`~~: done (see Known issues).
@@ -710,6 +714,7 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 
 ## 10. Decision log
 
+- 2026-11-19 (5.2.0): The allow list becomes public library API, for fetter-orb, which stores bounds as text and validates and derives across ecosystems from stored packages. Exported: `AllowList`, with `from_text`, `from_fetter_toml`, `from_python`, `from_packages`, `to_toml`, `python`, `section`, `has_section`, `ecosystems`, `counts` and `is_python_only`; `EcoSection`; `ReqEntry`, with `new`, `matches` and accessors; `Dependency`; `ValidationRecord`; and `Anchor`. Also new: `ValidationReport::from_allow_list`, factored out of `ScanFS::to_allow_list_validation` (which now calls it), which takes the in-scope ecosystems explicitly because a library client has no `ScanConfig`; `Package::new` is public, and `Package::purl()` gives the serialized purl. `AllowList::from_text` reads a `fetter.toml` (any TOML whose top level is only ecosystem tables and `purls`), a `pyproject.toml` (a `[project]` or `[build-system]` table), or else anything `LockFile` reads. An invalid `fetter.toml` is an error, not a fallback to requirements. The additions are additive, so the version is a minor bump.
 - 2026-11-15: The `monitor-scan` payload is a named-field object with a `schema` number independent of fetter's version (1), shared with the scan cache; readers skip what they do not know; fetter 3–4 posts are read as Python. Hooks are sent per site; environment markers are not. fetter-orb is updated separately.
 - 2026-11-16 (after 5.0.0): `VulnFinding` and `VulnResolved` carry `sites`, the paths of the sites holding the package (the reported scan's for new, the baseline's for resolved), so a reader can say where a vulnerable package is installed even when it did not change (a `published` advisory). Optional and omitted when empty, so the event stream stays at schema 1. Requested by fetter-scope, for fixing a high-CVSS vulnerability where it is and for a per-site view.
 - 2026-11-16: `monitor-diff` takes commands (`scan`, `report`, `stop`) on stdin with `--control stdin`, chosen over `SIGUSR1` (not on Windows) and a polled trigger file; `scan` events carry per-ecosystem counts and a `trigger`. Both added before the 5.0.0 release so the event stream's first version is complete.
@@ -767,6 +772,8 @@ Each milestone leaves `cargo test` green and lists the main files it touches.
 - 2026-11-13: OSV supports VS Code extensions under the ecosystem name `VSCode` (https://osv.dev/list?q=&ecosystem=VSCode), so VS Code packages are fully auditable.
 
 ## 11. Breaking changes (for the v5 changelog)
+
+5.2.0 adds library API (§10, 2026-11-19) and breaks nothing.
 
 - **MSRV is Rust 1.89** (was 1.88), required by `serde-saphyr`.
 - `-e/--exe` → `--origin` (no short flag; old names kept as hidden aliases).

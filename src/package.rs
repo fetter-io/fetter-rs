@@ -71,8 +71,13 @@ impl Serialize for Package {
     }
 }
 impl Package {
+    /// The package URL (`pkg:npm/lodash@4.17.21`), if the ecosystem has a purl type; the same value as the serialized `purl` field.
+    pub fn purl(&self) -> Option<String> {
+        crate::purl::package_purl(self).map(|p| p.to_string())
+    }
+
     /// General constructor for any ecosystem; the key is normalized per the ecosystem's rules.
-    pub(crate) fn new(
+    pub fn new(
         ecosystem: Ecosystem,
         name: &str,
         version: VersionSpec,

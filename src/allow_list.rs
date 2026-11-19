@@ -23,7 +23,6 @@
 
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
-#[cfg(test)]
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -38,6 +37,7 @@ use crate::eco::php::ComposerVersion;
 use crate::eco::ruby::GemRequirement;
 use crate::eco::ruby::GemVersion;
 use crate::ecosystem::Ecosystem;
+use crate::lock_file::LockFile;
 use crate::osv_match::is_sha;
 use crate::package::Package;
 use crate::util::Anchor;
@@ -168,7 +168,8 @@ impl PartialEq for ReqEntry {
 }
 
 impl ReqEntry {
-    pub(crate) fn new(
+    /// A requirement for a package of a non-Python ecosystem, from one or more specs in that ecosystem's native syntax (or `vers:` ranges); satisfied if any spec is. Python requirements are PEP 508 lines in a `DepManifest`, so `Ecosystem::Python` is an error.
+    pub fn new(
         ecosystem: Ecosystem,
         name: &str,
         specs: Vec<String>,
@@ -275,8 +276,27 @@ impl ReqEntry {
         })
     }
 
+    pub fn ecosystem(&self) -> Ecosystem {
+        self.ecosystem
+    }
+
+    /// The package name as written.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The specs as written, including any `vers:` ranges.
+    pub fn specs(&self) -> &[String] {
+        &self.specs
+    }
+
+    /// An optional entry (created only from a `pkg:github` purl) allows matching packages but is not reported missing.
+    pub fn is_optional(&self) -> bool {
+        self.optional
+    }
+
     /// Does the package satisfy this requirement (any of its specs)? A version that cannot be parsed in the ecosystem's syntax does not.
-    pub(crate) fn matches(&self, package: &Package) -> bool {
+    pub fn matches(&self, package: &Package) -> bool {
         let version = package.version.to_string();
         // a SHA pin (GitHub Actions, pre-commit) matches by its comment version (the package version) or by the SHA itself
         let sha = package
@@ -329,18 +349,27 @@ impl fmt::Display for ReqEntry {
 
 /// The requirements of one non-Python ecosystem, keyed by normalized package key.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct EcoSection {
+pub struct EcoSection {
     entries: BTreeMap<String, ReqEntry>,
 }
 
 impl EcoSection {
-    pub(crate) fn get(&self, key: &str) -> Option<&ReqEntry> {
+    /// The entry for a normalized package key (`Package.key`).
+    pub fn get(&self, key: &str) -> Option<&ReqEntry> {
         self.entries.get(key)
     }
 
     /// Entries sorted by key.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &ReqEntry)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &ReqEntry)> {
         self.entries.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     fn insert(&mut self, entry: ReqEntry) {
@@ -418,15 +447,32 @@ fn purl_requirements(
 }
 
 impl AllowList {
-    pub(crate) fn from_python(dm: DepManifest) -> Self {
+    /// An allow list with only a Python section.
+    pub fn from_python(dm: DepManifest) -> Self {
         AllowList {
             python: Some(dm),
             sections: BTreeMap::new(),
         }
     }
 
+    /// An allow list from text: a `fetter.toml`, a `pyproject.toml`, or any Python lock or requirements format `LockFile` reads (requirements.txt, uv.lock, poetry.lock, Pipfile.lock, pylock.toml, pixi.lock). The last three give an allow list with only a Python section. For bounds stored as text, where there is no file name to go by.
+    pub fn from_text(content: &str) -> ResultDynError<Self> {
+        if let Ok(table) = toml::from_str::<toml::Table>(content) {
+            if is_fetter_toml(&table) {
+                return Self::from_fetter_toml(content);
+            }
+            if table.contains_key("project") || table.contains_key("build-system") {
+                return Ok(Self::from_python(DepManifest::from_pyproject(
+                    content, None,
+                )?));
+            }
+        }
+        let deps = LockFile::new(content.to_string()).get_dependencies(None)?;
+        Ok(Self::from_python(DepManifest::try_from_iter(deps.iter())?))
+    }
+
     /// Parse a `fetter.toml`.
-    pub(crate) fn from_fetter_toml(content: &str) -> ResultDynError<Self> {
+    pub fn from_fetter_toml(content: &str) -> ResultDynError<Self> {
         let table: toml::Table = toml::from_str(content)?;
         if !is_fetter_toml(&table) {
             return Err("Not a fetter.toml: expected only ecosystem tables ([python], [npm], [cargo], [gha], [vscode])".into());
@@ -600,25 +646,39 @@ impl AllowList {
     }
 
     /// Does the allow list have a section for this ecosystem?
-    #[cfg(test)]
-    pub(crate) fn has_section(&self, eco: Ecosystem) -> bool {
+    pub fn has_section(&self, eco: Ecosystem) -> bool {
         match eco {
             Ecosystem::Python => self.python.is_some(),
             _ => self.sections.contains_key(&eco),
         }
     }
 
-    pub(crate) fn section(&self, eco: Ecosystem) -> Option<&EcoSection> {
+    /// The section of a non-Python ecosystem; Python requirements are in `python()`.
+    pub fn section(&self, eco: Ecosystem) -> Option<&EcoSection> {
         self.sections.get(&eco)
     }
 
+    /// The Python requirements, if there is a Python section.
+    pub fn python(&self) -> Option<&DepManifest> {
+        self.python.as_ref()
+    }
+
+    /// The ecosystems with a section, in canonical order.
+    pub fn ecosystems(&self) -> Vec<Ecosystem> {
+        Ecosystem::ALL
+            .iter()
+            .copied()
+            .filter(|e| self.has_section(*e))
+            .collect()
+    }
+
     /// True if only Python requirements are present (so a requirements file can represent it).
-    pub(crate) fn is_python_only(&self) -> bool {
+    pub fn is_python_only(&self) -> bool {
         self.sections.values().all(|s| s.entries.is_empty())
     }
 
     /// Derive an allow list from observed packages. Python uses `DepManifest::from_packages`. For npm, Cargo, and VS Code, `Lower` gives `>=` the lowest observed version and `Upper` gives `<=` the highest. GHA lists every observed ref (the anchor does not apply). Versions that cannot be expressed in the ecosystem's syntax are skipped.
-    pub(crate) fn from_packages<I>(packages: I, anchor: Anchor) -> ResultDynError<Self>
+    pub fn from_packages<I>(packages: I, anchor: Anchor) -> ResultDynError<Self>
     where
         I: IntoIterator,
         I::Item: Borrow<Package>,
@@ -717,7 +777,7 @@ impl AllowList {
     }
 
     /// Write as a `fetter.toml`, with ecosystems in canonical order and entries sorted.
-    pub(crate) fn to_toml(&self) -> String {
+    pub fn to_toml(&self) -> String {
         let mut out = String::from("# via fetter\n");
         if let Some(dm) = &self.python {
             out.push_str("\n[python]\nrequirements = [\n");
@@ -753,9 +813,8 @@ impl AllowList {
         out
     }
 
-    /// Counts of requirements per ecosystem.
-    #[cfg(test)]
-    pub(crate) fn counts(&self) -> HashMap<Ecosystem, usize> {
+    /// Counts of requirements per ecosystem with a section.
+    pub fn counts(&self) -> HashMap<Ecosystem, usize> {
         let mut m = HashMap::new();
         if let Some(dm) = &self.python {
             m.insert(Ecosystem::Python, dm.iter_dep_specs().count());
@@ -819,6 +878,66 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]
 "ms-python.python" = "*"
 "CodeInKlingon.git-worktree-menu" = "<1.0.9"
 "#;
+
+    #[test]
+    fn test_from_text_a() {
+        // a fetter.toml
+        let al = AllowList::from_text(TOML).unwrap();
+        assert_eq!(
+            al.ecosystems(),
+            vec![
+                Ecosystem::Python,
+                Ecosystem::Npm,
+                Ecosystem::Cargo,
+                Ecosystem::Gha,
+                Ecosystem::VsCode
+            ]
+        );
+        assert!(!al.is_python_only());
+        assert_eq!(al.counts()[&Ecosystem::Npm], 3);
+        // requirements text
+        let al =
+            AllowList::from_text("# comment\nrequests>=2.31\n\nnumpy==2.1.0\n").unwrap();
+        assert_eq!(al.ecosystems(), vec![Ecosystem::Python]);
+        assert!(al.is_python_only());
+        assert_eq!(al.python().unwrap().len(), 2);
+        // a pyproject.toml
+        let al = AllowList::from_text(
+            "[project]\nname = \"a\"\ndependencies = [\"requests>=2\", \"flask\"]\n",
+        )
+        .unwrap();
+        assert_eq!(al.counts()[&Ecosystem::Python], 2);
+        // empty text is an empty Python section
+        let al = AllowList::from_text("").unwrap();
+        assert_eq!(al.counts()[&Ecosystem::Python], 0);
+        // an invalid fetter.toml is an error, not requirements
+        assert!(AllowList::from_text("[npm]\nlodash = \"not a range !!\"\n").is_err());
+    }
+
+    #[test]
+    fn test_section_accessors_a() {
+        let al = AllowList::from_fetter_toml(TOML).unwrap();
+        assert!(al.has_section(Ecosystem::Gha));
+        assert!(!al.has_section(Ecosystem::Go));
+        let npm = al.section(Ecosystem::Npm).unwrap();
+        assert_eq!(npm.len(), 3);
+        assert!(!npm.is_empty());
+        let e = npm.get("lodash").unwrap();
+        assert_eq!(e.ecosystem(), Ecosystem::Npm);
+        assert_eq!(e.name(), "lodash");
+        assert_eq!(e.specs(), ["^4.17.21".to_string()]);
+        assert!(!e.is_optional());
+        assert!(e.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.22")));
+        assert!(!e.matches(&pkg(Ecosystem::Npm, "lodash", "4.17.20")));
+        assert_eq!(e.to_string(), "lodash ^4.17.21");
+        let keys: Vec<&String> = npm.iter().map(|(k, _)| k).collect();
+        assert_eq!(keys, ["@babel/core", "left-pad", "lodash"]);
+        assert!(al.section(Ecosystem::Python).is_none());
+        // ReqEntry::new rejects Python
+        assert!(
+            ReqEntry::new(Ecosystem::Python, "requests", vec![">=2".into()]).is_err()
+        );
+    }
 
     #[test]
     fn test_from_fetter_toml_a() {

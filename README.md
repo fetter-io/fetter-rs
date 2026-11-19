@@ -697,6 +697,10 @@ fetter monitor-diff --period 600 --control stdin json   # driven by a supervisin
 
 ## What is New in Fetter
 
+### 5.2.0
+
+The cross-ecosystem allow list is public library API: `AllowList` (read from `fetter.toml`, `pyproject.toml`, or Python requirements and lock text with `AllowList::from_text`; derived with `AllowList::from_packages`; written with `to_toml`), `ReqEntry`, `Dependency`, and `ValidationReport::from_allow_list` for validating packages and their sites without a `ScanFS`. `Package::new` is public, and `Package::purl()` gives a package's purl.
+
 ### 5.1.0
 
 Extended diff report to include sites.

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 
+use crate::allow_list::AllowList;
 use crate::allow_list::EcoSection;
 use crate::allow_list::ReqEntry;
 use crate::dep_manifest::DepManifest;
@@ -267,6 +268,78 @@ impl ValidationReport {
         ValidationReport { records }
     }
 
+    /// Validate packages against an allow list, across ecosystems. Only packages of `ecosystems` (the ecosystems scanned, or in scope) are validated, and of those, only ecosystems with a section in the allow list, unless `strict`, in which case an ecosystem without a section is validated against an empty one (all its packages are Unrequired, unless `permit_superset`). Python uses `from_components` (with environment markers if `origin_to_ems` is given); other ecosystems use `records_from_section`. `packages` should be sorted for reporting; `site_to_origins` is only needed with `origin_to_ems`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_allow_list(
+        ecosystems: &[Ecosystem],
+        packages: &[Package],
+        package_to_sites: &HashMap<Package, Vec<Site>>,
+        site_to_origins: &HashMap<Site, Vec<Origin>>,
+        origin_to_ems: &Option<HashMap<Origin, EnvMarkerState>>,
+        allow_list: &AllowList,
+        vf: &ValidationFlags,
+        ignore: Option<&HashSet<String>>,
+        strict: bool,
+    ) -> ValidationReport {
+        let of = |e: Ecosystem| -> Vec<Package> {
+            packages
+                .iter()
+                .filter(|p| p.ecosystem == e)
+                .cloned()
+                .collect()
+        };
+        let mut records = Vec::new();
+        if ecosystems.contains(&Ecosystem::Python)
+            && (allow_list.python.is_some() || strict)
+        {
+            let empty;
+            let dm = match &allow_list.python {
+                Some(dm) => dm,
+                None => {
+                    empty = DepManifest::try_from_iter(Vec::<String>::new())
+                        .expect("empty manifest");
+                    &empty
+                }
+            };
+            records.extend(
+                Self::from_components(
+                    &of(Ecosystem::Python),
+                    package_to_sites,
+                    site_to_origins,
+                    origin_to_ems,
+                    dm,
+                    vf,
+                    ignore,
+                )
+                .records,
+            );
+        }
+        let empty_section = EcoSection::default();
+        let mut others: Vec<Ecosystem> = ecosystems
+            .iter()
+            .copied()
+            .filter(|e| *e != Ecosystem::Python)
+            .collect();
+        others.sort();
+        others.dedup();
+        for eco in others {
+            let section = match allow_list.section(eco) {
+                Some(s) => s,
+                None if strict => &empty_section,
+                None => continue,
+            };
+            records.extend(Self::records_from_section(
+                eco,
+                &of(eco),
+                package_to_sites,
+                section,
+                vf,
+                ignore,
+            ));
+        }
+        ValidationReport { records }
+    }
+
     /// Validate the packages of one non-Python ecosystem against its allow-list section, with the same semantics as Python validation (without environment markers): a package with a requirement it does not satisfy is Misdefined; a package without a requirement is Unrequired (unless `permit_superset`); a requirement no package matched is Missing (unless `permit_subset`). `packages` should be ordered for reporting.
     pub(crate) fn records_from_section(
         ecosystem: Ecosystem,
@@ -386,6 +459,129 @@ mod tests {
     use std::io::BufRead;
     use std::path::PathBuf;
     use tempfile::tempdir;
+
+    fn eco_fixture() -> (Vec<Package>, HashMap<Package, Vec<Site>>) {
+        use crate::origin_site::SiteKind;
+        use crate::version_spec::VersionSpec;
+        let mk = |e, n, v| Package::new(e, n, VersionSpec::new(v), None);
+        let mut packages = vec![
+            mk(Ecosystem::Python, "requests", "2.31.0"),
+            mk(Ecosystem::Python, "six", "1.16.0"),
+            mk(Ecosystem::Npm, "lodash", "4.17.15"),
+            mk(Ecosystem::Npm, "left-pad", "1.3.0"),
+            mk(Ecosystem::Cargo, "serde", "1.0.200"),
+        ];
+        packages.sort();
+        let package_to_sites = packages
+            .iter()
+            .map(|p| {
+                let (kind, path) = match p.ecosystem {
+                    Ecosystem::Python => (SiteKind::Installed, "/venv/site-packages"),
+                    Ecosystem::Npm => (SiteKind::Lockfile, "/app/package-lock.json"),
+                    _ => (SiteKind::Lockfile, "/crate/Cargo.lock"),
+                };
+                (p.clone(), vec![Site::new(p.ecosystem, kind, path.into())])
+            })
+            .collect();
+        (packages, package_to_sites)
+    }
+
+    fn explain(vr: &ValidationReport) -> Vec<String> {
+        vr.records
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} {} {} {}",
+                    r.ecosystem,
+                    r.package
+                        .as_ref()
+                        .map(|p| p.to_string())
+                        .unwrap_or_default(),
+                    r.dependency
+                        .as_ref()
+                        .map(|d| d.to_string())
+                        .unwrap_or_default(),
+                    r.explain()
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_from_allow_list_a() {
+        let (packages, p2s) = eco_fixture();
+        let al = AllowList::from_fetter_toml(
+            r#"
+[python]
+requirements = ["requests>=2.31", "flask>=3"]
+
+[npm]
+"lodash" = "^4.17.21"
+"#,
+        )
+        .unwrap();
+        let vf = ValidationFlags {
+            permit_superset: false,
+            permit_subset: false,
+        };
+        let all = [Ecosystem::Python, Ecosystem::Npm, Ecosystem::Cargo];
+        let run = |ecos: &[Ecosystem], strict: bool, vf: &ValidationFlags| {
+            ValidationReport::from_allow_list(
+                ecos,
+                &packages,
+                &p2s,
+                &HashMap::new(),
+                &None,
+                &al,
+                vf,
+                None,
+                strict,
+            )
+        };
+        // cargo has no section, so it is not validated
+        assert_eq!(
+            explain(&run(&all, false, &vf)),
+            [
+                "python six-1.16.0  Unrequired",
+                "python  flask>=3 Missing",
+                "npm left-pad-1.3.0  Unrequired",
+                "npm lodash-4.17.15 lodash ^4.17.21 Misdefined",
+            ]
+        );
+        // with strict, cargo is validated against an empty section
+        assert_eq!(
+            explain(&run(&all, true, &vf)).last().unwrap(),
+            "cargo serde-1.0.200  Unrequired"
+        );
+        // ecosystems out of scope are not validated, even with a section
+        assert_eq!(
+            explain(&run(&[Ecosystem::Npm], true, &vf)),
+            [
+                "npm left-pad-1.3.0  Unrequired",
+                "npm lodash-4.17.15 lodash ^4.17.21 Misdefined",
+            ]
+        );
+        // superset and subset permitted: only the misdefined remain
+        let vf2 = ValidationFlags {
+            permit_superset: true,
+            permit_subset: true,
+        };
+        assert_eq!(
+            explain(&run(&all, true, &vf2)),
+            ["npm lodash-4.17.15 lodash ^4.17.21 Misdefined"]
+        );
+        // dependencies are public
+        let vr = run(&[Ecosystem::Npm], false, &vf2);
+        match vr.records[0].dependency.as_ref().unwrap() {
+            Dependency::Other(e) => assert_eq!(e.specs(), ["^4.17.21".to_string()]),
+            Dependency::Python(_) => panic!("expected npm"),
+        }
+        // the sites of a record are its package's sites
+        assert_eq!(
+            vr.records[0].sites.as_ref().unwrap()[0].to_string(),
+            "/app/package-lock.json"
+        );
+    }
 
     #[test]
     fn test_to_file_a() {

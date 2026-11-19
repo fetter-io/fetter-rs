@@ -13,10 +13,10 @@ use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::allow_list::AllowList;
-use crate::allow_list::EcoSection;
 use crate::audit_report::AuditReport;
 use crate::cli::CvssFilter;
 use crate::count_report::CountReport;
+#[cfg(test)]
 use crate::dep_manifest::DepManifest;
 use crate::eco::infer_origins;
 use crate::eco::scanner_for;
@@ -401,56 +401,22 @@ impl ScanFS {
         strict: bool,
         log: FlagLog,
     ) -> ValidationReport {
-        let all = self.get_packages();
-        let of = |e: Ecosystem| -> Vec<Package> {
-            all.iter().filter(|p| p.ecosystem == e).cloned().collect()
-        };
-        let mut records = Vec::new();
-        let ecosystems = self.ecosystems().to_vec();
-
-        if ecosystems.contains(&Ecosystem::Python) && (al.python.is_some() || strict) {
-            let empty;
-            let dm = match &al.python {
-                Some(dm) => dm,
-                None => {
-                    empty = DepManifest::try_from_iter(Vec::<String>::new())
-                        .expect("empty manifest");
-                    &empty
-                }
-            };
-            if dm.env_marker_active {
-                self.load_env_marker_state(log);
-            }
-            records.extend(
-                ValidationReport::from_components(
-                    &of(Ecosystem::Python),
-                    &self.package_to_sites,
-                    &self.site_to_origins,
-                    &self.origin_to_ems,
-                    dm,
-                    &vf,
-                    ignore,
-                )
-                .records,
-            );
+        if al.python.as_ref().is_some_and(|dm| dm.env_marker_active)
+            && self.ecosystems().contains(&Ecosystem::Python)
+        {
+            self.load_env_marker_state(log);
         }
-        let empty_section = EcoSection::default();
-        for eco in ecosystems.into_iter().filter(|e| *e != Ecosystem::Python) {
-            let section = match al.section(eco) {
-                Some(s) => s,
-                None if strict => &empty_section,
-                None => continue,
-            };
-            records.extend(ValidationReport::records_from_section(
-                eco,
-                &of(eco),
-                &self.package_to_sites,
-                section,
-                &vf,
-                ignore,
-            ));
-        }
-        ValidationReport { records }
+        ValidationReport::from_allow_list(
+            self.ecosystems(),
+            &self.get_packages(),
+            &self.package_to_sites,
+            &self.site_to_origins,
+            &self.origin_to_ems,
+            al,
+            &vf,
+            ignore,
+            strict,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
