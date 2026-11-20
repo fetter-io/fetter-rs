@@ -696,6 +696,10 @@ fetter monitor-diff --period 600 --control stdin json   # driven by a supervisin
 
 ## What is New in Fetter
 
+### 5.2.2
+
+An allow list given as text (`AllowList::from_text`) that is meant as TOML (a line opens a `[table]`) but is not valid TOML is reported with the TOML error and its line, rather than as a Python requirements parse error at its first table.
+
 ### 5.2.1
 
 `monitor-scan` reports a failed post: run once (`--period 0`, the default), a refused post (with the server's reason), an unreachable URL, or a failed scan is an error, with exit code 1; run periodically, each failure is printed to stderr and the next period tries again. Previously these were only logged (with `--log`). After a failed post, the next post sends the full scan.

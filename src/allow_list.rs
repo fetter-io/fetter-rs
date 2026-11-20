@@ -446,6 +446,12 @@ fn purl_requirements(
     Ok((python, others, unsupported))
 }
 
+/// Is this text meant as TOML: a line opens a table (`[name]`)? No requirements line starts with `[`; a JSON lock (Pipfile.lock) starts with `{`.
+fn looks_like_toml(content: &str) -> bool {
+    !content.trim_start().starts_with('{')
+        && content.lines().any(|l| l.trim_start().starts_with('['))
+}
+
 impl AllowList {
     /// An allow list with only a Python section.
     pub fn from_python(dm: DepManifest) -> Self {
@@ -457,15 +463,22 @@ impl AllowList {
 
     /// An allow list from text: a `fetter.toml`, a `pyproject.toml`, or any Python lock or requirements format `LockFile` reads (requirements.txt, uv.lock, poetry.lock, Pipfile.lock, pylock.toml, pixi.lock). The last three give an allow list with only a Python section. For bounds stored as text, where there is no file name to go by.
     pub fn from_text(content: &str) -> ResultDynError<Self> {
-        if let Ok(table) = toml::from_str::<toml::Table>(content) {
-            if is_fetter_toml(&table) {
-                return Self::from_fetter_toml(content);
+        match toml::from_str::<toml::Table>(content) {
+            Ok(table) => {
+                if is_fetter_toml(&table) {
+                    return Self::from_fetter_toml(content);
+                }
+                if table.contains_key("project") || table.contains_key("build-system") {
+                    return Ok(Self::from_python(DepManifest::from_pyproject(
+                        content, None,
+                    )?));
+                }
             }
-            if table.contains_key("project") || table.contains_key("build-system") {
-                return Ok(Self::from_python(DepManifest::from_pyproject(
-                    content, None,
-                )?));
+            // invalid TOML is reported as such, not as a requirements parse error at its first table
+            Err(e) if looks_like_toml(content) => {
+                return Err(format!("Invalid TOML: {e}").into())
             }
+            Err(_) => {}
         }
         let deps = LockFile::new(content.to_string()).get_dependencies(None)?;
         Ok(Self::from_python(DepManifest::try_from_iter(deps.iter())?))
@@ -895,6 +908,14 @@ requirements = ["requests>=2.31,<3", "numpy==2.1.*"]
         );
         assert!(!al.is_python_only());
         assert_eq!(al.counts()[&Ecosystem::Npm], 3);
+        // invalid TOML is a TOML error, not a requirements one
+        let e = AllowList::from_text(
+            "[python]\nrequirements = [\"requests\"]\n\n[npm\nlodash = \"*\"\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.starts_with("Invalid TOML: "), "{e}");
+        assert!(e.contains("line 4"), "{e}");
         // requirements text
         let al =
             AllowList::from_text("# comment\nrequests>=2.31\n\nnumpy==2.1.0\n").unwrap();
