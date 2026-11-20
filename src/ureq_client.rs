@@ -5,6 +5,10 @@ use std::collections::HashMap;
 pub trait UreqClient: Send + Sync {
     /// A post request to the given URL with the provided JSON body.
     fn post(&self, url: &str, body: &str) -> Result<String, ureq::Error>;
+    /// A post request, as `post`, that returns the status and body of any response, including an error status (whose body says why, e.g. a server's refusal); an `Err` is a failure to get a response. By default this is `post`, with status 200.
+    fn post_status(&self, url: &str, body: &str) -> Result<(u16, String), ureq::Error> {
+        self.post(url, body).map(|b| (200, b))
+    }
     /// A get request
     fn get(&self, url: &str) -> Result<String, ureq::Error>;
     /// A get request with an `Accept` header (e.g. npm's abbreviated metadata). By default the header is ignored.
@@ -43,6 +47,18 @@ impl UreqClient for UreqClientLive {
             .header("Content-Type", "application/json")
             .send(body)?;
         response.body_mut().read_to_string()
+    }
+    fn post_status(&self, url: &str, body: &str) -> Result<(u16, String), ureq::Error> {
+        let mut response = ureq::post(url)
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .header("Content-Type", "application/json")
+            .send(body)?;
+        let status = response.status().as_u16();
+        // an unreadable body still has a status worth reporting
+        let text = response.body_mut().read_to_string().unwrap_or_default();
+        Ok((status, text))
     }
     fn get(&self, url: &str) -> Result<String, ureq::Error> {
         let mut response = ureq::get(url).call()?;

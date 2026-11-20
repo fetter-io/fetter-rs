@@ -1514,15 +1514,7 @@ where
             url,
             tenant,
         }) => {
-            let _ = monitor_scan_loop(
-                &cli.origin,
-                client,
-                url,
-                tenant,
-                &config,
-                *period,
-                log,
-            );
+            monitor_scan_loop(&cli.origin, client, url, tenant, &config, *period, log)?;
         }
         Some(Commands::MonitorDiff {
             period,
