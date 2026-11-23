@@ -699,6 +699,10 @@ fetter monitor-diff --period 600 --control stdin json   # driven by a supervisin
 
 ## What is New in Fetter
 
+### 5.3.1
+
+Rebuilt for CI.
+
 ### 5.3.0
 
 Cargo and Go cached lockfiles are now properly ignored, even in `--all-user` mode.
