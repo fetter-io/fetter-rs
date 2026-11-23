@@ -191,6 +191,10 @@ fn find_root(p: &Path) -> Option<PathBuf> {
 pub(crate) struct GhaScanner;
 
 impl EcosystemScanner for GhaScanner {
+    fn primary_site_kinds(&self) -> &'static [SiteKind] {
+        &[SiteKind::Manifest]
+    }
+
     fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect {
         let has = |name: &str| items.iter().any(|i| i.file_name() == Some(name));
         // `.git` may be a directory or (worktrees, submodules) a file

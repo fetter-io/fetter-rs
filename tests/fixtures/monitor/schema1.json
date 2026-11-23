@@ -18,7 +18,8 @@
         "firefox"
       ],
       "force_usite": false,
-      "roots": []
+      "roots": [],
+      "sites": "primary"
     },
     "origin_sites": [
       {

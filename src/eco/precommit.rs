@@ -708,6 +708,10 @@ fn origin(dir: PathBuf) -> Origin {
 pub(crate) struct PreCommitScanner;
 
 impl EcosystemScanner for PreCommitScanner {
+    fn primary_site_kinds(&self) -> &'static [SiteKind] {
+        &[SiteKind::Manifest]
+    }
+
     fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect {
         Detect {
             origins: if items.iter().any(|i| i.file_name() == Some(CONFIG)) {

@@ -57,6 +57,28 @@ impl From<FlagLog> for bool {
 
 //------------------------------------------------------------------------------
 
+/// Which Sites a scan reports.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum SiteSelect {
+    /// Only each ecosystem's primary source of dependency information: installed packages where the ecosystem installs them (Python, npm, PHP, Ruby, extensions), otherwise lockfiles (Cargo, Swift) or manifests (Go, GitHub Actions, pre-commit).
+    #[default]
+    Primary,
+    /// All Sites, including lockfiles of projects whose packages are not installed.
+    All,
+}
+
+impl SiteSelect {
+    pub(crate) fn cli_name(&self) -> &'static str {
+        match self {
+            SiteSelect::Primary => "primary",
+            SiteSelect::All => "all",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScanConfig {
     pub force_usite: bool,
@@ -65,6 +87,9 @@ pub struct ScanConfig {
     pub ecosystems: Vec<Ecosystem>,
     /// If non-empty, the only directories (searched recursively) used for discovery; otherwise home directories plus each scanner's own roots and default origins are used.
     pub roots: Vec<PathBuf>,
+    /// Which Sites are reported.
+    #[serde(default)]
+    pub sites: SiteSelect,
 }
 
 impl ScanConfig {
@@ -75,7 +100,13 @@ impl ScanConfig {
             all_users,
             ecosystems: Ecosystem::ALL.to_vec(),
             roots: Vec::new(),
+            sites: SiteSelect::default(),
         }
+    }
+
+    pub fn with_sites(mut self, sites: SiteSelect) -> Self {
+        self.sites = sites;
+        self
     }
 
     pub fn with_ecosystems(mut self, ecosystems: &[Ecosystem]) -> Self {
@@ -475,8 +506,10 @@ pub(crate) fn hash_paths(paths: &[PathBuf], config: &ScanConfig) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     let input = format!(
-        "{concatenated}\n{}\n{}\n{ecosystems}\n{roots}",
-        config.force_usite, config.all_users
+        "{concatenated}\n{}\n{}\n{ecosystems}\n{roots}\n{}",
+        config.force_usite,
+        config.all_users,
+        config.sites.cli_name()
     );
     hash_string(&input)
 }
@@ -705,7 +738,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "6df57948961e5c343fbfebf8054a2cce997502de56eb066a3ba10b16ec6ec9c2"
+            "88a4d4453a5ec2b68fc7b4ac766c4bd2e1c40b42b17383d31162d9f9a660e87d"
         )
     }
 
@@ -716,7 +749,7 @@ mod tests {
         let hashed = hash_paths(&paths, &config);
         assert_eq!(
             hashed,
-            "3c7623a98434e80f609f1c34dcc2dba043db1b76eccd565e5ac8d8823f9a0b93"
+            "497d531089d1e532e8a91ad8d7023d15062fa00525fb532ada5600af1931f276"
         )
     }
 

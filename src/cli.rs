@@ -45,6 +45,7 @@ use crate::util::FlagLog;
 use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
+use crate::util::SiteSelect;
 use crate::util::DURATION_0;
 use crate::util::{logger, FlagCacheRefresh};
 use crate::util::{path_cache, Anchor};
@@ -139,6 +140,10 @@ struct Cli {
         value_name = "ECOSYSTEMS"
     )]
     ecosystem: Vec<Ecosystem>,
+
+    /// Which sites to report: each ecosystem's primary source of dependency information (installed packages where the ecosystem installs them, otherwise lockfiles or manifests), or all sites, including lockfiles of projects whose packages are not installed.
+    #[arg(long, value_enum, default_value = "primary", value_name = "SITES")]
+    sites: SiteSelect,
 
     /// Zero or more origin paths (e.g. a Python executable or virtual environment). The ecosystem of each path is inferred. If not provided, all discoverable origins will be used.
     #[arg(
@@ -821,7 +826,7 @@ fn report_without_artifacts(ur: &UnpackReport) {
     if !ur.without_artifacts.is_empty() {
         let total: usize = ur.without_artifacts.iter().map(|(_, n)| n).sum();
         eprintln!(
-            "fetter: {} package(s) are known only from lockfiles or manifests and have no installed artifacts: {}",
+            "fetter: {} package(s) are known only from lockfiles or manifests and have no installed artifacts (use `--sites all` to include lockfiles of projects that are not installed): {}",
             total,
             ur.without_artifacts
                 .iter()
@@ -985,7 +990,8 @@ where
         .collect::<ResultDynError<Vec<PathBuf>>>()?;
     let config = ScanConfig::new(cli.user_site, cli.all_users)
         .with_ecosystems(&ecosystems)
-        .with_roots(roots);
+        .with_roots(roots)
+        .with_sites(cli.sites);
 
     // do a fresh scan or load a cached scan
     let get_sfs = || -> ResultDynError<ScanFS> {

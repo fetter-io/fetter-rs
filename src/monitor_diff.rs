@@ -768,7 +768,10 @@ mod tests {
         cargo_lock(&proj, "1.6.0");
 
         let origins = vec![proj.clone()];
-        let config = ScanConfig::new(false, false).with_ecosystems(&[Ecosystem::Cargo]);
+        // a lockfile-only project, so all Sites
+        let config = ScanConfig::new(false, false)
+            .with_ecosystems(&[Ecosystem::Cargo])
+            .with_sites(crate::util::SiteSelect::All);
         // durations of 0 disable the OSV batch cache, so each run sees the mock
         let cache_config = CacheConfig::new(Duration::ZERO, cache.clone());
         let opts = |baseline: Option<PathBuf>| DiffOptions {
@@ -881,7 +884,10 @@ mod tests {
         fs::create_dir(&proj).unwrap();
         cargo_lock(&proj, "1.6.0");
         let origins = vec![proj];
-        let config = ScanConfig::new(false, false).with_ecosystems(&[Ecosystem::Cargo]);
+        // a lockfile-only project, so all Sites
+        let config = ScanConfig::new(false, false)
+            .with_ecosystems(&[Ecosystem::Cargo])
+            .with_sites(crate::util::SiteSelect::All);
         let cache_config = CacheConfig::new(Duration::ZERO, dir.path().to_path_buf());
         let opts = DiffOptions {
             period: 0,
@@ -944,7 +950,10 @@ mod tests {
         cargo_lock(&proj, "1.6.0");
         let out = dir.path().join("events.jsonl");
         let origins = vec![proj];
-        let config = ScanConfig::new(false, false).with_ecosystems(&[Ecosystem::Cargo]);
+        // a lockfile-only project, so all Sites
+        let config = ScanConfig::new(false, false)
+            .with_ecosystems(&[Ecosystem::Cargo])
+            .with_sites(crate::util::SiteSelect::All);
         let cache_config = CacheConfig::new(Duration::ZERO, dir.path().to_path_buf());
         // periods of an hour: every scan after the first comes from a command
         let opts = DiffOptions {

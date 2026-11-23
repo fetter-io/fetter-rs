@@ -71,15 +71,17 @@ $ cargo install fetter
 
 Every command works on all ecosystems unless limited with `-E` / `--ecosystem` (e.g. `-E python` or `-E npm,cargo`). For each ecosystem, `fetter` finds *origins* (the things that use packages) and their *sites* (where those packages are recorded or installed).
 
+By default, each ecosystem reports only its primary source of dependency information: installed packages where the ecosystem installs them (Python, npm, PHP, Ruby, and extensions), the crates compiled in a Cargo project's `target` directory, the packages SwiftPM or Xcode checked out, otherwise the manifest (Go, GitHub Actions, pre-commit). So a project that has a lockfile but was never installed or built (an npm, PHP, Cargo or Swift project, or a Ruby `Gemfile.lock`) is not reported, and neither are locked crates that were not compiled, such as other platforms' dependencies. Use `--sites all` to report every site, including these lockfiles. An origin named with `--origin` (e.g. `fetter --origin path/to/Cargo.lock audit`) reports its primary sites where it has any, and otherwise its lockfile or manifest. Downloaded package sources (`~/.cargo/registry`, `~/.cargo/git`, `~/.rustup`, Go's module cache) are never scanned, for any user.
+
 | Ecosystem (`-E`) | Origin | Site | Packages |
 |---|---|---|---|
 | `python` | A Python executable or virtual environment | Its `site-packages` directories | `*.dist-info` directories |
 | `npm` | A project directory with a `package.json`, or a global install directory | Its `node_modules`, if installed; otherwise its lock file | Installed `package.json` files; `package-lock.json` (v1–v3), `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock` (classic and berry), `bun.lock` |
-| `cargo` | A project directory with a `Cargo.lock`, or `~/.cargo` | `Cargo.lock`; for `~/.cargo`, the record of `cargo install`ed crates | Registry and git dependencies (workspace and path crates are excluded) |
+| `cargo` | A project directory with a `Cargo.lock`, or `~/.cargo` | The `target` directory, if built, and `Cargo.lock`; for `~/.cargo`, the record of `cargo install`ed crates | Registry and git dependencies (workspace and path crates are excluded); for `target`, those in `Cargo.lock` that were compiled (from Cargo's dep-info files; crates only checked by `cargo check` or rust-analyzer are excluded). A non-default target directory is not read |
 | `go` | A module directory with a `go.mod` | Its `go.mod` | Requirements, direct and indirect, after `replace` directives (modules replaced by a local directory are excluded) |
 | `ruby` | A project directory with a `Gemfile.lock` (or `gems.locked`), or a gem directory (`~/.gem/ruby/3.3.0`, an rbenv or rvm Ruby's gems, `vendor/bundle/ruby/3.3.0`, system gem directories, RubyInstaller on Windows) | The lockfile; for a gem directory, the directory | Locked gems (`GEM`, `GIT`, and plugin sources; local `PATH` gems are excluded); installed `.gemspec` files, including Ruby's default gems |
 | `php` | A project directory with a `composer.json` and a `composer.lock` or an installed vendor directory; or a vendor directory on its own | The vendor directory (`vendor`, or `config.vendor-dir`), if installed; otherwise `composer.lock` | `composer/installed.json`; `composer.lock` (`packages` and `packages-dev`; path packages are excluded). Branch versions (`dev-main`) are not audited |
-| `swift` | A directory with a `Package.resolved` (a SwiftPM package, or an Xcode project's `xcshareddata/swiftpm`) | The `Package.resolved` | Remote pins, named by repository URL as OSV names them (`github.com/apple/swift-nio`; case-sensitive, as written); local pins are excluded; branch and revision pins are resolved to tags where possible |
+| `swift` | A directory with a `Package.resolved` (a SwiftPM package, or an Xcode project's `xcshareddata/swiftpm`) | SwiftPM's `.build/workspace-state.json` or, for an Xcode project, its `workspace-state.json` in Xcode's DerivedData, if resolved; and the `Package.resolved` | Remote pins and checked-out dependencies, named by repository URL as OSV names them (`github.com/apple/swift-nio`; case-sensitive, as written); local pins are excluded; branch and revision pins are resolved to tags where possible |
 | `precommit` | A directory with a `.pre-commit-config.yaml` | The config | Hook repositories (`repo` and `rev`; `local` and `meta` are excluded), named by URL (`github.com/psf/black`). Audited through the packages they install (see below). Hooks' pinned `additional_dependencies` are reported in their own ecosystems (see below) |
 | `gha` | A repository root with `.github/workflows` | Each workflow and action file | `uses: owner/repo@ref` steps and jobs |
 | `vscode` | An editor directory (`~/.vscode`, `~/.cursor`, `~/.windsurf`, …) | Its `extensions` directory | Installed extensions, as `publisher.name`; their bundled `node_modules` are reported as npm packages |
@@ -463,6 +465,7 @@ repos:
 ### Global Options
 
 - `--ecosystem, -E <ECOSYSTEMS>`: Limit to one or more ecosystems (`python`, `npm`, `cargo`, `go`, `ruby`, `php`, `swift`, `precommit`, `gha`, `vscode`, `chromium`, `firefox`), as a comma-separated list or a repeated flag. If omitted, all ecosystems are used.
+- `--sites <SITES>`: Which sites to report: `primary` (the default), each ecosystem's primary source of dependency information (installed packages where the ecosystem installs them, otherwise lockfiles or manifests); or `all`, which adds lockfiles of projects whose packages are not installed. With `primary`, an origin named with `--origin` that has no primary sites reports its lockfile or manifest.
 - `--origin <PATHS>`: Provide zero or more origin paths, such as a Python executable or virtual environment, or a project directory. The ecosystem of each path is inferred; a directory can be an origin for several ecosystems. If omitted, all discoverable origins are used. (`--exe` and `-e` are accepted as aliases.)
 - `--root <DIRECTORIES>`: Search only these directories (recursively) for origins, instead of the home directory and system locations.
 - `--quiet, -q`: Disable terminal animations.
@@ -695,6 +698,16 @@ fetter monitor-diff --period 600 --control stdin json   # driven by a supervisin
 ```
 
 ## What is New in Fetter
+
+### 5.3.0
+
+Cargo and Go cached lockfiles are now properly ignored, even in `--all-user` mode.
+
+Cargo and Go now attempt to use built artifacts to determine actual packages used on a system.
+
+Sites are now defined as having "primary" discovery artifacts versus "all" possible discovery artifacts.
+Posted scans now carry "sites": "primary"|"all" in their config.
+
 
 ### 5.2.2
 

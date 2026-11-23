@@ -24,6 +24,7 @@ use crate::path_shared::PathShared;
 use crate::scan_fs::ScanFS;
 use crate::system_tag::SystemTag;
 use crate::util::ScanConfig;
+use crate::util::SiteSelect;
 use crate::version_spec::VersionSpec;
 
 /// The current schema version of the payload and of the scan object.
@@ -90,6 +91,13 @@ struct ConfigIn {
     ecosystems: Vec<String>,
     #[serde(default)]
     roots: Vec<PathBuf>,
+    /// Absent before fetter 5.3, whose scans reported all Sites.
+    #[serde(default = "sites_all")]
+    sites: SiteSelect,
+}
+
+fn sites_all() -> SiteSelect {
+    SiteSelect::All
 }
 
 #[derive(Serialize)]
@@ -370,6 +378,7 @@ pub(crate) fn scan_from_wire(w: ScanIn) -> Result<(ScanFS, Skipped), String> {
         all_users: w.config.all_users,
         ecosystems,
         roots: w.config.roots,
+        sites: w.config.sites,
     };
     let mut sfs =
         ScanFS::from_parts(origin_to_sites, package_to_sites, config, w.origins_hash);
@@ -425,6 +434,7 @@ fn scan_from_legacy(v: JsonValue) -> Result<ScanFS, String> {
         all_users,
         ecosystems: vec![Ecosystem::Python],
         roots: Vec::new(),
+        sites: SiteSelect::All,
     };
     Ok(ScanFS::from_parts(
         origin_to_sites,
@@ -447,7 +457,7 @@ fn scan_from_legacy(v: JsonValue) -> Result<ScanFS, String> {
 ///                  "sites": [{"ecosystem", "kind", "path", "hooks"?: [{"name", "detail"}]}],
 ///                  "origin_sites": [{"origin", "sites": [int]}],
 ///                  "packages": [{"package": {"ecosystem", "name", "key", "version", "direct_url", "purl"?}, "sites": [int]}],
-///                  "config": {"force_usite", "all_users", "ecosystems", "roots"}, "origins_hash": str}}
+///                  "config": {"force_usite", "all_users", "ecosystems", "roots", "sites"}, "origins_hash": str}}
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorPayload {
@@ -749,6 +759,15 @@ mod tests {
         let fixture: JsonValue = serde_json::from_str(SCHEMA1).unwrap();
         assert_eq!(ours["scan"], fixture["scan"]);
         assert_eq!(ours["system"], fixture["system"]);
+    }
+
+    #[test]
+    fn test_schema1_sites_absent_a() {
+        // scans from before `--sites` reported all Sites
+        let mut v: JsonValue = serde_json::from_str(SCHEMA1).unwrap();
+        v["scan"]["config"].as_object_mut().unwrap().remove("sites");
+        let p = MonitorPayload::from_json(&v.to_string()).unwrap();
+        assert_eq!(p.scan.unwrap().config.sites, SiteSelect::All);
     }
 
     #[test]

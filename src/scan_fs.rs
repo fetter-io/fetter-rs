@@ -21,6 +21,7 @@ use crate::dep_manifest::DepManifest;
 use crate::eco::infer_origins;
 use crate::eco::scanner_for;
 use crate::eco::scanners;
+use crate::eco::EcosystemScanner;
 use crate::eco::Hook;
 use crate::ecosystem::Ecosystem;
 use crate::env_marker::EnvMarkerState;
@@ -48,6 +49,7 @@ use crate::util::FlagLog;
 use crate::util::FlagRetainPassing;
 use crate::util::ResultDynError;
 use crate::util::ScanConfig;
+use crate::util::SiteSelect;
 use crate::util::DURATION_0;
 use crate::validation_report::ValidationFlags;
 use crate::validation_report::ValidationReport;
@@ -109,6 +111,26 @@ fn site_to_packages(site: &Site) -> Vec<Package> {
     scanner_for(site.ecosystem)
         .map(|s| s.site_to_packages(site))
         .unwrap_or_default()
+}
+
+/// The Sites reported for an origin under `config.sites`; `None` if the origin had Sites but none are reported. With `--sites primary`, a discovered origin reports only its ecosystem's primary kinds; an `explicit` origin (named with `--origin`) reports them where it has any, and otherwise all its Sites, so that naming an unbuilt project's lockfile reads it.
+fn select_sites(
+    scanner: &dyn EcosystemScanner,
+    sites: Vec<Site>,
+    config: &ScanConfig,
+    explicit: bool,
+) -> Option<Vec<Site>> {
+    if config.sites == SiteSelect::All || sites.is_empty() {
+        return Some(sites);
+    }
+    let kinds = scanner.primary_site_kinds();
+    let (selected, rest): (Vec<Site>, Vec<Site>) =
+        sites.into_iter().partition(|s| kinds.contains(&s.kind));
+    match (selected.is_empty(), explicit) {
+        (false, _) => Some(selected),
+        (true, true) => Some(rest),
+        (true, false) => None,
+    }
 }
 
 impl ScanFS {
@@ -228,6 +250,8 @@ impl ScanFS {
     ) -> ResultDynError<Self> {
         let path_wild = PathBuf::from("*");
         let mut origins: HashSet<Origin> = HashSet::new();
+        // origins named with `--origin`, rather than discovered
+        let mut explicit: HashSet<Origin> = HashSet::new();
         for p in paths {
             if path_is_component(p) && *p == path_wild {
                 origins.extend(discover(
@@ -236,17 +260,23 @@ impl ScanFS {
                     &config.roots,
                 ));
             } else {
-                origins.extend(infer_origins(p, &config.ecosystems)?);
+                explicit.extend(infer_origins(p, &config.ecosystems)?);
             }
         }
+        origins.extend(explicit.iter().cloned());
 
         let origin_to_sites: HashMap<Origin, Vec<Site>> = origins
             .into_par_iter()
-            .map(|origin| {
-                let sites = scanner_for(origin.ecosystem)
-                    .map(|s| s.origin_to_sites(&origin, config, log))
-                    .unwrap_or_default();
-                (origin, sites)
+            .filter_map(|origin| {
+                let sites = match scanner_for(origin.ecosystem) {
+                    Some(s) => {
+                        // an origin left without Sites by `--sites primary` is not reported
+                        let sites = s.origin_to_sites(&origin, config, log);
+                        select_sites(s, sites, config, explicit.contains(&origin))?
+                    }
+                    None => Vec::new(),
+                };
+                Some((origin, sites))
             })
             .collect();
 
@@ -629,6 +659,100 @@ mod tests {
             .iter()
             .find_map(|name| crate::util::get_absolute_path_from_exe(name))
             .expect("no python interpreter found on PATH")
+    }
+
+    #[test]
+    fn test_select_sites_a() {
+        let site = |e, k, p: &str| Site::new(e, k, PathShared::from(p));
+        let primary = ScanConfig::new(false, false);
+        let all = ScanConfig::new(false, false).with_sites(SiteSelect::All);
+        let npm = scanner_for(Ecosystem::Npm).unwrap();
+        let cargo = scanner_for(Ecosystem::Cargo).unwrap();
+        let gha = scanner_for(Ecosystem::Gha).unwrap();
+
+        // an npm project known only from its lockfile is not reported by default
+        let lock = vec![site(
+            Ecosystem::Npm,
+            SiteKind::Lockfile,
+            "/p/package-lock.json",
+        )];
+        assert_eq!(select_sites(npm, lock.clone(), &primary, false), None);
+        assert_eq!(select_sites(npm, lock.clone(), &all, false), Some(lock));
+        let nm = vec![site(Ecosystem::Npm, SiteKind::Installed, "/p/node_modules")];
+        assert_eq!(select_sites(npm, nm.clone(), &primary, false), Some(nm));
+
+        // a built Cargo project reports its target directory, not its lockfile; GHA reports manifests
+        let target = site(Ecosystem::Cargo, SiteKind::Installed, "/c/target");
+        let lock = site(Ecosystem::Cargo, SiteKind::Lockfile, "/c/Cargo.lock");
+        assert_eq!(
+            select_sites(cargo, vec![target.clone(), lock.clone()], &primary, false),
+            Some(vec![target])
+        );
+        assert_eq!(select_sites(cargo, vec![lock], &primary, false), None);
+        let wf = vec![site(
+            Ecosystem::Gha,
+            SiteKind::Manifest,
+            "/r/.github/workflows/ci.yml",
+        )];
+        assert_eq!(select_sites(gha, wf.clone(), &primary, false), Some(wf));
+
+        // a named origin falls back to its other Sites, but keeps only primary ones where it has them
+        let lock = site(Ecosystem::Cargo, SiteKind::Lockfile, "/c/Cargo.lock");
+        let target = site(Ecosystem::Cargo, SiteKind::Installed, "/c/target");
+        assert_eq!(
+            select_sites(cargo, vec![lock.clone()], &primary, true),
+            Some(vec![lock.clone()])
+        );
+        assert_eq!(
+            select_sites(cargo, vec![target.clone(), lock], &primary, true),
+            Some(vec![target])
+        );
+
+        // an origin with no Sites is unchanged
+        assert_eq!(
+            select_sites(npm, Vec::new(), &primary, false),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn test_from_origin_paths_explicit_a() {
+        // an unbuilt Cargo project: dropped when discovered, read when named
+        let dir = tempfile::tempdir().unwrap();
+        let proj = dir.path().join("proj");
+        fs::create_dir(&proj).unwrap();
+        fs::write(
+            proj.join("Cargo.lock"),
+            "version = 4\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.200\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+        )
+        .unwrap();
+        let config = ScanConfig::new(false, false)
+            .with_ecosystems(&[Ecosystem::Cargo])
+            .with_roots(vec![dir.path().to_path_buf()]);
+
+        let discovered =
+            ScanFS::from_origin_paths(&vec![PathBuf::from("*")], &config, FlagLog(false))
+                .unwrap();
+        assert!(discovered.origin_to_sites.is_empty());
+
+        let named =
+            ScanFS::from_origin_paths(&vec![proj.clone()], &config, FlagLog(false))
+                .unwrap();
+        assert_eq!(named.origin_to_sites.len(), 1);
+        let names: Vec<String> = named
+            .package_to_sites
+            .keys()
+            .map(|p| p.to_string())
+            .collect();
+        assert_eq!(names, vec!["serde-1.0.200"]);
+    }
+
+    #[test]
+    fn test_hash_sites_a() {
+        let paths = vec![PathBuf::from("*")];
+        let primary = ScanConfig::new(false, false);
+        let all = ScanConfig::new(false, false).with_sites(SiteSelect::All);
+        assert_ne!(hash_paths(&paths, &primary), hash_paths(&paths, &all));
     }
 
     #[test]
@@ -1747,7 +1871,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let json = serde_json::to_string(&sfs).unwrap();
         assert_eq!(
             json,
-            r#"{"paths":["/usr/bin/python3","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0}],"sites":[{"ecosystem":"python","kind":"installed","path":1}],"origin_sites":[{"origin":0,"sites":[0]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"1.1.3","direct_url":null,"purl":"pkg:pypi/flask@1.1.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.19.3","direct_url":null,"purl":"pkg:pypi/numpy@1.19.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"static-frame","key":"static_frame","version":"2.13.0","direct_url":null,"purl":"pkg:pypi/static-frame@2.13.0"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[]},"origins_hash":"6790e82a3e55707db3b1eeca52a49af6ec99195a27db74c790f54f90e2b111da"}"#
+            r#"{"paths":["/usr/bin/python3","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0}],"sites":[{"ecosystem":"python","kind":"installed","path":1}],"origin_sites":[{"origin":0,"sites":[0]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"1.1.3","direct_url":null,"purl":"pkg:pypi/flask@1.1.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.19.3","direct_url":null,"purl":"pkg:pypi/numpy@1.19.3"},"sites":[0]},{"package":{"ecosystem":"python","name":"static-frame","key":"static_frame","version":"2.13.0","direct_url":null,"purl":"pkg:pypi/static-frame@2.13.0"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[],"sites":"primary"},"origins_hash":"82056955dd92b4535926ab12c2947af54ef299bd2f18e7fb7b1a03e917eec33a"}"#
         );
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1794,7 +1918,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         );
 
         let json = serde_json::to_string(&sfs).unwrap();
-        let expected_json = r#"{"paths":["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0},{"ecosystem":"python","path":1}],"sites":[{"ecosystem":"python","kind":"installed","path":2},{"ecosystem":"python","kind":"installed","path":3}],"origin_sites":[{"origin":0,"sites":[0,1]},{"origin":1,"sites":[1]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null,"purl":"pkg:pypi/flask@2.0.1"},"sites":[1]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null,"purl":"pkg:pypi/numpy@1.21.0"},"sites":[0,1]},{"package":{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null,"purl":"pkg:pypi/pandas@1.3.0"},"sites":[0]},{"package":{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null,"purl":"pkg:pypi/requests@2.25.1"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[]},"origins_hash":"hash"}"#;
+        let expected_json = r#"{"paths":["/opt/venv/bin/python","/usr/bin/python3","/opt/venv/lib/python3.9/site-packages","/usr/lib/python3/site-packages"],"origins":[{"ecosystem":"python","path":0},{"ecosystem":"python","path":1}],"sites":[{"ecosystem":"python","kind":"installed","path":2},{"ecosystem":"python","kind":"installed","path":3}],"origin_sites":[{"origin":0,"sites":[0,1]},{"origin":1,"sites":[1]}],"packages":[{"package":{"ecosystem":"python","name":"flask","key":"flask","version":"2.0.1","direct_url":null,"purl":"pkg:pypi/flask@2.0.1"},"sites":[1]},{"package":{"ecosystem":"python","name":"numpy","key":"numpy","version":"1.21.0","direct_url":null,"purl":"pkg:pypi/numpy@1.21.0"},"sites":[0,1]},{"package":{"ecosystem":"python","name":"pandas","key":"pandas","version":"1.3.0","direct_url":null,"purl":"pkg:pypi/pandas@1.3.0"},"sites":[0]},{"package":{"ecosystem":"python","name":"requests","key":"requests","version":"2.25.1","direct_url":null,"purl":"pkg:pypi/requests@2.25.1"},"sites":[0]}],"config":{"force_usite":false,"all_users":false,"ecosystems":["python","npm","cargo","gha","vscode","go","ruby","php","precommit","swift","chromium","firefox"],"roots":[],"sites":"primary"},"origins_hash":"hash"}"#;
         assert_eq!(json, expected_json);
 
         let sfsd: ScanFS = serde_json::from_str(&json).unwrap();
@@ -1828,7 +1952,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "6790e82a3e55707db3b1eeca52a49af6ec99195a27db74c790f54f90e2b111da"
+            "82056955dd92b4535926ab12c2947af54ef299bd2f18e7fb7b1a03e917eec33a"
         );
     }
 
@@ -1844,7 +1968,7 @@ content-hash = "f05bd817b200790c9d7fdfecc11143473da90202f39a4a185ba66e28b04e079a
         let sfs = ScanFS::from_exe_site_packages(exe, site, packages.clone()).unwrap();
         assert_eq!(
             sfs.origins_hash,
-            "f6c27bd7e548dee291b0e80f7888acbf587de1b4cbde07711ad056c52a24dab7"
+            "bd0f20b505954fca911c8d45b3d08546252ffd5583d8c625c1a098edf2bc8c5d"
         );
     }
 

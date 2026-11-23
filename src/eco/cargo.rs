@@ -1,6 +1,8 @@
 //! Cargo (Rust) scanner.
 //!
-//! Origins are (1) project directories containing a `Cargo.lock` (a workspace root), and (2) the Cargo home directory (`$CARGO_HOME`, default `~/.cargo`) if it records `cargo install`ed crates. Sites are the `Cargo.lock` file (`SiteKind::Lockfile`) and the install record `.crates2.json` or `.crates.toml` (`SiteKind::Installed`).
+//! Origins are (1) project directories containing a `Cargo.lock` (a workspace root), and (2) the Cargo home directory (`$CARGO_HOME`, default `~/.cargo`) if it records `cargo install`ed crates. Sites are the `Cargo.lock` file (`SiteKind::Lockfile`), the project's build directory `target` (`SiteKind::Installed`; see below), and the install record `.crates2.json` or `.crates.toml` (`SiteKind::Installed`).
+//!
+//! Crates compiled into a project are found from Cargo's dep-info files (`target/<profile>/deps/*.d`, and `target/<triple>/<profile>/deps/*.d` for cross builds), which list the source files of each compiled unit. A source under `registry/src/<index>/<name>-<version>/` is a registry crate; one under `git/checkouts/<repo>/<rev>/` is a git dependency, named by the nearest `Cargo.toml`. A unit counts only if it produced a build product (not only `.rmeta`, as `cargo check` and rust-analyzer do). Built crates are matched against the project's `Cargo.lock`, so that units left over from before a `cargo update` are not reported, and each package takes the lockfile's provenance. A non-default target directory (`CARGO_TARGET_DIR`, `build.target-dir`) and vendored sources (`cargo vendor`) are not read.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -33,6 +35,8 @@ use crate::version_spec::VersionSpec;
 
 const CARGO_LOCK: &str = "Cargo.lock";
 const CARGO_TOML: &str = "Cargo.toml";
+/// The default build directory of a Cargo project.
+const TARGET: &str = "target";
 /// Install records written by `cargo install`; `.crates2.json` (current) has precedence over `.crates.toml` (v1).
 const CRATES2_JSON: &str = ".crates2.json";
 const CRATES_TOML: &str = ".crates.toml";
@@ -65,6 +69,29 @@ fn rustup_home() -> Option<&'static Path> {
     RUSTUP_HOME
         .get_or_init(|| env_or_home("RUSTUP_HOME", ".rustup"))
         .as_deref()
+}
+
+/// True if `dir` is the Cargo home, or is laid out as one: a `.cargo` directory with downloaded sources (`registry`, `git`) or a `cargo install` record.
+fn is_cargo_home(dir: &Path, items: &[DirItem]) -> bool {
+    if cargo_home() == Some(dir) {
+        return true;
+    }
+    dir.file_name().is_some_and(|n| n == ".cargo")
+        && items.iter().any(|i| {
+            let name = i.file_name();
+            (i.file_type.is_dir() && matches!(name, Some("registry") | Some("git")))
+                || (i.file_type.is_file()
+                    && matches!(name, Some(CRATES2_JSON) | Some(CRATES_TOML)))
+        })
+}
+
+/// True if `dir` is the rustup home, or is laid out as one: a `.rustup` directory with `toolchains`.
+fn is_rustup_home(dir: &Path, items: &[DirItem]) -> bool {
+    rustup_home() == Some(dir)
+        || (dir.file_name().is_some_and(|n| n == ".rustup")
+            && items
+                .iter()
+                .any(|i| i.file_type.is_dir() && i.file_name() == Some("toolchains")))
 }
 
 /// The default directory of `cargo vendor`.
@@ -171,6 +198,249 @@ fn packages_from_lock(content: &str) -> ResultDynError<Vec<Package>> {
         .collect())
 }
 
+//------------------------------------------------------------------------------
+/// A crate whose sources a compiled unit read, from a source path.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+enum BuiltRef {
+    /// A registry crate's source directory name, `name-version`.
+    Registry(String),
+    /// A git dependency's package name and checkout revision (an abbreviated commit).
+    Git { name: String, rev: String },
+}
+
+/// One compiled unit, from one dep-info file: the crates it read and the files it wrote to its `deps` directory.
+#[derive(Debug, Default)]
+struct BuiltUnit {
+    refs: HashSet<BuiltRef>,
+    outputs: Vec<PathBuf>,
+}
+
+/// The `deps` directories of a target directory: `target/<profile>/deps`, and `target/<triple>/<profile>/deps` for cross builds.
+fn target_deps_dirs(target: &Path) -> Vec<PathBuf> {
+    let subdirs = |d: &Path| -> Vec<PathBuf> {
+        fs::read_dir(d)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            .map(|e| e.path())
+            .collect()
+    };
+    let mut out = Vec::new();
+    for a in subdirs(target) {
+        let deps = a.join("deps");
+        if deps.is_dir() {
+            out.push(deps);
+            continue;
+        }
+        for b in subdirs(&a) {
+            let deps = b.join("deps");
+            if deps.is_dir() {
+                out.push(deps);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Split a dep-info path list on whitespace; Make escapes spaces in paths as `\ `.
+fn split_make_paths(s: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' && chars.peek() == Some(&' ') {
+            cur.push(' ');
+            chars.next();
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                out.push(PathBuf::from(std::mem::take(&mut cur)));
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(PathBuf::from(cur));
+    }
+    out
+}
+
+/// The rules of a dep-info file: each `output: sources…` line, without comments (`# env-dep:`).
+fn dep_info_rules(content: &str) -> Vec<(PathBuf, Vec<PathBuf>)> {
+    content
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| {
+            // a Windows drive (`C:\`) is not followed by a space; an empty rule ends with `:`
+            let (out, srcs) = match l.find(": ") {
+                Some(i) => (&l[..i], &l[i + 2..]),
+                None => (l.strip_suffix(':')?, ""),
+            };
+            let out = split_make_paths(out).pop()?;
+            Some((out, split_make_paths(srcs)))
+        })
+        .collect()
+}
+
+/// True if `output` is a file Cargo wrote to a `deps` directory.
+fn is_deps_output(output: &Path) -> bool {
+    output
+        .parent()
+        .and_then(Path::file_name)
+        .is_some_and(|n| n == "deps")
+}
+
+/// True if `output` is a build product (a library or executable), not metadata (`.rmeta`, written alone by `cargo check`) or the dep-info file itself.
+fn is_build_product(output: &Path) -> bool {
+    is_deps_output(output)
+        && !output.extension().is_some_and(|e| e == "rmeta" || e == "d")
+}
+
+#[derive(Deserialize)]
+struct ManifestPackage {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct Manifest {
+    package: Option<ManifestPackage>,
+}
+
+/// The package name of the crate containing `src` in a git checkout: the nearest `Cargo.toml` with a `[package]`, no higher than `checkout`.
+fn git_crate_name(
+    src: &Path,
+    checkout: &Path,
+    names: &mut HashMap<PathBuf, Option<String>>,
+) -> Option<String> {
+    for dir in src.ancestors().skip(1) {
+        if !dir.starts_with(checkout) {
+            break;
+        }
+        let name = names
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| {
+                fs::read_to_string(dir.join(CARGO_TOML))
+                    .ok()
+                    .and_then(|c| toml::from_str::<Manifest>(&c).ok())
+                    .and_then(|m| m.package)
+                    .map(|p| p.name)
+            })
+            .clone();
+        if name.is_some() {
+            return name;
+        }
+    }
+    None
+}
+
+/// The crate a source path belongs to, if it is a registry or git dependency; sources elsewhere are the project's own crates.
+fn source_ref(
+    src: &Path,
+    names: &mut HashMap<PathBuf, Option<String>>,
+) -> Option<BuiltRef> {
+    let comps: Vec<&std::ffi::OsStr> = src.iter().collect();
+    for i in 0..comps.len().saturating_sub(3) {
+        if comps[i] == "registry" && comps[i + 1] == "src" {
+            return Some(BuiltRef::Registry(comps[i + 3].to_str()?.to_string()));
+        }
+        if comps[i] == "git" && comps[i + 1] == "checkouts" {
+            let rev = comps[i + 3].to_str()?.to_string();
+            let checkout: PathBuf = comps[..=i + 3].iter().collect();
+            let name = git_crate_name(src, &checkout, names)?;
+            return Some(BuiltRef::Git { name, rev });
+        }
+    }
+    None
+}
+
+/// The compiled units of a target directory that produced a build product.
+fn built_units(target: &Path) -> Vec<BuiltUnit> {
+    let mut names = HashMap::new();
+    let mut units = Vec::new();
+    for deps in target_deps_dirs(target) {
+        let Ok(entries) = fs::read_dir(&deps) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let path = e.path();
+            if path.extension().is_none_or(|x| x != "d") {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let rules = dep_info_rules(&content);
+            if !rules.iter().any(|(out, _)| is_build_product(out)) {
+                continue;
+            }
+            let mut unit = BuiltUnit::default();
+            for (out, srcs) in rules {
+                if is_deps_output(&out) {
+                    unit.outputs.push(out);
+                }
+                for src in srcs {
+                    if let Some(r) = source_ref(&src, &mut names) {
+                        unit.refs.insert(r);
+                    }
+                }
+            }
+            if !unit.refs.is_empty() {
+                units.push(unit);
+            }
+        }
+    }
+    units
+}
+
+/// True if a lockfile entry is a crate the unit read: a registry crate by `name-version`, a git crate by name and a commit that starts with the checkout revision.
+fn unit_has(unit: &BuiltUnit, lp: &LockPackage) -> bool {
+    let Some(source) = lp.source.as_deref() else {
+        return false;
+    };
+    if source.starts_with("git+") {
+        let commit = source.rsplit_once('#').map(|(_, c)| c).unwrap_or_default();
+        unit.refs.iter().any(|r| match r {
+            BuiltRef::Git { name, rev } => {
+                *name == lp.name && !rev.is_empty() && commit.starts_with(rev.as_str())
+            }
+            BuiltRef::Registry(_) => false,
+        })
+    } else {
+        unit.refs
+            .contains(&BuiltRef::Registry(format!("{}-{}", lp.name, lp.version)))
+    }
+}
+
+/// Built crates of a project's target directory that are in its `Cargo.lock`, with the files of the units that compiled each.
+fn built_packages(target: &Path) -> Vec<(Package, Vec<PathBuf>)> {
+    let Some(lock) = target
+        .parent()
+        .and_then(|d| fs::read_to_string(d.join(CARGO_LOCK)).ok())
+        .and_then(|c| toml::from_str::<LockFile>(&c).ok())
+    else {
+        return Vec::new();
+    };
+    let units = built_units(target);
+    lock.package
+        .iter()
+        .filter_map(|lp| {
+            let mut files: Vec<PathBuf> = units
+                .iter()
+                .filter(|u| unit_has(u, lp))
+                .flat_map(|u| u.outputs.iter().cloned())
+                .collect();
+            if files.is_empty() {
+                return None;
+            }
+            files.sort();
+            files.dedup();
+            Some((package(&lp.name, &lp.version, lp.source.as_deref()), files))
+        })
+        .collect()
+}
+
 /// Parse an install record key: `"name version (source)"`.
 fn parse_install_key(key: &str) -> Option<Package> {
     let (name_version, source) = match key.split_once(" (") {
@@ -256,6 +526,11 @@ fn install_bins(
 pub(crate) struct CargoScanner;
 
 impl EcosystemScanner for CargoScanner {
+    fn primary_site_kinds(&self) -> &'static [SiteKind] {
+        // the crates built in a project's target directory, and `cargo install` records
+        &[SiteKind::Installed]
+    }
+
     /// Downloaded crate sources and toolchains (hundreds of `Cargo.lock` files, and other ecosystems' files in crate test fixtures).
     fn cache_dirs(&self) -> Vec<PathBuf> {
         let mut out = Vec::new();
@@ -277,10 +552,11 @@ impl EcosystemScanner for CargoScanner {
     }
 
     fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect {
-        // Cargo and rustup homes contain hundreds of `Cargo.lock` files from downloaded crate sources and toolchains; these are not projects. Claim the Cargo home's installs (if any) and do not descend.
-        if cargo_home() == Some(dir) || rustup_home() == Some(dir) {
-            let origins = if cargo_home() == Some(dir) {
-                self.default_origins()
+        let has = |name: &str| items.iter().any(|i| i.file_name() == Some(name));
+        // Cargo and rustup homes contain hundreds of `Cargo.lock` files from downloaded crate sources and toolchains; these are not projects. Claim a Cargo home's installs (if any) and do not descend. Homes are recognized by layout as well as by path, so that other users' homes (with `--all-users`) are also handled.
+        if is_cargo_home(dir, items) {
+            let origins = if install_record(dir).is_some() {
+                vec![origin(dir.to_path_buf())]
             } else {
                 Vec::new()
             };
@@ -290,7 +566,12 @@ impl EcosystemScanner for CargoScanner {
                 ..Default::default()
             };
         }
-        let has = |name: &str| items.iter().any(|i| i.file_name() == Some(name));
+        if is_rustup_home(dir, items) {
+            return Detect {
+                prune: true,
+                ..Default::default()
+            };
+        }
         let origins = if has(CARGO_LOCK) {
             vec![origin(dir.to_path_buf())]
         } else {
@@ -362,6 +643,14 @@ impl EcosystemScanner for CargoScanner {
         }
         let lock = dir.join(CARGO_LOCK);
         if lock.is_file() {
+            let target = dir.join(TARGET);
+            if !target_deps_dirs(&target).is_empty() {
+                sites.push(Site::new(
+                    Ecosystem::Cargo,
+                    SiteKind::Installed,
+                    PathShared::from(target),
+                ));
+            }
             sites.push(Site::new(
                 Ecosystem::Cargo,
                 SiteKind::Lockfile,
@@ -372,6 +661,12 @@ impl EcosystemScanner for CargoScanner {
     }
 
     fn site_to_packages(&self, site: &Site) -> Vec<Package> {
+        if site.as_path().is_dir() {
+            return built_packages(site.as_path())
+                .into_iter()
+                .map(|(p, _)| p)
+                .collect();
+        }
         let Ok(content) = fs::read_to_string(site.as_path()) else {
             return Vec::new();
         };
@@ -385,13 +680,35 @@ impl EcosystemScanner for CargoScanner {
         parsed.unwrap_or_default()
     }
 
-    /// For an install record, the binaries of each installed crate in the install root's `bin` directory; `Cargo.lock` sites have none.
+    /// For an install record, the binaries of each installed crate in the install root's `bin` directory; for a target directory, the files each built crate's units wrote to `deps`; `Cargo.lock` sites have none.
     fn site_to_artifacts(
         &self,
         site: &Site,
         wanted: &HashSet<&Package>,
     ) -> Vec<(Package, Artifacts)> {
         let path = site.as_path();
+        if path.is_dir() {
+            return built_packages(path)
+                .into_iter()
+                .filter(|(p, _)| wanted.contains(p))
+                .map(|(p, files)| {
+                    let files = files
+                        .into_iter()
+                        .map(|f| {
+                            let exists = f.exists();
+                            (f, exists)
+                        })
+                        .collect();
+                    (
+                        p,
+                        Artifacts {
+                            files,
+                            dirs: Vec::new(),
+                        },
+                    )
+                })
+                .collect();
+        }
         let (Some(file_name), Some(root)) =
             (path.file_name().and_then(|n| n.to_str()), path.parent())
         else {
@@ -618,6 +935,250 @@ version = "0.1.0"
         fs::write(other.join(CARGO_TOML), "").unwrap();
         let d = CargoScanner.detect(&other, &items_of(&other));
         assert_eq!(d.skip_children, vec!["target"]);
+    }
+
+    #[test]
+    fn test_detect_other_users_homes_a() {
+        // another user's Cargo and rustup homes (as with `--all-users`) are recognized by layout
+        let dir = tempdir().unwrap();
+        let home = dir.path().join("other");
+        let cargo = home.join(".cargo");
+        let src = cargo.join("registry/src/index.crates.io-x/base64-0.22.1");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join(CARGO_LOCK), LOCK_V4).unwrap();
+        let d = CargoScanner.detect(&cargo, &items_of(&cargo));
+        assert!(d.prune);
+        assert!(d.origins.is_empty());
+
+        // with an install record, the home is also an origin
+        fs::write(cargo.join(CRATES2_JSON), CRATES2).unwrap();
+        let d = CargoScanner.detect(&cargo, &items_of(&cargo));
+        assert!(d.prune);
+        assert_eq!(d.origins.len(), 1);
+        assert_eq!(d.origins[0].as_path(), cargo);
+
+        let rustup = home.join(".rustup");
+        let tc = rustup.join("toolchains/stable/lib/rustlib/src/rust");
+        fs::create_dir_all(&tc).unwrap();
+        fs::write(tc.join(CARGO_LOCK), LOCK_V4).unwrap();
+        let d = CargoScanner.detect(&rustup, &items_of(&rustup));
+        assert!(d.prune);
+
+        // a project's `.cargo` config directory is not a Cargo home
+        let proj = home.join("proj");
+        fs::create_dir_all(proj.join(".cargo")).unwrap();
+        fs::write(proj.join(".cargo/config.toml"), "").unwrap();
+        let d =
+            CargoScanner.detect(&proj.join(".cargo"), &items_of(&proj.join(".cargo")));
+        assert!(!d.prune);
+    }
+
+    #[test]
+    fn test_discover_other_users_homes_a() {
+        let dir = tempdir().unwrap();
+        let home = dir.path().join("other");
+        let src = home.join(".cargo/registry/src/index.crates.io-x/base64-0.22.1");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join(CARGO_LOCK), LOCK_V4).unwrap();
+        fs::write(home.join(".cargo").join(CRATES2_JSON), CRATES2).unwrap();
+        let git = home.join(".cargo/git/checkouts/x-1/abc");
+        fs::create_dir_all(&git).unwrap();
+        fs::write(git.join(CARGO_LOCK), LOCK_V4).unwrap();
+        let tc = home.join(".rustup/toolchains/stable/lib/rustlib/src/rust");
+        fs::create_dir_all(&tc).unwrap();
+        fs::write(tc.join(CARGO_LOCK), LOCK_V4).unwrap();
+        let proj = home.join("proj");
+        fs::create_dir_all(&proj).unwrap();
+        fs::write(proj.join(CARGO_LOCK), LOCK_V4).unwrap();
+
+        let scanners: Vec<&dyn EcosystemScanner> = vec![&CargoScanner];
+        let mut found: Vec<PathBuf> =
+            crate::walk::discover(&scanners, false, &[dir.path().to_path_buf()])
+                .into_iter()
+                .map(|o| o.as_path().to_path_buf())
+                .collect();
+        found.sort();
+        assert_eq!(found, vec![home.join(".cargo"), proj]);
+    }
+
+    /// Write a dep-info file for a unit with outputs `outs` (relative to `deps`) and the given sources.
+    fn write_dep_info(deps: &Path, stem: &str, outs: &[&str], srcs: &[PathBuf]) {
+        fs::create_dir_all(deps).unwrap();
+        let srcs: Vec<String> = srcs
+            .iter()
+            .map(|p| p.to_string_lossy().replace(' ', "\\ "))
+            .collect();
+        let mut content = String::new();
+        for o in outs.iter().chain([&format!("{stem}.d").as_str()]) {
+            content.push_str(&format!(
+                "{}: {}\n\n",
+                deps.join(o).display(),
+                srcs.join(" ")
+            ));
+        }
+        for s in &srcs {
+            content.push_str(&format!("{s}:\n"));
+        }
+        content.push_str("\n# env-dep:CARGO_PKG_NAME=x\n");
+        fs::write(deps.join(format!("{stem}.d")), content).unwrap();
+        for o in outs {
+            fs::write(deps.join(o), "").unwrap();
+        }
+    }
+
+    #[test]
+    fn test_split_make_paths_a() {
+        assert_eq!(
+            split_make_paths("/a/b\\ c.rs  /d.rs"),
+            vec![PathBuf::from("/a/b c.rs"), PathBuf::from("/d.rs")]
+        );
+        let rules =
+            dep_info_rules("/t/deps/x.d: /s/a.rs /s/b.rs\n\n/s/a.rs:\n# env-dep:X=1\n");
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].1.len(), 2);
+        assert!(rules[1].1.is_empty());
+    }
+
+    #[test]
+    fn test_built_packages_a() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("proj");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(CARGO_LOCK), LOCK_V4).unwrap();
+        // sources in a Cargo home with a space in its path
+        let reg = dir
+            .path()
+            .join("my home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f");
+        let deps = root.join("target/release/deps");
+
+        // built: serde 1.0.200 (an rlib) and serde_json (a proc-macro .so, under a cross-build triple)
+        write_dep_info(
+            &deps,
+            "serde-1",
+            &["libserde-1.rlib", "libserde-1.rmeta"],
+            &[reg.join("serde-1.0.200/src/lib.rs")],
+        );
+        let cross = root.join("target/x86_64-unknown-linux-gnu/debug/deps");
+        write_dep_info(
+            &cross,
+            "serde_json-2",
+            &["libserde_json-2.so"],
+            &[reg.join("serde_json-1.0.117/src/lib.rs")],
+        );
+        // stale: serde 1.0.190 is not in the lockfile
+        write_dep_info(
+            &deps,
+            "serde-3",
+            &["libserde-3.rlib"],
+            &[reg.join("serde-1.0.190/src/lib.rs")],
+        );
+        // only checked: `internal` has only `.rmeta`
+        write_dep_info(
+            &deps,
+            "internal-4",
+            &["libinternal-4.rmeta"],
+            &[reg.join("internal-3.1.4/src/lib.rs")],
+        );
+        // the project's own crate (an executable) reads no dependency sources
+        write_dep_info(&deps, "myapp-5", &["myapp-5"], &[root.join("src/main.rs")]);
+        // a git dependency in a workspace checkout, named by its Cargo.toml
+        let checkout = dir
+            .path()
+            .join("my home/.cargo/git/checkouts/utest-a1b2c3/41301d9");
+        let krate = checkout.join("crates/utest");
+        fs::create_dir_all(krate.join("src")).unwrap();
+        fs::write(
+            checkout.join(CARGO_TOML),
+            "[workspace]\nmembers = [\"crates/*\"]\n",
+        )
+        .unwrap();
+        fs::write(
+            krate.join(CARGO_TOML),
+            "[package]\nname = \"utest\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        write_dep_info(
+            &deps,
+            "utest-6",
+            &["libutest-6.rlib"],
+            &[krate.join("src/lib.rs")],
+        );
+
+        let target = root.join(TARGET);
+        let sites = CargoScanner.origin_to_sites(
+            &origin(root.clone()),
+            &ScanConfig::new(false, false),
+            FlagLog(false),
+        );
+        assert_eq!(
+            sites[0],
+            Site::new(
+                Ecosystem::Cargo,
+                SiteKind::Installed,
+                PathShared::from(target.clone())
+            )
+        );
+        assert_eq!(sites[1].kind, SiteKind::Lockfile);
+
+        let site = &sites[0];
+        let mut packages = CargoScanner.site_to_packages(site);
+        packages.sort();
+        let names: Vec<String> = packages.iter().map(|p| p.to_string()).collect();
+        assert_eq!(
+            names,
+            vec!["serde-1.0.200", "serde_json-1.0.117", "utest-0.1.0"]
+        );
+        let utest = packages.iter().find(|p| p.name == "utest").unwrap();
+        let vcs = utest
+            .direct_url
+            .as_ref()
+            .unwrap()
+            .vcs_info
+            .as_ref()
+            .unwrap();
+        assert_eq!(vcs.commit_id, "41301d9d61f2e0ad2b6f2a3f3d2c0b1e3c7e0d8a");
+
+        // artifacts are the files the units wrote to `deps`
+        let serde = packages.iter().find(|p| p.name == "serde").unwrap();
+        let wanted: HashSet<&Package> = [serde].into_iter().collect();
+        let arts = CargoScanner.site_to_artifacts(site, &wanted);
+        assert_eq!(arts.len(), 1);
+        let files: Vec<PathBuf> =
+            arts[0].1.files.iter().map(|(f, _)| f.clone()).collect();
+        assert_eq!(
+            files,
+            vec![
+                deps.join("libserde-1.rlib"),
+                deps.join("libserde-1.rmeta"),
+                deps.join("serde-1.d")
+            ]
+        );
+        assert!(arts[0].1.files.iter().all(|(_, exists)| *exists));
+    }
+
+    #[test]
+    fn test_built_packages_b() {
+        // a project that was never built has no target site; one only checked has a site without packages
+        let dir = tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        fs::write(root.join(CARGO_LOCK), LOCK_V4).unwrap();
+        let config = ScanConfig::new(false, false);
+        let sites =
+            CargoScanner.origin_to_sites(&origin(root.clone()), &config, FlagLog(false));
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].kind, SiteKind::Lockfile);
+
+        let reg = dir.path().join(".cargo/registry/src/index.crates.io-x");
+        write_dep_info(
+            &root.join("target/debug/deps"),
+            "serde-1",
+            &["libserde-1.rmeta"],
+            &[reg.join("serde-1.0.200/src/lib.rs")],
+        );
+        let sites =
+            CargoScanner.origin_to_sites(&origin(root.clone()), &config, FlagLog(false));
+        assert_eq!(sites[0].kind, SiteKind::Installed);
+        assert!(CargoScanner.site_to_packages(&sites[0]).is_empty());
     }
 
     #[test]

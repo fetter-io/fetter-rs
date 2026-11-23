@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use crate::ecosystem::Ecosystem;
 use crate::origin_site::Origin;
 use crate::origin_site::Site;
+use crate::origin_site::SiteKind;
 use crate::package::Package;
 use crate::util::FlagLog;
 use crate::util::ResultDynError;
@@ -171,6 +172,11 @@ pub(crate) trait EcosystemScanner: Sync {
     /// Origins found without walking (e.g. the default Python on PATH).
     fn default_origins(&self) -> Vec<Origin> {
         Vec::new()
+    }
+
+    /// The kinds of Site that are this ecosystem's primary source of dependency information, reported by default (`--sites primary`). Default: installed packages.
+    fn primary_site_kinds(&self) -> &'static [SiteKind] {
+        &[SiteKind::Installed]
     }
 
     /// Called once per visited directory with its entries; may claim origins and may prune descent.

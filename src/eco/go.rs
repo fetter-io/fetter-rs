@@ -50,6 +50,21 @@ fn mod_cache() -> Option<&'static Path> {
         .as_deref()
 }
 
+/// True if `dir` is the module cache, or is laid out as one: a `pkg/mod` directory with a `cache` subdirectory. The layout test handles other users' caches (with `--all-users`).
+fn is_mod_cache(dir: &Path, items: &[DirItem]) -> bool {
+    if mod_cache() == Some(dir) {
+        return true;
+    }
+    dir.file_name().is_some_and(|n| n == "mod")
+        && dir
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "pkg")
+        && items
+            .iter()
+            .any(|i| i.file_type.is_dir() && i.file_name() == Some("cache"))
+}
+
 fn origin(dir: PathBuf) -> Origin {
     Origin::new(Ecosystem::Go, PathShared::from(dir))
 }
@@ -259,11 +274,23 @@ fn module_of(fp: &Path) -> Option<String> {
 pub(crate) struct GoScanner;
 
 impl EcosystemScanner for GoScanner {
+    fn primary_site_kinds(&self) -> &'static [SiteKind] {
+        // modules are compiled into binaries; `go.mod` lists the full build list
+        &[SiteKind::Manifest]
+    }
+
     fn cache_dirs(&self) -> Vec<PathBuf> {
         mod_cache().map(Path::to_path_buf).into_iter().collect()
     }
 
     fn detect(&self, dir: &Path, items: &[DirItem]) -> Detect {
+        // the module cache holds the `go.mod` of every downloaded module; these are not projects
+        if is_mod_cache(dir, items) {
+            return Detect {
+                prune: true,
+                ..Default::default()
+            };
+        }
         let fp = dir.join(GO_MOD);
         if !items.iter().any(|i| i.file_name() == Some(GO_MOD)) {
             return Detect::default();
@@ -520,6 +547,29 @@ tool (
         fs::create_dir(&empty).unwrap();
         let d = GoScanner.detect(&empty, &items_of(&empty));
         assert!(d.origins.is_empty() && d.skip_children.is_empty());
+    }
+
+    #[test]
+    fn test_detect_mod_cache_a() {
+        // another user's module cache (as with `--all-users`) is recognized by layout
+        let dir = tempdir().unwrap();
+        let cache = dir.path().join("other/go/pkg/mod");
+        fs::create_dir_all(cache.join("cache/download")).unwrap();
+        let module = cache.join("github.com/a/b@v1.0.0");
+        fs::create_dir_all(&module).unwrap();
+        fs::write(module.join(GO_MOD), GO_MOD_A).unwrap();
+        let d = GoScanner.detect(&cache, &items_of(&cache));
+        assert!(d.prune);
+
+        let scanners: Vec<&dyn EcosystemScanner> = vec![&GoScanner];
+        let found = crate::walk::discover(&scanners, false, &[dir.path().to_path_buf()]);
+        assert!(found.is_empty());
+
+        // a `mod` directory elsewhere is walked
+        let other = dir.path().join("src/mod");
+        fs::create_dir_all(other.join("cache")).unwrap();
+        let d = GoScanner.detect(&other, &items_of(&other));
+        assert!(!d.prune);
     }
 
     #[test]
